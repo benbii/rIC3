@@ -94,7 +94,7 @@ impl IC3 {
         let statistic = Statistic::default();
         let (mut ts, mut rst) = ts.preproc(&cfg.preproc, rst);
         let mut uts = TransysUnroll::new(&ts);
-        uts.unroll();
+        uts.unroll(true);
         if cfg.ic3.inn {
             ts = uts.interal_signals();
         }

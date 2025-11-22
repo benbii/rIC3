@@ -7,11 +7,8 @@ pub struct TransysUnroll<T: TransysIf> {
     pub ts: T,
     pub num_unroll: usize,
     pub max_var: Var,
-    next_map: LitMap<Vec<Lit>>,
+    pub next_map: LitMap<Vec<Lit>>,
     simple_path: Option<Vec<Vec<LitVec>>>,
-    pub opt: GHashMap<Var, Var>,
-    pub connect: Option<Vec<LitVvec>>,
-    pub optcst: Option<Vec<LitVvec>>,
 }
 
 impl<T: TransysIf> TransysUnroll<T> {
@@ -32,9 +29,6 @@ impl<T: TransysIf> TransysUnroll<T> {
             max_var: ts.max_var(),
             next_map,
             simple_path: None,
-            opt: GHashMap::new(),
-            connect: None,
-            optcst: None,
         }
     }
 
@@ -44,39 +38,6 @@ impl<T: TransysIf> TransysUnroll<T> {
     {
         assert!(self.num_unroll == 0);
         self.simple_path = Some(Vec::new());
-    }
-
-    pub fn enable_optional_connect(&mut self)
-    where
-        T: Clone,
-    {
-        assert!(self.num_unroll == 0);
-        for v in self.ts.latch() {
-            let n = self.ts.next(v.lit());
-            if !self.opt.contains_key(&n.var()) {
-                self.max_var += 1;
-                let c = self.max_var;
-                self.opt.insert(n.var(), c);
-            }
-        }
-        self.connect = Some(vec![LitVvec::new()]);
-    }
-
-    pub fn enable_optional_constraint(&mut self)
-    where
-        T: Clone,
-    {
-        assert!(self.num_unroll == 0);
-        let mut rel = LitVvec::new();
-        for c in self.ts.constraint() {
-            let cc = self.opt.get(&c.var()).copied().unwrap_or({
-                self.max_var += 1;
-                self.opt.insert(c.var(), self.max_var);
-                self.max_var
-            });
-            rel.push(LitVec::from([!cc.lit(), c]));
-        }
-        self.optcst = Some(vec![rel]);
     }
 
     #[inline]
@@ -128,11 +89,11 @@ impl<T: TransysIf> TransysUnroll<T> {
         }
     }
 
-    pub fn unroll(&mut self) {
+    pub fn unroll(&mut self, no_conn_abst: bool) {
         let false_lit = Lit::constant(false);
         self.next_map[false_lit].push(false_lit);
         self.next_map[!false_lit].push(!false_lit);
-        if self.connect.is_none() {
+        if no_conn_abst {
             for l in self.ts.latch() {
                 let l = l.lit();
                 let next = self.lit_next(self.ts.next(l), self.num_unroll);
@@ -150,28 +111,6 @@ impl<T: TransysIf> TransysUnroll<T> {
             }
             assert!(self.next_map[l].len() == self.num_unroll + 2);
         }
-        if let Some(crel) = self.connect.as_mut() {
-            let mut cr = LitVvec::new();
-            for l in self.ts.latch() {
-                let l = l.lit();
-                let n = self.ts.next(l);
-                let c = self.opt[&n.var()];
-                let n1 = self.next_map[n][self.num_unroll];
-                let n2 = self.next_map[l][self.num_unroll + 1];
-                cr.push(LitVec::from([!c.lit(), n1, !n2]));
-                cr.push(LitVec::from([!c.lit(), !n1, n2]));
-            }
-            crel.push(cr);
-        }
-        if let Some(crel) = self.optcst.as_mut() {
-            let mut cr = LitVvec::new();
-            for c in self.ts.constraint() {
-                let cc = self.opt[&c.var()];
-                let cn = self.next_map[c][self.num_unroll + 1];
-                cr.push(LitVec::from([!cc.lit(), cn]));
-            }
-            crel.push(cr);
-        }
         self.num_unroll += 1;
         if self.simple_path.is_some() {
             self.simple_path();
@@ -180,7 +119,7 @@ impl<T: TransysIf> TransysUnroll<T> {
 
     pub fn unroll_to(&mut self, k: usize) {
         while self.num_unroll < k {
-            self.unroll()
+            self.unroll(true) // false in LocalAbs.unroll_abst in localabs.rs
         }
     }
 
@@ -201,16 +140,6 @@ impl<T: TransysIf> TransysUnroll<T> {
         {
             for c in simple_path[u - 1].iter() {
                 satif.add_clause(c);
-            }
-        }
-        if let Some(crel) = self.connect.as_ref() {
-            for cls in crel[u].iter() {
-                satif.add_clause(cls);
-            }
-        }
-        if let Some(crel) = self.optcst.as_ref() {
-            for cls in crel[u].iter() {
-                satif.add_clause(cls);
             }
         }
     }
