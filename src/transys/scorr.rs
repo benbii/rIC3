@@ -1,11 +1,13 @@
 use crate::{
-    config::PreprocessConfig,
+    Engine,
+    config::{Config, PreprocessConfig},
     gipsat::DagCnfSolver,
+    ic3::IC3,
     transys::{Transys, TransysIf, certify::Restore},
 };
 use giputils::{bitvec::BitVec, hash::GHashMap};
 use log::{debug, info, trace};
-use logicrs::{Lit, LitVec, Var, VarLMap, satif::Satif};
+use logicrs::{Lit, LitVec, Var, VarLMap, VarSymbols, satif::Satif};
 use std::time::Instant;
 
 pub struct Scorr {
@@ -14,10 +16,11 @@ pub struct Scorr {
     init_slv: DagCnfSolver,
     ind_slv: DagCnfSolver,
     cfg: PreprocessConfig,
+    tcfg: Config,
 }
 
 impl Scorr {
-    pub fn new(ts: Transys, cfg: &PreprocessConfig, rst: Restore) -> Self {
+    pub fn new(ts: Transys, cfg: &PreprocessConfig, tcfg: &Config, rst: Restore) -> Self {
         let mut ind_slv = DagCnfSolver::new(&ts.rel);
         for c in ts.constraint.iter() {
             ind_slv.add_clause(&[*c]);
@@ -33,6 +36,7 @@ impl Scorr {
             ind_slv,
             init_slv,
             cfg: cfg.clone(),
+            tcfg: tcfg.clone(),
         }
     }
 
@@ -50,7 +54,8 @@ impl Scorr {
         } else {
             self.ts.next(y)
         };
-        self.ind_slv
+        if self
+            .ind_slv
             .solve_with_restart_limit(
                 &[],
                 vec![
@@ -62,6 +67,18 @@ impl Scorr {
                 10,
             )
             .is_some_and(|r| !r)
+        {
+            return true;
+        }
+        let mut ts = self.ts.clone();
+        dbg!(x, y);
+        ts.bad = LitVec::from(ts.rel.new_xor(x, y));
+        let mut cfg = self.tcfg.clone();
+        cfg.preproc.preproc = false;
+        let mut ic3 = IC3::new(cfg, ts, VarSymbols::new());
+        let res = ic3.check().unwrap();
+        dbg!(res);
+        res
     }
 
     pub fn scorr(mut self) -> (Transys, Restore) {

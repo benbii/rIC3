@@ -1,6 +1,6 @@
 use super::{Transys, TransysIf};
 use crate::{
-    config::PreprocessConfig,
+    config::{Config, PreprocessConfig},
     transys::{certify::Restore, frts::FrTs, scorr::Scorr},
 };
 use giputils::hash::GHashSet;
@@ -124,13 +124,18 @@ impl Transys {
 }
 
 impl Transys {
-    pub fn preproc(&self, cfg: &PreprocessConfig, mut rst: Restore) -> (Self, Restore) {
+    pub fn preproc(
+        &self,
+        cfg: &PreprocessConfig,
+        tcfg: &Config,
+        mut rst: Restore,
+    ) -> (Self, Restore) {
         let mut ts = self.clone();
         if cfg.preproc {
             ts.simplify(&mut rst);
             info!("trivial simplified ts: {}", ts.statistic());
             if cfg.scorr {
-                let scorr = Scorr::new(ts, cfg, rst);
+                let scorr = Scorr::new(ts, cfg, tcfg, rst);
                 (ts, rst) = scorr.scorr();
             }
             if cfg.frts {

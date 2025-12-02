@@ -94,7 +94,7 @@ impl IC3 {
         let rst = Restore::new(&ts);
         let mut rng = StdRng::seed_from_u64(cfg.rseed);
         let statistic = Statistic::default();
-        let (mut ts, mut rst) = ts.preproc(&cfg.preproc, rst);
+        let (mut ts, mut rst) = ts.preproc(&cfg.preproc, &cfg, rst);
         let mut uts = TransysUnroll::new(&ts);
         uts.unroll();
         if cfg.ic3.inn {
