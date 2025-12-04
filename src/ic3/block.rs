@@ -86,7 +86,7 @@ impl IC3 {
                 return BlockResult::BlockLimitExceeded;
             }
             if let Some(limit) = self.cfg.time_limit
-                && self.statistic.time.time().as_secs() > limit
+                && self.statistic.time.time().as_millis() as u64 > limit
             {
                 return BlockResult::OverallTimeLimitExceeded;
             }

@@ -68,7 +68,8 @@ pub struct Config {
     /// run preprocessing only and print statistics
     #[arg(long, default_value_t = false)]
     pub preproc_stat_only: bool,
-    /// time limit in second
+
+    /// time limit in milliseconds
     #[arg(long)]
     pub time_limit: Option<u64>,
 }

@@ -40,7 +40,9 @@ impl Scorr {
         }
     }
 
-    fn check_scorr(&mut self, x: Lit, y: Lit) -> bool {
+    /// SAT-based equivalence check. Returns true only if equivalence is proven (UNSAT).
+    /// Returns false if inconclusive (needs IC3 verification).
+    fn do_sat_chk(&mut self, x: Lit, y: Lit) -> bool {
         if self
             .init_slv
             .solve_with_restart_limit(&[], vec![LitVec::from([x, y]), LitVec::from([!x, !y])], 10)
@@ -54,8 +56,7 @@ impl Scorr {
         } else {
             self.ts.next(y)
         };
-        if self
-            .ind_slv
+        self.ind_slv
             .solve_with_restart_limit(
                 &[],
                 vec![
@@ -64,24 +65,36 @@ impl Scorr {
                     LitVec::from([xn, yn]),
                     LitVec::from([!xn, !yn]),
                 ],
-                10,
+                100,
             )
             .is_some_and(|r| !r)
-        {
-            return true;
-        }
+    }
+
+    /// IC3-based equivalence check for pairs where SAT was inconclusive
+    fn do_ic3_chk(&self, x: Lit, y: Lit) -> bool {
+        let ic3_start = Instant::now();
         let mut ts = self.ts.clone();
         ts.bad = LitVec::from(ts.rel.new_xor(x, y));
         let mut cfg = self.tcfg.clone();
         cfg.preproc.preproc = false;
+        cfg.time_limit = Some(1250);
         let mut ic3 = IC3::new(cfg, ts, VarSymbols::new());
-        let res = ic3.check().unwrap();
-        if res {
-            info!("scorr: IC3 {x} == {y}")
-        } else {
-            info!("scorr: IC3 {x} != {y}")
+        let result = ic3.check();
+        let elapsed_ms = ic3_start.elapsed().as_millis();
+        match result {
+            None => {
+                info!("scorr: {x} IC3?= {y} ({}ms)", elapsed_ms);
+                false
+            }
+            Some(false) => {
+                info!("scorr: {x} IC3!= {y} ({}ms)", elapsed_ms);
+                false
+            }
+            Some(true) => {
+                info!("scorr: {x} IC3== {y} ({}ms)", elapsed_ms);
+                true
+            }
         }
-        res
     }
 
     pub fn scorr(mut self) -> (Transys, Restore) {
@@ -117,11 +130,9 @@ impl Scorr {
             }
         }
         let mut scorr = VarLMap::new();
-        // for eqc in cand.values() {
-        //     if eqc.len() > 200 {
-        //         dbg!(eqc.len());
-        //     }
-        // }
+        let mut deferred: Vec<(Lit, Lit)> = Vec::new(); // (xl, y) pairs needing IC3
+
+        // Phase 1: SAT checks
         'm: for x in latch {
             if let Some(n) = self.ts.init.get(&x)
                 && !n.var().is_constant()
@@ -140,19 +151,39 @@ impl Scorr {
                     break;
                 }
                 if start.elapsed().as_secs() > self.cfg.scorr_tl {
-                    info!("scorr: timeout");
+                    info!("scorr: SAT phase timeout");
                     break 'm;
                 }
                 let y = eqc[i];
                 if y.var() >= x {
                     break;
                 }
-                if self.check_scorr(xl, y) {
-                    trace!("scorr: {xl} -> {y}");
+                if self.do_sat_chk(xl, y) {
+                    trace!("scorr: {xl} SAT== {y}");
                     scorr.insert_lit(xl, y);
                     eqc.retain(|l| l.var() != x);
                     break;
+                } else {
+                    deferred.push((xl, y));
                 }
+            }
+        }
+
+        // Phase 2: IC3 checks for inconclusive pairs
+        info!("scorr: {} pairs deferred for IC3", deferred.len());
+        for (x, y) in deferred {
+            if start.elapsed().as_secs() > self.cfg.scorr_tl {
+                info!("scorr: IC3 phase timeout");
+                break;
+            }
+            if scorr.get(&x.var()).is_some() {
+                continue; // x already has an equivalence
+            }
+            if scorr.get(&y.var()).is_some() {
+                continue; // y was replaced by another equivalence
+            }
+            if self.do_ic3_chk(x, y) {
+                scorr.insert_lit(x, y);
             }
         }
         info!(
