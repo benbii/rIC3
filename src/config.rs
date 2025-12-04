@@ -64,6 +64,10 @@ pub struct Config {
     /// interrupt statistic
     #[arg(long, default_value_t = false)]
     pub interrupt_statistic: bool,
+
+    /// run preprocessing only and print statistics
+    #[arg(long, default_value_t = false)]
+    pub preproc_stat_only: bool,
 }
 
 impl Config {

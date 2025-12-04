@@ -11,7 +11,7 @@ use rIC3::{
     kind::Kind,
     portfolio::portfolio_main,
     rlive::Rlive,
-    transys::TransysIf,
+    transys::{TransysIf, certify::Restore},
     wlbmc::WlBMC,
 };
 use std::{
@@ -51,7 +51,7 @@ fn main() -> Result<(), Box<dyn error::Error>> {
     cfg.validate();
     cfg.model = cfg.model.canonicalize()?;
     info!("the model to be checked: {}", cfg.model.display());
-    if let config::Engine::Portfolio = cfg.engine {
+    if !cfg.preproc_stat_only && let config::Engine::Portfolio = cfg.engine {
         portfolio_main(cfg);
         unreachable!();
     }
@@ -63,6 +63,14 @@ fn main() -> Result<(), Box<dyn error::Error>> {
             exit(1);
         }
     };
+    if cfg.preproc_stat_only {
+        let (ts, _symbols) = frontend.ts();
+        info!("origin ts has {}", ts.statistic());
+        let rst = Restore::new(&ts);
+        let (ts, _rst) = ts.preproc(&cfg.preproc, &cfg, rst);
+        info!("preprocessed ts has {}", ts.statistic());
+        exit(0);
+    }
     let mut engine: Box<dyn Engine> = if cfg.engine.is_wl() {
         let (wts, _symbols) = frontend.wts();
         // info!("origin ts has {}", ts.statistic());

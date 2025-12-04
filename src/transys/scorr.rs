@@ -71,13 +71,16 @@ impl Scorr {
             return true;
         }
         let mut ts = self.ts.clone();
-        dbg!(x, y);
         ts.bad = LitVec::from(ts.rel.new_xor(x, y));
         let mut cfg = self.tcfg.clone();
         cfg.preproc.preproc = false;
         let mut ic3 = IC3::new(cfg, ts, VarSymbols::new());
         let res = ic3.check().unwrap();
-        dbg!(res);
+        if res {
+            info!("scorr: IC3 {x} == {y}")
+        } else {
+            info!("scorr: IC3 {x} != {y}")
+        }
         res
     }
 
