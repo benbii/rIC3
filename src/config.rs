@@ -205,9 +205,12 @@ pub struct PreprocessConfig {
     /// scorr
     #[arg(long = "scorr", action = ArgAction::Set, default_value_t = true)]
     pub scorr: bool,
-    /// scorr time limit in seconds
-    #[arg(long = "scorr-tl", default_value_t = 200)]
+    /// stop scorr IC3 sweeping after no swept pairs in specified seconds (default 35)
+    #[arg(long = "scorr-tl", default_value_t = 35)]
     pub scorr_tl: u64,
+    /// timeout in milliseconds for each IC3 call in scorr IC3 sweeping (default 1500)
+    #[arg(long = "scorr-effort", default_value_t = 1500)]
+    pub scorr_effort: u64,
 }
 
 #[derive(Args, Clone, Debug)]

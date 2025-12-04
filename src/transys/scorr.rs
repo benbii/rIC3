@@ -8,7 +8,15 @@ use crate::{
 use giputils::{bitvec::BitVec, hash::GHashMap};
 use log::{debug, info, trace};
 use logicrs::{Lit, LitVec, Var, VarLMap, VarSymbols, satif::Satif};
-use std::time::Instant;
+use std::sync::RwLock;
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
+use std::time::SystemTime;
+fn s() -> u64 {
+    SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .unwrap()
+        .as_secs()
+}
 
 pub struct Scorr {
     ts: Transys,
@@ -70,35 +78,60 @@ impl Scorr {
             .is_some_and(|r| !r)
     }
 
-    /// IC3-based equivalence check for pairs where SAT was inconclusive
-    fn do_ic3_chk(&self, x: Lit, y: Lit) -> bool {
-        let ic3_start = Instant::now();
-        let mut ts = self.ts.clone();
-        ts.bad = LitVec::from(ts.rel.new_xor(x, y));
-        let mut cfg = self.tcfg.clone();
-        cfg.preproc.preproc = false;
-        cfg.time_limit = Some(1250);
-        let mut ic3 = IC3::new(cfg, ts, VarSymbols::new());
-        let result = ic3.check();
-        let elapsed_ms = ic3_start.elapsed().as_millis();
-        match result {
-            None => {
-                info!("scorr: {x} IC3?= {y} ({}ms)", elapsed_ms);
-                false
+    // Phase 2: IC3 checks for inconclusive pairs (parallel)
+    fn ic3_worker(
+        &self,
+        scorr: &RwLock<VarLMap>,
+        work_idx: &AtomicUsize,
+        deferred: &Vec<(Lit, Lit)>,
+        last_sol: &AtomicU64,
+    ) {
+        let mut tle = self.cfg.scorr_effort * 2;
+        loop {
+            let idx = work_idx.fetch_add(1, Ordering::Relaxed);
+            if idx >= deferred.len() {
+                return;
             }
-            Some(false) => {
-                info!("scorr: {x} IC3!= {y} ({}ms)", elapsed_ms);
-                false
+            let elapsed = s() - last_sol.load(Ordering::Relaxed);
+            if elapsed >= self.cfg.scorr_tl {
+                return;
             }
-            Some(true) => {
-                info!("scorr: {x} IC3== {y} ({}ms)", elapsed_ms);
-                true
+            let (xl, y) = deferred[idx];
+            {
+                let scorr_read = scorr.read().unwrap();
+                if scorr_read.get(&xl.var()).is_some() {
+                    continue;
+                }
+                if scorr_read.get(&y.var()).is_some() {
+                    continue;
+                }
+            }
+            let mut ts_clone = self.ts.clone();
+            ts_clone.bad = LitVec::from(ts_clone.rel.new_xor(xl, y));
+            let mut cfg = self.tcfg.clone();
+            cfg.preproc.preproc = false;
+            cfg.time_limit = Some(tle);
+            // first few are likely to yield equiv
+            tle = (tle - 200).max(self.cfg.scorr_effort);
+            let mut ic3 = IC3::new(cfg, ts_clone, VarSymbols::new());
+            let result = ic3.check();
+            match result {
+                None => {
+                    debug!("scorr: {} IC3?= {} ({}s)", xl, y, elapsed);
+                }
+                Some(false) => {
+                    debug!("scorr: {} IC3!= {} ({}s)", xl, y, elapsed);
+                }
+                Some(true) => {
+                    info!("scorr: {} IC3== {} ({}s)", xl, y, elapsed);
+                    scorr.write().unwrap().insert_lit(xl, y);
+                    last_sol.store(s(), Ordering::Relaxed);
+                }
             }
         }
     }
 
     pub fn scorr(mut self) -> (Transys, Restore) {
-        let start = Instant::now();
         let init = self.ts.init_simulation(1);
         if init.bv_len() == 0 {
             return (self.ts, self.rst);
@@ -133,7 +166,7 @@ impl Scorr {
         let mut deferred: Vec<(Lit, Lit)> = Vec::new(); // (xl, y) pairs needing IC3
 
         // Phase 1: SAT checks
-        'm: for x in latch {
+        for x in latch {
             if let Some(n) = self.ts.init.get(&x)
                 && !n.var().is_constant()
             {
@@ -150,10 +183,6 @@ impl Scorr {
                 if i > (10000 / eqc.len()).max(1) {
                     break;
                 }
-                if start.elapsed().as_secs() > self.cfg.scorr_tl {
-                    info!("scorr: SAT phase timeout");
-                    break 'm;
-                }
                 let y = eqc[i];
                 if y.var() >= x {
                     break;
@@ -169,55 +198,38 @@ impl Scorr {
             }
         }
 
-        // Phase 2: IC3 checks for inconclusive pairs
+        // Phase 2: IC3 checks for inconclusive pairs (parallel)
         info!("scorr: {} pairs deferred for IC3", deferred.len());
-        for (x, y) in deferred {
-            if start.elapsed().as_secs() > self.cfg.scorr_tl {
-                info!("scorr: IC3 phase timeout");
-                break;
+        let scorr = RwLock::new(scorr);
+        let work_idx = AtomicUsize::new(0);
+        let last_sol = AtomicU64::new(s());
+        std::thread::scope(|s| {
+            for _ in 0..16 {
+                if work_idx.load(Ordering::Relaxed) >= deferred.len() {
+                    break;
+                }
+                s.spawn(|| self.ic3_worker(&scorr, &work_idx, &deferred, &last_sol));
+                std::thread::sleep(std::time::Duration::from_millis(400));
             }
-            if scorr.get(&x.var()).is_some() {
-                continue; // x already has an equivalence
-            }
-            if scorr.get(&y.var()).is_some() {
-                continue; // y was replaced by another equivalence
-            }
-            if self.do_ic3_chk(x, y) {
-                scorr.insert_lit(x, y);
-            }
-        }
+        });
+
+        let mut scorr = scorr.into_inner().unwrap();
         info!(
-            "scorr: eliminates {} latchs out of {} in {:.2}s",
+            "scorr: eliminates {} latchs out of {}",
             scorr.len(),
             self.ts.latch.len(),
-            start.elapsed().as_secs_f32()
         );
-        // for (x, r) in scorr.clone().iter() {
-        //     let mut xn = self.ts.next(x.lit());
-        //     let mut rn = if r.var().is_constant() {
-        //         *r
-        //     } else {
-        //         self.ts.next(*r)
-        //     };
-        //     if xn.var() == rn.var() {
-        //         continue;
-        //     }
-        //     if xn.var() < rn.var() {
-        //         (xn, rn) = (rn, xn);
-        //     }
-        //     trace!("scorr: {xn} -> {rn}");
-        //     scorr.insert_lit(xn, rn);
-        // }
-        // let mut vars: Vec<Var> = scorr.keys().copied().collect();
-        // vars.sort();
-        // for v in vars {
-        //     let r = scorr[&v];
-        //     if let Some(rr) = scorr.map_lit(r) {
-        //         if rr.var() != r.var() {
-        //             scorr.insert_lit(v.lit(), rr);
-        //         }
-        //     }
-        // }
+        // Resolve transitive chains: if x→y and y→z, update x→z
+        let mut vars: Vec<Var> = scorr.keys().copied().collect();
+        vars.sort();
+        for v in vars {
+            let r = scorr[&v];
+            if let Some(rr) = scorr.map_lit(r) {
+                if rr.var() != r.var() {
+                    scorr.insert_lit(v.lit(), rr);
+                }
+            }
+        }
         self.ts.replace(&scorr, &mut self.rst);
         self.ts.simplify(&mut self.rst);
         info!("scorr: simplified ts: {}", self.ts.statistic());

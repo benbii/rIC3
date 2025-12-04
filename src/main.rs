@@ -51,7 +51,9 @@ fn main() -> Result<(), Box<dyn error::Error>> {
     cfg.validate();
     cfg.model = cfg.model.canonicalize()?;
     info!("the model to be checked: {}", cfg.model.display());
-    if !cfg.preproc_stat_only && let config::Engine::Portfolio = cfg.engine {
+    if !cfg.preproc_stat_only
+        && let config::Engine::Portfolio = cfg.engine
+    {
         portfolio_main(cfg);
         unreachable!();
     }
@@ -64,10 +66,12 @@ fn main() -> Result<(), Box<dyn error::Error>> {
         }
     };
     if cfg.preproc_stat_only {
-        let (ts, _symbols) = frontend.ts();
+        let (mut ts, _symbols) = frontend.ts();
         info!("origin ts has {}", ts.statistic());
         let rst = Restore::new(&ts);
-        let (ts, _rst) = ts.preproc(&cfg.preproc, &cfg, rst);
+        if cfg.preproc.preproc {
+            (ts, _) = ts.preproc(&cfg.preproc, &cfg, rst);
+        }
         info!("preprocessed ts has {}", ts.statistic());
         exit(0);
     }

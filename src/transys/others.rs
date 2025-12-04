@@ -109,13 +109,7 @@ impl Transys {
     }
 
     pub fn replace(&mut self, map: &VarLMap, rst: &mut Restore) {
-        // Process in decreasing order of keys to ensure that if we have
-        // x→y and y→z in the map, x is processed before y (since x > y).
-        // This prevents accessing vmap[y] after y has been removed.
-        let mut keys: Vec<_> = map.keys().copied().collect();
-        keys.sort_by(|a, b| b.cmp(a));
-        for x in keys {
-            let y = map[&x];
+        for (&x, &y) in map.iter() {
             if self.is_latch(x) {
                 rst.replace(x, y);
             } else {

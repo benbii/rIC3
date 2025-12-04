@@ -91,10 +91,12 @@ impl IC3 {
     pub fn new(cfg: Config, mut ts: Transys, symbols: VarSymbols) -> Self {
         let ots = ts.clone();
         ts.compress_bads();
-        let rst = Restore::new(&ts);
+        let mut rst = Restore::new(&ts);
         let mut rng = StdRng::seed_from_u64(cfg.rseed);
         let statistic = Statistic::default();
-        let (mut ts, mut rst) = ts.preproc(&cfg.preproc, &cfg, rst);
+        if cfg.preproc.preproc {
+            (ts, rst) = ts.preproc(&cfg.preproc, &cfg, rst);
+        }
         let mut uts = TransysUnroll::new(&ts);
         uts.unroll();
         if cfg.ic3.inn {
