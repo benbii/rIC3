@@ -109,7 +109,10 @@ impl Scorr {
             let mut ts_clone = self.ts.clone();
             ts_clone.bad = LitVec::from(ts_clone.rel.new_xor(xl, y));
             let mut cfg = self.tcfg.clone();
+            cfg.preproc.load_preproc = None;
+            cfg.preproc.export_preproc = None;
             cfg.preproc.preproc = false;
+            cfg.certify = false;
             cfg.time_limit = Some(tle);
             // first few are likely to yield equiv
             tle = (tle - 200).max(self.cfg.scorr_effort);
@@ -150,6 +153,7 @@ impl Scorr {
                 rt[l].push(init[l].get(i));
             }
         }
+
         let mut cand: GHashMap<BitVec, LitVec> = GHashMap::new();
         cand.insert(rt[Var::CONST].clone(), LitVec::from([Lit::constant(false)]));
         for &v in latch.iter() {
@@ -162,6 +166,7 @@ impl Scorr {
                 cand.insert(rt[v].clone(), LitVec::from([l]));
             }
         }
+
         let mut scorr = VarLMap::new();
         let mut deferred: Vec<(Lit, Lit)> = Vec::new(); // (xl, y) pairs needing IC3
 
@@ -174,11 +179,10 @@ impl Scorr {
             }
             let (eqc, xl) = if let Some(eqc) = cand.get_mut(&rt[x]) {
                 (eqc, x.lit())
-            } else if let Some(eqc) = cand.get_mut(&rt.val(!x.lit())) {
-                (eqc, !x.lit())
             } else {
-                panic!();
+                (cand.get_mut(&rt.val(!x.lit())).unwrap(), !x.lit())
             };
+            debug!("scorr: len {}", eqc.len());
             for i in 0..eqc.len() {
                 if i > (10000 / eqc.len()).max(1) {
                     break;

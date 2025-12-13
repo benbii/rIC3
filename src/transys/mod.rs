@@ -5,6 +5,7 @@ pub mod frts;
 mod live;
 pub mod nodep;
 mod others;
+pub mod preproc_serde;
 mod refactor;
 pub mod scorr;
 mod simp;
@@ -118,7 +119,7 @@ pub trait TransysIf {
     }
 }
 
-#[derive(Default, Debug, Clone)]
+#[derive(Default, Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Transys {
     pub input: Vec<Var>,
     pub latch: Vec<Var>,

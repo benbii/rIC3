@@ -3,10 +3,11 @@ use log::{error, info};
 use process_control::{ChildExt, Control};
 use std::{
     env::current_exe,
-    fs::File,
+    fs::{self, File},
     io::{Read, Write},
     mem::take,
     ops::{Deref, DerefMut},
+    path::PathBuf,
     process::{Command, Stdio, exit},
     sync::{Arc, Condvar, Mutex},
     thread::spawn,
@@ -14,15 +15,10 @@ use std::{
 use tempfile::{NamedTempFile, TempDir};
 
 enum PortfolioState {
+    PreprocessPhase,
     Checking(usize),
     Finished(bool, String, Option<NamedTempFile>),
     Terminate,
-}
-
-impl PortfolioState {
-    fn new(nt: usize) -> Self {
-        PortfolioState::Checking(nt)
-    }
 }
 
 impl PortfolioState {
@@ -45,12 +41,15 @@ pub struct Portfolio {
     engine_pids: Vec<i32>,
     certificate: Option<NamedTempFile>,
     state: Arc<(Mutex<PortfolioState>, Condvar)>,
+    preproc_path: PathBuf,
+    preproc_pid: Option<i32>,
 }
 
 impl Portfolio {
     pub fn new(cfg: Config) -> Self {
         let temp_dir = tempfile::TempDir::new_in("/tmp/rIC3/").unwrap();
         let temp_dir_path = temp_dir.path();
+        let preproc_path = temp_dir_path.join("model.preproc");
         let mut engines = Vec::new();
         let mut id = 0;
         let mut new_engine = |args: &str| {
@@ -67,9 +66,7 @@ impl Portfolio {
             engines.push(engine);
         };
         new_engine("-e ic3 --rseed 1");
-        new_engine(
-            "-e ic3 --ic3-ctg=false --frts=false --scorr=false --ic3-drop-po=false --rseed 2",
-        );
+        new_engine("-e ic3 --preproc=false --rseed 2"); // NoPreproc worker
         new_engine("-e ic3 --ic3-drop-po=false --ic3-parent-lemma=false --rseed 3");
         new_engine("-e ic3 --ic3-abs-cst --rseed 4");
         new_engine("-e ic3 --ic3-abs-cst --ic3-abs-trans --rseed 5");
@@ -86,7 +83,7 @@ impl Portfolio {
         new_engine("-e bmc --bmc-kissat --step 65 --rseed 14");
         new_engine("-e bmc --bmc-kissat --bmc-dyn-step --rseed 15");
         new_engine("-e kind --step 1 --rseed 16");
-        let ps = PortfolioState::new(engines.len());
+        let ps = PortfolioState::PreprocessPhase;
         Self {
             cfg,
             engines,
@@ -94,6 +91,8 @@ impl Portfolio {
             certificate: None,
             engine_pids: Default::default(),
             state: Arc::new((Mutex::new(ps), Condvar::new())),
+            preproc_path,
+            preproc_pid: None,
         }
     }
 
@@ -103,6 +102,14 @@ impl Portfolio {
         };
         if lock.is_checking() {
             *lock = PortfolioState::Terminate;
+
+            // Kill preprocessor if running
+            if let Some(preproc_pid) = self.preproc_pid {
+                let _ = Command::new("kill")
+                    .args(["-9", &preproc_pid.to_string()])
+                    .output();
+            }
+
             let pids: Vec<String> = self.engine_pids.iter().map(|p| format!("{}", *p)).collect();
             let pid = pids.join(",");
             let _ = Command::new("pkill")
@@ -121,69 +128,150 @@ impl Portfolio {
                 .output();
         }
         drop(lock);
+        // Clean up preproc file
+        let _ = fs::remove_file(&self.preproc_path);
+    }
+
+    fn launch_worker(
+        engine: &mut Command,
+        wmem: usize,
+        temp_dir: &TempDir,
+        engine_pids: &mut Vec<i32>,
+        state: Arc<(Mutex<PortfolioState>, Condvar)>,
+        needs_certificate: bool,
+    ) {
+        let certificate = if needs_certificate {
+            let certificate = tempfile::NamedTempFile::new_in(temp_dir.path()).unwrap();
+            let certify_path = certificate.path().as_os_str().to_str().unwrap();
+            engine.arg(certify_path);
+            Some(certificate)
+        } else {
+            None
+        };
+        let mut child = engine.stderr(Stdio::piped()).spawn().unwrap();
+        engine_pids.push(child.id() as i32);
+
+        let config = engine
+            .get_args()
+            .skip(1)
+            .map(|cstr| cstr.to_str().unwrap())
+            .collect::<Vec<&str>>()
+            .join(" ");
+        info!("start engine: {config}");
+
+        spawn(move || {
+            #[cfg(target_os = "linux")]
+            let status = child.controlled().memory_limit(wmem).wait().unwrap().unwrap();
+            #[cfg(target_os = "macos")]
+            let status = child.controlled().wait().unwrap().unwrap();
+
+            let res = match status.code() {
+                Some(10) => false,
+                Some(20) => true,
+                e => {
+                    let mut ps = state.0.lock().unwrap();
+                    if let PortfolioState::Checking(np) = ps.deref_mut() {
+                        info!("{config} unexpectedly exited, exit code: {e:?}");
+                        let mut stderr = String::new();
+                        child.stderr.unwrap().read_to_string(&mut stderr).unwrap();
+                        info!("{stderr}");
+                        *np -= 1;
+                        if *np == 0 {
+                            state.1.notify_one();
+                        }
+                    }
+                    return;
+                }
+            };
+            let mut lock = state.0.lock().unwrap();
+            if lock.is_checking() {
+                *lock = PortfolioState::Finished(res, config, certificate);
+                state.1.notify_one();
+            }
+        });
     }
 
     fn check_inner(&mut self) -> Option<bool> {
         #[cfg(target_os = "linux")]
         let wmem = self.cfg.portfolio.wmem_limit * 1024 * 1024 * 1024;
-        let lock = self.state.0.lock().unwrap();
-        for mut engine in take(&mut self.engines) {
-            let certificate =
-                if self.cfg.certificate.is_some() || self.cfg.certify || self.cfg.witness {
-                    let certificate =
-                        tempfile::NamedTempFile::new_in(self.temp_dir.path()).unwrap();
-                    let certify_path = certificate.path().as_os_str().to_str().unwrap();
-                    engine.arg(certify_path);
-                    Some(certificate)
-                } else {
-                    None
-                };
-            let mut child = engine.stderr(Stdio::piped()).spawn().unwrap();
-            self.engine_pids.push(child.id() as i32);
-            let state = self.state.clone();
-            spawn(move || {
-                let config = engine
-                    .get_args()
-                    .skip(1)
-                    .map(|cstr| cstr.to_str().unwrap())
-                    .collect::<Vec<&str>>();
-                let config = config.join(" ");
-                info!("start engine: {config}");
-                #[cfg(target_os = "linux")]
-                let status = child
-                    .controlled()
-                    .memory_limit(wmem)
-                    .wait()
-                    .unwrap()
-                    .unwrap();
-                #[cfg(target_os = "macos")]
-                let status = child.controlled().wait().unwrap().unwrap();
-                let res = match status.code() {
-                    Some(10) => false,
-                    Some(20) => true,
-                    e => {
-                        let mut ps = state.0.lock().unwrap();
-                        if let PortfolioState::Checking(np) = ps.deref_mut() {
-                            info!("{config} unexpectedly exited, exit code: {e:?}");
-                            let mut stderr = String::new();
-                            child.stderr.unwrap().read_to_string(&mut stderr).unwrap();
-                            info!("{stderr}");
-                            *np -= 1;
-                            if *np == 0 {
-                                state.1.notify_one();
-                            }
-                        }
-                        return;
+
+        // Start preprocessor
+        let mut preproc_cmd = Command::new(current_exe().unwrap());
+        preproc_cmd
+            .arg(&self.cfg.model)
+            .args(["--export-preproc", self.preproc_path.to_str().unwrap()])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null());
+        let preproc_child = preproc_cmd.spawn().unwrap();
+        self.preproc_pid = Some(preproc_child.id() as i32);
+
+        // Monitor preprocessor completion
+        let state = self.state.clone();
+        let preproc_path = self.preproc_path.clone();
+        spawn(move || {
+            loop {
+                std::thread::sleep(std::time::Duration::from_millis(100));
+                if preproc_path.exists() {
+                    let mut lock = state.0.lock().unwrap();
+                    if matches!(*lock, PortfolioState::PreprocessPhase) {
+                        *lock = PortfolioState::Checking(15);
+                        state.1.notify_one();
                     }
-                };
-                let mut lock = state.0.lock().unwrap();
-                if lock.is_checking() {
-                    *lock = PortfolioState::Finished(res, config, certificate);
-                    state.1.notify_one();
+                    return;
                 }
-            });
-        }
+            }
+        });
+
+        // Launch NoPreproc worker
+        let needs_cert = self.cfg.certificate.is_some() || self.cfg.certify || self.cfg.witness;
+        Self::launch_worker(
+            &mut self.engines[1],
+            wmem,
+            &self.temp_dir,
+            &mut self.engine_pids,
+            self.state.clone(),
+            needs_cert,
+        );
+
+        // Wait for preprocessor or NoPreproc worker
+        let lock = self.state.0.lock().unwrap();
         let mut result = self.state.1.wait(lock).unwrap();
+
+        match *result {
+            PortfolioState::Finished(_, _, _) => {
+                // NoPreproc won
+                if let Some(pid) = self.preproc_pid.take() {
+                    let _ = Command::new("kill").args(["-9", &pid.to_string()]).output();
+                }
+                let (res, config, certificate) = result.result();
+                drop(result);
+                self.certificate = certificate;
+                info!("best configuration: {config}");
+                self.cleanup_workers();
+                return Some(res);
+            }
+            PortfolioState::Checking(_) => {
+                drop(result);
+                // Preprocessor won, launch remaining workers
+                for idx in std::iter::once(0).chain(2..16) {
+                    self.engines[idx].args(["--load-preproc", self.preproc_path.to_str().unwrap()]);
+                    Self::launch_worker(
+                        &mut self.engines[idx],
+                        wmem,
+                        &self.temp_dir,
+                        &mut self.engine_pids,
+                        self.state.clone(),
+                        needs_cert,
+                    );
+                }
+            }
+            _ => return None,
+        }
+
+        // Wait for Phase 2 workers
+        let lock = self.state.0.lock().unwrap();
+        let mut result = self.state.1.wait(lock).unwrap();
+
         if let PortfolioState::Checking(np) = result.deref() {
             assert!(*np == 0);
             error!("all workers unexpectedly exited :(");
@@ -193,19 +281,16 @@ impl Portfolio {
         drop(result);
         self.certificate = certificate;
         info!("best configuration: {config}");
-        let pids: Vec<String> = self.engine_pids.iter().map(|p| format!("{}", *p)).collect();
-        let pid = pids.join(",");
-        let _ = Command::new("pkill")
-            .args(["-9", "--parent", &pid])
-            .output();
-        let mut kill = Command::new("kill");
-        kill.arg("-9");
-        for p in pids {
-            kill.arg(p);
-        }
-        let _ = kill.output().unwrap();
-        self.engine_pids.clear();
+        self.cleanup_workers();
         Some(res)
+    }
+
+    fn cleanup_workers(&mut self) {
+        let pids: Vec<String> = self.engine_pids.iter().map(|p| p.to_string()).collect();
+        let _ = Command::new("pkill").args(["-9", "--parent", &pids.join(",")]).output();
+        let _ = Command::new("kill").arg("-9").args(&pids).output();
+        self.engine_pids.clear();
+        let _ = fs::remove_file(&self.preproc_path);
     }
 
     pub fn check(&mut self) -> Option<bool> {

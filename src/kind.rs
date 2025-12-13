@@ -1,7 +1,10 @@
 use crate::{
     Engine, Proof, Witness,
     config::Config,
-    transys::{Transys, TransysIf, certify::Restore, nodep::NoDepTransys, unroll::TransysUnroll},
+    transys::{
+        Transys, TransysIf, certify::Restore, nodep::NoDepTransys, preproc_serde::PreprocModel,
+        unroll::TransysUnroll,
+    },
 };
 use log::{error, info};
 use logicrs::{Lit, LitVec, Var, satif::Satif};
@@ -17,13 +20,10 @@ pub struct Kind {
 }
 
 impl Kind {
-    pub fn new(cfg: Config, mut ts: Transys) -> Self {
+    pub fn new(cfg: Config, ts: Transys) -> Self {
         let ots = ts.clone();
+        let (mut ts, mut rst) = PreprocModel::load_or_preproc(ts, &cfg);
         ts.compress_bads();
-        let mut rst = Restore::new(&ts);
-        if cfg.preproc.preproc {
-            (ts, rst) = ts.preproc(&cfg.preproc, &cfg, rst);
-        }
         ts.remove_gate_init(&mut rst);
         let mut ts = ts.remove_dep();
         ts.assert_constraint();

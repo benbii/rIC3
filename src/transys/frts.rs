@@ -5,19 +5,14 @@ use crate::{
 };
 use giputils::hash::GHashMap;
 use log::{debug, info, trace};
-use logicrs::{Lit, LitVec, Var, VarLMap, VarMap, VarVMap, simplify::DagCnfSimplify};
-use rand::{SeedableRng, rngs::StdRng};
+use logicrs::{LitVec, Var, VarLMap, simplify::DagCnfSimplify};
 use std::time::Instant;
 
-#[allow(unused)]
 pub struct FrTs {
     cfg: PreprocessConfig,
     ts: Transys,
-    candidate: VarMap<Vec<Lit>>,
     map: VarLMap,
-    eqc: VarVMap,
     solver: DagCnfSolver,
-    rng: StdRng,
     rst: Restore,
 }
 
@@ -27,9 +22,7 @@ impl FrTs {
         let sim = ts.rel.simulation(1000);
         let solver = DagCnfSolver::new(&ts.rel);
         let mut map = VarLMap::new();
-        let mut eqc = VarVMap::new();
         let mut simval: GHashMap<_, Vec<_>> = GHashMap::new();
-        let mut candidate: VarMap<Vec<Lit>> = VarMap::new_with(ts.max_var());
         for v in ts.rel.var_iter() {
             let lv = v.lit();
             let slv = sim.val(lv);
@@ -37,28 +30,19 @@ impl FrTs {
             if let Some(e) = simval.get_mut(&slv) {
                 e.push(lv);
                 map.insert_lit(lv, e[0]);
-                eqc.insert(lv.var(), e[0].var());
-                candidate[e[0].var()].push(lv);
             } else if let Some(e) = simval.get_mut(&snlv) {
                 e.push(!lv);
                 map.insert_lit(!lv, e[0]);
-                eqc.insert(lv.var(), e[0].var());
-                candidate[e[0].var()].push(!lv);
             } else {
                 simval.insert(slv, vec![lv]);
-                candidate[lv.var()].push(lv);
             }
         }
-        let rng = StdRng::seed_from_u64(0);
         Self {
             ts,
             cfg: cfg.clone(),
-            candidate,
             map,
-            eqc,
             solver,
             rst,
-            rng,
         }
     }
 
@@ -85,23 +69,9 @@ impl FrTs {
             match self.solver.solve_with_restart_limit(
                 &[],
                 vec![LitVec::from([m, lv]), LitVec::from([!m, !lv])],
-                1,
+                9,
             ) {
-                Some(true) => {
-                    // let eqc = self.eqc[v];
-                    // let rlv = *self.candidate[eqc].iter().find(|l| l.var() == v).unwrap();
-                    // let rlvs = self.solver.sat_value(rlv).unwrap();
-                    // if let Some(newm) = self.candidate[eqc]
-                    //     .iter()
-                    //     .filter(|l| {
-                    //         !replace.contains_key(&l.var()) && l.var() < v && l.var() > m.var()
-                    //     })
-                    //     .find(|&l| self.solver.sat_value(*l).is_some_and(|x| x == rlvs))
-                    // {
-                    //     self.map.insert_lit(rlv, *newm);
-                    //     continue;
-                    // }
-                }
+                Some(true) => {}
                 Some(false) => {
                     debug!("frts: {v} -> {m}");
                     replace.insert_lit(lv, m);
@@ -126,6 +96,7 @@ impl FrTs {
             }
             v += 1;
         }
+
         self.ts.replace(&replace, &mut self.rst);
         self.ts.coi_refine(&mut self.rst);
         self.ts.rearrange(&mut self.rst);

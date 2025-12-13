@@ -3,7 +3,10 @@ use crate::{
     config::Config,
     gipsat::{SolverStatistic, TransysSolver},
     ic3::{block::BlockResult, localabs::LocalAbs},
-    transys::{Transys, TransysCtx, TransysIf, certify::Restore, unroll::TransysUnroll},
+    transys::{
+        Transys, TransysCtx, TransysIf, certify::Restore, preproc_serde::PreprocModel,
+        unroll::TransysUnroll,
+    },
 };
 use activity::Activity;
 use frame::{Frame, Frames};
@@ -90,13 +93,10 @@ impl IC3 {
 impl IC3 {
     pub fn new(cfg: Config, mut ts: Transys, symbols: VarSymbols) -> Self {
         let ots = ts.clone();
-        ts.compress_bads();
-        let mut rst = Restore::new(&ts);
         let mut rng = StdRng::seed_from_u64(cfg.rseed);
         let statistic = Statistic::default();
-        if cfg.preproc.preproc {
-            (ts, rst) = ts.preproc(&cfg.preproc, &cfg, rst);
-        }
+        let (mut ts, mut rst) = PreprocModel::load_or_preproc(ts, &cfg);
+        ts.compress_bads();
         let mut uts = TransysUnroll::new(&ts);
         uts.unroll();
         if cfg.ic3.inn {

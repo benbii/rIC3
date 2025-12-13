@@ -65,10 +65,6 @@ pub struct Config {
     #[arg(long, default_value_t = false)]
     pub interrupt_statistic: bool,
 
-    /// run preprocessing only and print statistics
-    #[arg(long, default_value_t = false)]
-    pub preproc_stat_only: bool,
-
     /// time limit in milliseconds
     #[arg(long)]
     pub time_limit: Option<u64>,
@@ -193,7 +189,7 @@ pub struct KindConfig {
 
 #[derive(Args, Clone, Debug)]
 pub struct PreprocessConfig {
-    /// disable preprocess
+    /// enable preprocess
     #[arg(long = "preproc", action = ArgAction::Set, default_value_t = true)]
     pub preproc: bool,
     /// function reduced transys
@@ -211,6 +207,15 @@ pub struct PreprocessConfig {
     /// timeout in milliseconds for each IC3 call in scorr IC3 sweeping (default 1500)
     #[arg(long = "scorr-effort", default_value_t = 1500)]
     pub scorr_effort: u64,
+    /// export preprocessed model to file (runs preprocessing only, then exits)
+    #[arg(long)]
+    pub export_preproc: Option<PathBuf>,
+    /// load preprocessed model from file (skips all preprocessing)
+    #[arg(long)]
+    pub load_preproc: Option<PathBuf>,
+    /// when loading preprocessed model, sleep for the duration preprocessing took
+    #[arg(long, default_value_t = false)]
+    pub fake_preproc_wait: bool,
 }
 
 #[derive(Args, Clone, Debug)]

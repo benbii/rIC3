@@ -125,7 +125,7 @@ pub struct Proof {
     pub proof: Transys,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Restore {
     pub(crate) vmap: VarVMap,
     eqmap: GHashMap<Var, LitVec>,

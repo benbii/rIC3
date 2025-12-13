@@ -11,10 +11,11 @@ use rIC3::{
     kind::Kind,
     portfolio::portfolio_main,
     rlive::Rlive,
-    transys::{TransysIf, certify::Restore},
+    transys::{TransysIf, certify::Restore, preproc_serde::PreprocModel},
     wlbmc::WlBMC,
 };
 use std::{
+    time::Instant,
     env, error, fs,
     mem::{self, transmute},
     process::exit,
@@ -51,7 +52,8 @@ fn main() -> Result<(), Box<dyn error::Error>> {
     cfg.validate();
     cfg.model = cfg.model.canonicalize()?;
     info!("the model to be checked: {}", cfg.model.display());
-    if !cfg.preproc_stat_only
+
+    if cfg.preproc.export_preproc.is_none()
         && let config::Engine::Portfolio = cfg.engine
     {
         portfolio_main(cfg);
@@ -65,16 +67,7 @@ fn main() -> Result<(), Box<dyn error::Error>> {
             exit(1);
         }
     };
-    if cfg.preproc_stat_only {
-        let (mut ts, _symbols) = frontend.ts();
-        info!("origin ts has {}", ts.statistic());
-        let rst = Restore::new(&ts);
-        if cfg.preproc.preproc {
-            (ts, _) = ts.preproc(&cfg.preproc, &cfg, rst);
-        }
-        info!("preprocessed ts has {}", ts.statistic());
-        exit(0);
-    }
+
     let mut engine: Box<dyn Engine> = if cfg.engine.is_wl() {
         let (wts, _symbols) = frontend.wts();
         // info!("origin ts has {}", ts.statistic());
@@ -85,6 +78,24 @@ fn main() -> Result<(), Box<dyn error::Error>> {
     } else {
         let (ts, symbols) = frontend.ts();
         info!("origin ts has {}", ts.statistic());
+        // Handle export mode: run preprocessing and dump
+        if let Some(export_path) = &cfg.preproc.export_preproc {
+            let rst = Restore::new(&ts);
+            let preproc_start = Instant::now();
+            let (ts, rst) = ts.preproc(&cfg.preproc, &cfg, rst);
+            let preproc_time_secs = preproc_start.elapsed().as_secs();
+            info!("preprocessed ts has {}", ts.statistic());
+            let model = PreprocModel::new(ts, rst, preproc_time_secs);
+            model
+                .save(export_path)
+                .expect("Failed to export preprocessed model");
+            info!(
+                "Exported preprocessed model to {:?} (preproc took {}s)",
+                export_path, preproc_time_secs
+            );
+            exit(0);
+        }
+
         match cfg.engine {
             config::Engine::IC3 => Box::new(IC3::new(cfg.clone(), ts, symbols)),
             config::Engine::Kind => Box::new(Kind::new(cfg.clone(), ts)),
