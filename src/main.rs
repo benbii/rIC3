@@ -1,6 +1,7 @@
 #![feature(ptr_metadata, file_buffered)]
 
 mod cli;
+mod tryprove;
 
 use crate::cli::cli_main;
 use std::{fs, io::Write};

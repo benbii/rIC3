@@ -31,6 +31,12 @@ impl Ric3Proj {
         Ok(Self { path })
     }
 
+    /// Create Ric3Proj at explicit path (for tryprove)
+    pub fn at(path: PathBuf) -> anyhow::Result<Self> {
+        create_dir_if_not_exists(&path)?;
+        Ok(Self { path })
+    }
+
     pub fn path(&self, join: impl AsRef<Path>) -> PathBuf {
         self.path.join(join.as_ref())
     }

@@ -6,6 +6,9 @@ mod run;
 mod vcd;
 mod yosys;
 
+pub use cache::Ric3Proj;
+pub use yosys::Yosys;
+
 use crate::cli::{
     check::CheckConfig,
     cill::{CIllCommands, cill},
@@ -53,6 +56,12 @@ pub enum Commands {
         #[command(subcommand)]
         cmd: CIllCommands,
     },
+
+    /// Stateless verification - run from anywhere
+    TryProve {
+        /// Path to DUT directory containing ric3.toml
+        dut_path: PathBuf,
+    },
 }
 
 pub fn cli_main() -> anyhow::Result<()> {
@@ -62,6 +71,7 @@ pub fn cli_main() -> anyhow::Result<()> {
         Commands::Check { chk, cfg } => check::check(chk, cfg),
         Commands::Clean => clean::clean(),
         Commands::Cill { cmd } => cill(cmd),
+        Commands::TryProve { dut_path } => crate::tryprove::tryprove(dut_path),
     }
 }
 
@@ -77,9 +87,30 @@ pub struct VcdConfig {
 }
 
 impl Ric3Config {
-    fn from_file<P: AsRef<Path>>(p: P) -> anyhow::Result<Self> {
+    pub fn from_file<P: AsRef<Path>>(p: P) -> anyhow::Result<Self> {
         let config_content = fs::read_to_string(p)?;
         let config: Self = toml::from_str(&config_content)?;
+        config.dut.validate()?;
+        Ok(config)
+    }
+
+    /// Load config and resolve relative file paths against base_path
+    pub fn from_file_with_base<P: AsRef<Path>>(p: P, base_path: &Path) -> anyhow::Result<Self> {
+        let config_content = fs::read_to_string(p)?;
+        let mut config: Self = toml::from_str(&config_content)?;
+        // Prepend base_path to relative file paths
+        for file in config.dut.files.iter_mut() {
+            if file.is_relative() {
+                *file = base_path.join(&file);
+            }
+        }
+        if let Some(ref mut include_files) = config.dut.include_files {
+            for file in include_files.iter_mut() {
+                if file.is_relative() {
+                    *file = base_path.join(&file);
+                }
+            }
+        }
         config.dut.validate()?;
         Ok(config)
     }
@@ -93,7 +124,7 @@ pub struct Dut {
 }
 
 impl Dut {
-    fn src(&self) -> Vec<PathBuf> {
+    pub fn src(&self) -> Vec<PathBuf> {
         self.files
             .iter()
             .chain(self.include_files.iter().flatten())
