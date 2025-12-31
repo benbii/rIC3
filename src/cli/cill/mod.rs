@@ -1,6 +1,8 @@
 mod ind;
 mod tui;
 
+pub use ind::refresh_cti_for_prop;
+
 use super::{Ric3Config, cache::Ric3Proj, yosys::Yosys};
 use crate::logger_init;
 use anyhow::Ok;
@@ -73,19 +75,19 @@ impl Ric3Proj {
 }
 
 pub struct CIll {
-    rcfg: Ric3Config,
-    rp: Ric3Proj,
+    pub(crate) rcfg: Ric3Config,
+    pub(crate) rp: Ric3Proj,
     #[allow(unused)]
-    wts: WlTransys,
-    wsym: GHashMap<Term, Vec<String>>,
-    ts: Transys,
-    bb_map: BitblastMap,
-    ts_rst: Restore,
-    btorfe: BtorFrontend,
-    slv: CaDiCaL,
-    uts: TransysUnroll<Transys>,
-    prop_name: Vec<Option<String>>,
-    res: Vec<bool>,
+    pub(crate) wts: WlTransys,
+    pub(crate) wsym: GHashMap<Term, Vec<String>>,
+    pub(crate) ts: Transys,
+    pub(crate) bb_map: BitblastMap,
+    pub(crate) ts_rst: Restore,
+    pub(crate) btorfe: BtorFrontend,
+    pub(crate) slv: CaDiCaL,
+    pub(crate) uts: TransysUnroll<Transys>,
+    pub(crate) prop_name: Vec<Option<String>>,
+    pub(crate) res: Vec<bool>,
 }
 
 impl CIll {
@@ -127,11 +129,11 @@ impl CIll {
         })
     }
 
-    fn get_prop_name(&self, id: usize) -> Option<String> {
+    pub fn get_prop_name(&self, id: usize) -> Option<String> {
         self.prop_name[id].clone()
     }
 
-    fn check_safety(&mut self) -> anyhow::Result<McResult> {
+    pub fn check_safety(&mut self) -> anyhow::Result<McResult> {
         info!("Starting checking safety for all properties.");
         let mut cfg = PortfolioConfig::default();
         cfg.config = Some("cill".to_string());

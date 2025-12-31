@@ -3,6 +3,7 @@ mod check;
 mod cill;
 mod clean;
 mod run;
+mod tryprove;
 mod vcd;
 mod yosys;
 
@@ -53,6 +54,12 @@ pub enum Commands {
         #[command(subcommand)]
         cmd: CIllCommands,
     },
+
+    /// Stateless proof attempt (LLM/agent friendly, no sub-subcommands)
+    TryProve {
+        /// Path to DUT directory containing ric3.toml
+        path: PathBuf,
+    },
 }
 
 pub fn cli_main() -> anyhow::Result<()> {
@@ -62,10 +69,11 @@ pub fn cli_main() -> anyhow::Result<()> {
         Commands::Check { chk, cfg } => check::check(chk, cfg),
         Commands::Clean => clean::clean(),
         Commands::Cill { cmd } => cill(cmd),
+        Commands::TryProve { path } => tryprove::run(path),
     }
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
 pub struct Ric3Config {
     pub dut: Dut,
     pub trace: Option<VcdConfig>,
@@ -85,7 +93,7 @@ impl Ric3Config {
     }
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
 pub struct Dut {
     pub top: String,
     pub files: Vec<PathBuf>,

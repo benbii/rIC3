@@ -77,10 +77,22 @@ impl CIll {
     pub fn check_cti(&mut self) -> anyhow::Result<bool> {
         let cti_file = self.rp.path("cill/cti");
         let cti = fs::read_to_string(&cti_file)?;
-        let cti = self.btorfe.deserialize_wl_unsafe_certificate(cti);
-        assert!(cti.len() == self.uts.num_unroll + 1);
+        self.check_cti_from_str(&cti)
+    }
+
+    /// Check if a CTI (given as witness string) is blocked by current assertions
+    pub fn check_cti_from_str(&mut self, cti_str: &str) -> anyhow::Result<bool> {
+        let cti = self.btorfe.deserialize_wl_unsafe_certificate(cti_str.to_string());
+        if cti.len() != self.uts.num_unroll + 1 {
+            // CTI format incompatible with current DUT
+            return Ok(true); // Treat as blocked (will generate new one)
+        }
         let cti = self.bb_map.bitblast_witness(&cti);
         let cti = self.ts_rst.forward_witness(&cti);
+        if cti.bad_id >= self.uts.ts.bad.len() {
+            // Property ID out of range for current DUT
+            return Ok(true);
+        }
         let mut assume = vec![
             self.uts
                 .lit_next(self.uts.ts.bad[cti.bad_id], self.uts.num_unroll),
@@ -206,4 +218,66 @@ impl Ric3Proj {
         )?;
         Ok(())
     }
+}
+
+/// Refresh a single CTI file when DUT changes. Returns the new CTI string if successful,
+/// or None if the property no longer exists in the new DUT.
+pub fn refresh_cti_for_prop(
+    cti_str: &str,
+    dut_old: &Path,
+    dut_new: &Path,
+) -> anyhow::Result<Option<String>> {
+    let btor_old = Btor::from_file(dut_old.join("dut.btor"));
+    let btorfe_old = BtorFrontend::new(btor_old.clone());
+    let mut cti = btorfe_old.deserialize_wl_unsafe_certificate(cti_str.to_string());
+
+    let ywbc_old = fs::read_to_string(dut_old.join("dut.ywb"))?;
+    let ywb_old = btor_old.ywb(&ywbc_old);
+    let wb_old = btor_old.witness_map(&ywbc_old);
+    let wb_old: GHashMap<_, _> = wb_old.into_iter().map(|(k, v)| (v, k)).collect();
+
+    let btor_new = Btor::from_file(dut_new.join("dut.btor"));
+    let mut btorfe_new = BtorFrontend::new(btor_new.clone());
+    let ywbc_new = fs::read_to_string(dut_new.join("dut.ywb"))?;
+    let ywb_new = btor_new.ywb(&ywbc_new);
+    let wb_new = btor_new.witness_map(&ywbc_new);
+
+    // Use CTI's bad_id to look up assertion in OLD model, then find in NEW model
+    let Some(bad_id) = ywb_new
+        .asserts
+        .iter()
+        .position(|s| s.eq(&ywb_old.asserts[cti.bad_id]))
+    else {
+        // Assertion no longer exists in new DUT
+        return Ok(None);
+    };
+    cti.bad_id = bad_id;
+
+    // Build term mapping from old to new
+    let mut term_map = GHashMap::new();
+    for (n, s) in wb_new {
+        if let Some(o) = wb_old.get(&s) {
+            term_map.insert(o, n);
+        }
+    }
+
+    // Remap all terms in the CTI
+    for k in 0..cti.len() {
+        for x in take(&mut cti.input[k]) {
+            if let Some(n) = term_map.get(x.t()) {
+                cti.input[k].push(BvTermValue::new(n.clone(), x.v().clone()));
+            }
+        }
+        for x in take(&mut cti.state[k]) {
+            if let Some(n) = term_map.get(x.t()) {
+                let x = x.into_bv();
+                cti.state[k].push(TermValue::new(n.clone(), fol::Value::Bv(x.v().clone())));
+            }
+        }
+    }
+
+    Ok(Some(format!(
+        "{}",
+        btorfe_new.unsafe_certificate(McWitness::Wl(cti))
+    )))
 }
