@@ -326,7 +326,7 @@ impl Engine for IC3 {
                 self.tracer.trace_res(McResult::Safe);
                 return McResult::Safe;
             }
-            self.propagete_to_inf();
+            self.propagate_to_inf();
         }
     }
 
@@ -390,7 +390,7 @@ impl Engine for IC3 {
         for s in res.state.iter_mut() {
             *s = self.rst.restore_eq_state(s);
         }
-        res.exact_state(&self.ots);
+        res.exact_state(&self.ots, true);
         McWitness::Bl(res)
     }
 

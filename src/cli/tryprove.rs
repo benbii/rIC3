@@ -3,17 +3,16 @@
 //! Unlike `cill` which has sub-subcommands and tracks state, `tryprove` is a single
 //! command that processes all assertions at once and reports status for each.
 
-use super::{Ric3Config, VcdConfig, cache::Ric3Proj, cill::{CIll, refresh_cti_for_prop}, vcd::wlwitness_vcd, yosys::Yosys};
+use super::{Ric3Config, cache::Ric3Proj, cill::{CIll, refresh_cti_for_prop}, yosys::Yosys};
 use crate::logger_init;
 use btor::Btor;
 use giputils::file::{create_dir_if_not_exists, recreate_dir};
 use log::info;
-use rIC3::{McResult, McWitness, frontend::{Frontend, btor::BtorFrontend}};
+use rIC3::{McResult, frontend::btor::BtorFrontend};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
     env, fs,
-    io::BufWriter,
     path::PathBuf,
 };
 
@@ -181,11 +180,8 @@ pub fn run(path: PathBuf) -> anyhow::Result<()> {
             let mut refreshed_ctis = HashMap::new();
             for (prop_name, cti_str) in prev_state.ctis.drain() {
                 match refresh_cti_for_prop(&cti_str, &rp.path("dut"), &rp.path("tmp/dut")) {
-                    Ok(Some(new_cti)) => {
+                    Ok(new_cti) => {
                         refreshed_ctis.insert(prop_name, new_cti);
-                    }
-                    Ok(None) => {
-                        info!("Property {} no longer exists, dropping CTI", prop_name);
                     }
                     Err(e) => {
                         info!("Failed to refresh CTI for {}: {}, dropping", prop_name, e);
@@ -206,7 +202,7 @@ pub fn run(path: PathBuf) -> anyhow::Result<()> {
 
     // 8. Check inductiveness
     info!("Checking inductiveness of all properties.");
-    if cill.check_inductive() {
+    if cill.check_inductive()? {
         println!("Congratulations! All assertions are proved inductive.");
         return Ok(());
     }
@@ -232,28 +228,13 @@ pub fn run(path: PathBuf) -> anyhow::Result<()> {
             };
             results.push(PropResult { id, name, status });
         } else {
-            // Generate new CTI
-            let witness = cill.get_cti(id);
-            let bwit = cill.btorfe.unsafe_certificate(McWitness::Wl(witness.clone()));
-            let witness_str = format!("{}", bwit);
-
-            // Generate VCD file
+            // Generate new CTI using cill.save_witness() to stay in sync
+            let bl_witness = cill.get_cti(id)?;
             let safe_name = sanitize_filename(&name);
+            let wit_path = vcd_dir.join(format!("{}.wit", safe_name));
             let vcd_path = vcd_dir.join(format!("{}.vcd", safe_name));
-            let vcd_file = BufWriter::new(fs::File::create(&vcd_path)?);
-
-            let filter = if let Some(VcdConfig { top: Some(t) }) = &rcfg.trace {
-                t.as_str()
-                    .strip_prefix(&rcfg.dut.top)
-                    .map(|s| s.strip_prefix('.').unwrap_or(s))
-                    .unwrap_or("")
-            } else {
-                ""
-            };
-
-            let mut witness_for_vcd = witness;
-            witness_for_vcd.enrich(&cill.wts);
-            wlwitness_vcd(&witness_for_vcd, &cill.wsym, vcd_file, filter)?;
+            cill.save_witness(&bl_witness, &wit_path, Some(&vcd_path))?;
+            let witness_str = fs::read_to_string(&wit_path)?;
 
             // Determine status by checking if previous CTI is blocked
             let status = if let Some(prev_cti_str) = prev_state.ctis.get(&name) {

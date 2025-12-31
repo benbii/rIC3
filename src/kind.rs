@@ -1,11 +1,11 @@
 use crate::{
     BlProof, Engine, McProof, McResult, McWitness,
-    config::{EngineConfigBase, PreprocConfig},
+    config::{EngineConfig, EngineConfigBase, PreprocConfig},
     impl_config_deref,
     tracer::{Tracer, TracerIf},
     transys::{Transys, TransysIf, certify::Restore, nodep::NoDepTransys, unroll::TransysUnroll},
 };
-use clap::Args;
+use clap::{Args, Parser};
 use log::{error, info};
 use logicrs::{Lit, LitVec, Var, VarRange, satif::Satif};
 use serde::{Deserialize, Serialize};
@@ -18,12 +18,32 @@ pub struct KindConfig {
     #[command(flatten)]
     pub preproc: PreprocConfig,
 
-    /// simple path constraint
+    /// Simple path constraint
     #[arg(long = "simple-path", default_value_t = false)]
     pub simple_path: bool,
+
+    /// Local proof (can only used in multi-prop)
+    #[arg(long = "local-proof", default_value_t = false)]
+    pub local_proof: bool,
 }
 
 impl_config_deref!(KindConfig);
+
+impl Default for KindConfig {
+    fn default() -> Self {
+        let cfg = EngineConfig::parse_from(["", "kind"]);
+        cfg.into_kind().unwrap()
+    }
+}
+
+impl KindConfig {
+    fn validate(&self) {
+        if self.local_proof && self.prop.is_none() {
+            error!("A property ID must be specified for local proof.");
+            panic!();
+        }
+    }
+}
 
 pub struct Kind {
     uts: TransysUnroll<NoDepTransys>,
@@ -38,8 +58,15 @@ pub struct Kind {
 
 impl Kind {
     pub fn new(cfg: KindConfig, mut ts: Transys) -> Self {
+        cfg.validate();
         let ots = ts.clone();
-        ts.compress_bads();
+        if let Some(prop) = cfg.prop {
+            if !cfg.local_proof {
+                ts.bad = LitVec::from(ts.bad[prop]);
+            }
+        } else {
+            ts.compress_bads();
+        }
         let rst = Restore::new(&ts);
         let (mut ts, mut rst) = ts.preproc(&cfg.preproc, rst);
         ts.remove_gate_init(&mut rst);
@@ -65,7 +92,7 @@ impl Kind {
         }
     }
 
-    pub fn load_trans_to(&mut self, k: usize) {
+    fn load_trans_to(&mut self, k: usize) {
         while self.slv_trans_k < k + 1 {
             self.uts
                 .load_trans(self.solver.as_mut(), self.slv_trans_k, true);
@@ -73,15 +100,22 @@ impl Kind {
         }
     }
 
-    pub fn load_bad_to(&mut self, k: usize) {
+    fn load_bad_to(&mut self, k: usize) {
         while self.slv_bad_k < k + 1 {
-            let bad: LitVec = self
-                .uts
-                .lits_next(&self.uts.ts.bad, self.slv_bad_k)
-                .collect();
-            self.solver.add_clause(&!bad);
+            for b in self.uts.lits_next(&self.uts.ts.bad, self.slv_bad_k) {
+                self.solver.add_clause(&[!b]);
+            }
             self.slv_bad_k += 1;
         }
+    }
+
+    pub fn get_bad(&self, k: usize) -> Lit {
+        let bad = if self.cfg.local_proof {
+            self.uts.ts.bad[self.cfg.prop.unwrap()]
+        } else {
+            self.uts.ts.bad[0]
+        };
+        self.uts.lit_next(bad, k)
     }
 }
 
@@ -101,15 +135,15 @@ impl Engine for Kind {
             self.load_trans_to(k);
             if k > 0 {
                 self.load_bad_to(k - 1);
-                let assump: LitVec = self.uts.lits_next(&self.uts.ts.bad, k).collect();
-                let res = self.solver.solve(&assump);
+                let bad = self.get_bad(k);
+                let res = self.solver.solve(&[bad]);
                 if !res {
                     self.tracer.trace_res(McResult::Safe);
                     return McResult::Safe;
                 }
             }
             let mut assump: LitVec = self.uts.ts.inits().iter().flatten().copied().collect();
-            assump.extend(self.uts.lits_next(&self.uts.ts.bad, k));
+            assump.push(self.get_bad(k));
             if self.solver.solve(&assump) {
                 self.tracer.trace_res(McResult::Unsafe(k));
                 return McResult::Unsafe(k);
@@ -252,7 +286,7 @@ impl Engine for Kind {
         for s in wit.state.iter_mut() {
             *s = self.rst.restore_eq_state(s);
         }
-        wit.exact_state(&self.ots);
+        wit.exact_state(&self.ots, true);
         McWitness::Bl(wit)
     }
 }
