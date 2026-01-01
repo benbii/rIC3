@@ -11,7 +11,7 @@ use log::info;
 use rIC3::{McResult, frontend::btor::BtorFrontend};
 use serde::{Deserialize, Serialize};
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     env, fs,
     path::PathBuf,
 };
@@ -21,6 +21,9 @@ use std::{
 struct TryProveState {
     /// Map from property name to serialized CTI witness string
     ctis: HashMap<String, String>,
+    /// Properties that were proved in the previous run
+    #[serde(default)]
+    proved: HashSet<String>,
 }
 
 /// Result status for each property
@@ -36,8 +39,8 @@ pub enum PropStatus {
     CtiNotBlocked { vcd: PathBuf },
     /// Not inductive, previous CTI blocked but new one appeared
     CtiBlockedNewAppeared { vcd: PathBuf },
-    // Real counterexample found - assertion triggered
-    // AssertionTriggered { vcd: PathBuf },
+    /// Was proved before, but now fails again (helper removed/weakened)
+    Regressed { vcd: PathBuf },
 }
 
 /// Result for a single property
@@ -112,6 +115,14 @@ pub fn run(path: PathBuf) -> anyhow::Result<()> {
     env::set_current_dir(&dut_path)?;
     let rcfg = Ric3Config::from_file("ric3.toml")?;
 
+    // Convert source paths to absolute (while CWD is dut_path) for use after we restore CWD
+    let src_abs: Vec<PathBuf> = rcfg
+        .dut
+        .src()
+        .into_iter()
+        .map(|p| if p.is_absolute() { p } else { dut_path.join(p) })
+        .collect();
+
     // 3. Load previous state
     let mut prev_state = load_state(&proj_path)?;
 
@@ -120,7 +131,7 @@ pub fn run(path: PathBuf) -> anyhow::Result<()> {
     recreate_dir(rp.path("tmp"))?;
 
     // 5. Generate DUT (but don't commit yet if it changed - need to check safety first)
-    let dut_changed = match rp.check_cached_dut(&rcfg.dut.src())? {
+    let dut_changed = match rp.check_cached_dut(&src_abs)? {
         Some(false) => {
             // DUT changed - generate new BTOR in tmp/dut first
             Yosys::generate_btor(&rcfg, rp.path("tmp/dut"))?;
@@ -129,7 +140,7 @@ pub fn run(path: PathBuf) -> anyhow::Result<()> {
         None => {
             // First run - generate directly to dut/
             Yosys::generate_btor(&rcfg, rp.path("dut"))?;
-            rp.cache_dut(&rcfg.dut.src())?;
+            rp.cache_dut(&src_abs)?;
             false
         }
         Some(true) => false,
@@ -152,7 +163,7 @@ pub fn run(path: PathBuf) -> anyhow::Result<()> {
                     fs::remove_dir_all(rp.path("dut"))?;
                 }
                 fs::rename(rp.path("tmp/dut"), rp.path("dut"))?;
-                rp.cache_dut(&rcfg.dut.src())?;
+                rp.cache_dut(&src_abs)?;
             }
             println!("Congratulations! All assertions are proved safe.");
             return Ok(());
@@ -192,7 +203,7 @@ pub fn run(path: PathBuf) -> anyhow::Result<()> {
             fs::remove_dir_all(rp.path("dut"))?;
         }
         fs::rename(rp.path("tmp/dut"), rp.path("dut"))?;
-        rp.cache_dut(&rcfg.dut.src())?;
+        rp.cache_dut(&src_abs)?;
 
         // Reinitialize CIll with the now-committed dut/
         let btor = Btor::from_file(rp.path("dut/dut.btor"));
@@ -200,18 +211,27 @@ pub fn run(path: PathBuf) -> anyhow::Result<()> {
         cill = CIll::new(rcfg.clone(), rp.clone(), btorfe)?;
     }
 
-    // 8. Check inductiveness
+    // 8. Check old CTIs BEFORE inductiveness check (solver has no invariants yet)
+    //    This ensures deterministic "blocked" checks matching cill semantics
+    let mut cti_blocked: HashMap<String, bool> = HashMap::new();
+    for (prop_name, prev_cti_str) in &prev_state.ctis {
+        let blocked = cill.check_cti_from_str(prev_cti_str).unwrap_or(true);
+        cti_blocked.insert(prop_name.clone(), blocked);
+    }
+
+    // 9. Check inductiveness (this loads invariants into solver)
     info!("Checking inductiveness of all properties.");
     if cill.check_inductive()? {
         println!("Congratulations! All assertions are proved inductive.");
         return Ok(());
     }
 
-    // 9. Process all properties
+    // 10. Process all properties using pre-computed CTI blocked status
     create_dir_if_not_exists(&vcd_dir)?;
 
     let mut results = Vec::new();
     let mut new_ctis = HashMap::new();
+    let mut new_proved = HashSet::new();
     let cill_res = cill.res.clone();
 
     for (id, &is_inductive) in cill_res.iter().enumerate() {
@@ -220,6 +240,9 @@ pub fn run(path: PathBuf) -> anyhow::Result<()> {
             .unwrap_or_else(|| format!("p{}", id));
 
         if is_inductive {
+            // Track this property as proved for next run
+            new_proved.insert(name.clone());
+
             // Check if it was previously not inductive
             let status = if prev_state.ctis.contains_key(&name) {
                 PropStatus::ProvedAfterHelper
@@ -228,7 +251,7 @@ pub fn run(path: PathBuf) -> anyhow::Result<()> {
             };
             results.push(PropResult { id, name, status });
         } else {
-            // Generate new CTI using cill.save_witness() to stay in sync
+            // Generate new CTI
             let bl_witness = cill.get_cti(id)?;
             let safe_name = sanitize_filename(&name);
             let wit_path = vcd_dir.join(format!("{}.wit", safe_name));
@@ -236,25 +259,26 @@ pub fn run(path: PathBuf) -> anyhow::Result<()> {
             cill.save_witness(&bl_witness, &wit_path, Some(&vcd_path))?;
             let witness_str = fs::read_to_string(&wit_path)?;
 
-            // Determine status by checking if previous CTI is blocked
-            let status = if let Some(prev_cti_str) = prev_state.ctis.get(&name) {
-                // Use SAT-based check to see if previous CTI is blocked
-                match cill.check_cti_from_str(prev_cti_str) {
-                    Ok(true) => {
+            // Determine status based on previous state
+            let status = if prev_state.proved.contains(&name) {
+                // Was proved before, now fails again
+                PropStatus::Regressed { vcd: vcd_path.clone() }
+            } else {
+                // Use pre-computed blocked status (checked before invariants were loaded)
+                match cti_blocked.get(&name) {
+                    Some(true) => {
                         // Previous CTI is blocked, but new one appeared
                         PropStatus::CtiBlockedNewAppeared { vcd: vcd_path.clone() }
                     }
-                    Ok(false) => {
+                    Some(false) => {
                         // Previous CTI is NOT blocked
                         PropStatus::CtiNotBlocked { vcd: vcd_path.clone() }
                     }
-                    Err(_) => {
-                        // Error checking CTI, treat as new
+                    None => {
+                        // No previous CTI for this property
                         PropStatus::NewCti { vcd: vcd_path.clone() }
                     }
                 }
-            } else {
-                PropStatus::NewCti { vcd: vcd_path.clone() }
             };
 
             // Store the new CTI
@@ -268,10 +292,10 @@ pub fn run(path: PathBuf) -> anyhow::Result<()> {
         }
     }
 
-    // 10. Save new state
-    save_state(&proj_path, &TryProveState { ctis: new_ctis })?;
+    // 11. Save new state
+    save_state(&proj_path, &TryProveState { ctis: new_ctis, proved: new_proved })?;
 
-    // 11. Print results
+    // 12. Print results
     print_results(&results, &dut_path);
 
     Ok(())
@@ -290,10 +314,6 @@ fn print_results(results: &[PropResult], dut_path: &PathBuf) {
             PropStatus::Proved => {
                 table_rows.push((r.id, &r.name, "None".to_string(), "Just Proved :D"));
             }
-            // PropStatus::AssertionTriggered { vcd } => {
-            //     let vcd_rel = vcd.strip_prefix(dut_path).unwrap_or(vcd);
-            //     table_rows.push((r.id, &r.name, vcd_rel.display().to_string(), "Assertion Triggered"));
-            // }
             PropStatus::NewCti { vcd } => {
                 let vcd_rel = vcd.strip_prefix(dut_path).unwrap_or(vcd);
                 table_rows.push((r.id, &r.name, vcd_rel.display().to_string(), "Hard-to-disprove transitions found"));
@@ -305,6 +325,10 @@ fn print_results(results: &[PropResult], dut_path: &PathBuf) {
             PropStatus::CtiBlockedNewAppeared { vcd } => {
                 let vcd_rel = vcd.strip_prefix(dut_path).unwrap_or(vcd);
                 table_rows.push((r.id, &r.name, vcd_rel.display().to_string(), "Previous hard transitions blocked but new one found"));
+            }
+            PropStatus::Regressed { vcd } => {
+                let vcd_rel = vcd.strip_prefix(dut_path).unwrap_or(vcd);
+                table_rows.push((r.id, &r.name, vcd_rel.display().to_string(), "REGRESSED: was proved, now fails again"));
             }
         }
     }
