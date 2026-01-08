@@ -1,108 +1,47 @@
-use crate::{
-    BlProof, Engine, McProof, McResult, McWitness,
-    config::{EngineConfig, EngineConfigBase, PreprocConfig},
-    impl_config_deref,
-    tracer::{Tracer, TracerIf},
-    transys::{Transys, TransysIf, certify::Restore, nodep::NoDepTransys, unroll::TransysUnroll},
+use logicrs::{Lit, LitVec, LitVvec, Var, VarRange, satif::Satif};
+use rIC3::{
+    Engine, McProof, McResult, McWitness,
+    transys::{
+        Transys, TransysIf,
+        certify::{BlProof, BlWitness, Restore},
+        unroll::TransysUnroll,
+    },
 };
-use clap::{Args, Parser};
-use log::{error, info};
-use logicrs::{Lit, LitVec, Var, VarRange, satif::Satif};
-use serde::{Deserialize, Serialize};
 
-#[derive(Args, Clone, Debug, Serialize, Deserialize)]
-pub struct KindConfig {
-    #[command(flatten)]
-    pub base: EngineConfigBase,
-
-    #[command(flatten)]
-    pub preproc: PreprocConfig,
-
-    /// Simple path constraint
-    #[arg(long = "simple-path", default_value_t = false)]
-    pub simple_path: bool,
-
-    /// Skip BMC
-    #[arg(long = "skip-bmc", default_value_t = false)]
-    pub skip_bmc: bool,
-
-    /// Local proof (internal parameter)
-    #[arg(skip)]
-    pub local_proof: bool,
-}
-
-impl_config_deref!(KindConfig);
-
-impl Default for KindConfig {
-    fn default() -> Self {
-        let cfg = EngineConfig::parse_from(["", "kind"]);
-        cfg.into_kind().unwrap()
-    }
-}
-
-impl KindConfig {
-    fn validate(&self) {
-        if self.step != 1 {
-            error!("k-induction step should be 1, got {}", self.step);
-            panic!();
-        }
-        if self.start != 0 {
-            error!("k-induction start should be 0, got {}", self.start);
-            panic!();
-        }
-        if self.local_proof && self.prop.is_none() {
-            error!("A property ID must be specified for local proof.");
-            panic!();
-        }
-    }
-}
-
-pub struct Kind {
-    uts: TransysUnroll<NoDepTransys>,
-    cfg: KindConfig,
+pub struct CIllKind {
+    prop: usize,
+    uts: TransysUnroll<Transys>,
     solver: Box<dyn Satif>,
     slv_trans_k: usize,
     slv_bad_k: usize,
+    local_cst: LitVvec,
+    wit_assume: Option<BlWitness>,
     ots: Transys,
     rst: Restore,
-    tracer: Tracer,
 }
 
-impl Kind {
-    pub fn new(cfg: KindConfig, mut ts: Transys) -> Self {
-        cfg.validate();
+impl CIllKind {
+    pub fn new(
+        prop: usize,
+        ts: Transys,
+        local_cst: LitVvec,
+        wit_assume: Option<BlWitness>,
+    ) -> Self {
         let ots = ts.clone();
-        let mut rst = Restore::new(&ts);
-        if let Some(prop) = cfg.prop {
-            if !cfg.local_proof {
-                ts.bad = LitVec::from(ts.bad[prop]);
-            }
-        }
-        (ts, rst) = ts.preproc(&cfg.preproc, rst);
-        ts.remove_gate_init(&mut rst);
-        let mut ts = ts.remove_dep();
-        ts.assert_constraint();
-        if cfg.preproc.preproc {
-            ts.simplify(&mut rst);
-        }
-        if cfg.prop.is_none() {
-            // keep bad literals
-            ts.compress_bads();
-        }
-        let mut uts = TransysUnroll::new(&ts);
-        if cfg.simple_path {
-            uts.enable_simple_path();
-        }
+        let rst = Restore::new(&ts);
+        assert!(!ts.has_gate_init());
+        let uts = TransysUnroll::new(&ts);
         let solver: Box<dyn Satif> = Box::new(cadical::CaDiCaL::new());
         Self {
+            prop,
             uts,
-            cfg,
             solver,
             slv_trans_k: 0,
             slv_bad_k: 0,
             ots,
             rst,
-            tracer: Tracer::new(),
+            local_cst,
+            wit_assume,
         }
     }
 
@@ -119,63 +58,55 @@ impl Kind {
             for b in self.uts.lits_next(&self.uts.ts.bad, self.slv_bad_k) {
                 self.solver.add_clause(&[!b]);
             }
+            for c in self.local_cst.iter() {
+                let c: LitVec = c.iter().map(|l| self.rst.forward(*l)).collect();
+                let c: LitVec = self.uts.lits_next(c, self.slv_bad_k).collect();
+                self.solver.add_clause(&!c);
+            }
             self.slv_bad_k += 1;
         }
     }
 
-    pub fn get_bad(&self, k: usize) -> Lit {
-        let bad = if self.cfg.local_proof {
-            self.uts.ts.bad[self.cfg.prop.unwrap()]
-        } else {
-            self.uts.ts.bad[0]
+    fn load_witness_assume(&mut self) {
+        let Some(wit) = &self.wit_assume else {
+            return;
         };
-        self.uts.lit_next(bad, k)
+        assert!(wit.len() == self.uts.num_unroll + 1);
+        for k in 0..=self.uts.num_unroll {
+            for l in self
+                .uts
+                .lits_next(wit.input[k].iter().chain(wit.state[k].iter()), k)
+            {
+                self.solver.add_clause(&[l]);
+            }
+        }
     }
 }
 
-impl Engine for Kind {
+impl Engine for CIllKind {
     fn check(&mut self) -> McResult {
-        for k in self.cfg.start..=self.cfg.end {
-            self.uts.unroll_to(k);
-            self.load_trans_to(k);
-            if k > 0 {
-                self.load_bad_to(k - 1);
-                let bad = self.get_bad(k);
-                let res = self.solver.solve(&[bad]);
-                if !res {
-                    self.tracer.trace_res(McResult::Safe);
-                    return McResult::Safe;
-                }
-            }
-            if !self.cfg.skip_bmc {
-                let mut assump: LitVec = self.uts.ts.inits().iter().flatten().copied().collect();
-                assump.push(self.get_bad(k));
-                if self.solver.solve(&assump) {
-                    self.tracer.trace_res(McResult::Unsafe(k));
-                    return McResult::Unsafe(k);
-                }
-            }
-            self.tracer.trace_res(McResult::Unknown(Some(k)));
+        let k = 4;
+        self.uts.unroll_to(k);
+        self.load_trans_to(k);
+        self.load_witness_assume();
+        self.load_bad_to(k - 1);
+        let bad = self.uts.lit_next(self.uts.ts.bad[self.prop], k);
+        let res = self.solver.solve(&[bad]);
+        if !res {
+            return McResult::Safe;
         }
-        info!("kind reached bound {}, stopping search", self.cfg.end);
-        McResult::Unknown(Some(self.cfg.end))
-    }
-
-    fn add_tracer(&mut self, tracer: Box<dyn TracerIf>) {
-        self.tracer.add_tracer(tracer);
+        McResult::Unknown(Some(k))
     }
 
     fn proof(&mut self) -> McProof {
-        if self.cfg.simple_path {
-            //TODO: support certifaiger with simple path constraint
-            error!("k-induction with simple path constraint not support certifaiger");
-            panic!();
-        }
         let mut ts = self.ots.clone();
         let eqi = self.rst.eq_invariant();
         let mut certifaiger_dnf = vec![];
         for cube in eqi {
             certifaiger_dnf.push(ts.rel.new_and(cube));
+        }
+        for lc in self.local_cst.iter() {
+            certifaiger_dnf.push(ts.rel.new_and(lc));
         }
         certifaiger_dnf.extend(ts.bad);
         let invariants = ts.rel.new_or(certifaiger_dnf);
@@ -289,10 +220,7 @@ impl Engine for Kind {
     fn witness(&mut self) -> McWitness {
         let mut wit = self.uts.witness(self.solver.as_ref());
         wit = self.rst.restore_witness(&wit);
-        wit.exact_state(&self.ots, true);
-        if let Some(prop) = self.cfg.prop {
-            wit.bad_id = prop;
-        }
+        wit.bad_id = self.prop;
         McWitness::Bl(wit)
     }
 }

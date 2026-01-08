@@ -3,7 +3,12 @@
 //! Unlike `cill` which has sub-subcommands and tracks state, `tryprove` is a single
 //! command that processes all assertions at once and reports status for each.
 
-use super::{Ric3Config, cache::Ric3Proj, cill::{CIll, refresh_cti_for_prop}, yosys::Yosys};
+use super::{
+    Ric3Config,
+    cache::Ric3Proj,
+    cill::{CIll, refresh_cti_for_prop},
+    yosys::Yosys,
+};
 use crate::logger_init;
 use btor::Btor;
 use giputils::file::{create_dir_if_not_exists, recreate_dir};
@@ -46,31 +51,8 @@ pub enum PropStatus {
 /// Result for a single property
 #[derive(Debug)]
 struct PropResult {
-    id: usize,
     name: String,
     status: PropStatus,
-}
-
-fn load_state(proj_path: &PathBuf) -> anyhow::Result<TryProveState> {
-    let state_file = proj_path.join("tryprove_state.ron");
-    if state_file.exists() {
-        let content = fs::read_to_string(&state_file)?;
-        Ok(ron::from_str(&content)?)
-    } else {
-        Ok(TryProveState::default())
-    }
-}
-
-fn save_state(proj_path: &PathBuf, state: &TryProveState) -> anyhow::Result<()> {
-    let state_file = proj_path.join("tryprove_state.ron");
-    fs::write(state_file, ron::to_string(state)?)?;
-    Ok(())
-}
-
-fn sanitize_filename(name: &str) -> String {
-    name.chars()
-        .map(|c| if c.is_alphanumeric() || c == '_' || c == '-' { c } else { '_' })
-        .collect()
 }
 
 pub fn run(path: PathBuf) -> anyhow::Result<()> {
@@ -101,20 +83,13 @@ pub fn run(path: PathBuf) -> anyhow::Result<()> {
 
     let vcd_dir = dut_path.join("hard_trans");
     let cex_vcd_path = dut_path.join("counterexample.vcd");
-
-    // Clean up VCDs from previous runs to avoid stale files
-    if vcd_dir.exists() {
-        fs::remove_dir_all(&vcd_dir)?;
-    }
-    if cex_vcd_path.exists() {
-        fs::remove_file(&cex_vcd_path)?;
-    }
+    // Clean up CEX from previous runs to avoid stale files
+    let _ = fs::remove_file(&cex_vcd_path);
 
     // 2. Read config (need to cd for relative paths in ric3.toml)
     let orig_dir = env::current_dir()?;
     env::set_current_dir(&dut_path)?;
     let rcfg = Ric3Config::from_file("ric3.toml")?;
-
     // Convert source paths to absolute (while CWD is dut_path) for use after we restore CWD
     let src_abs: Vec<PathBuf> = rcfg
         .dut
@@ -124,7 +99,12 @@ pub fn run(path: PathBuf) -> anyhow::Result<()> {
         .collect();
 
     // 3. Load previous state
-    let mut prev_state = load_state(&proj_path)?;
+    let state_file = proj_path.join("tryprove_state.ron");
+    let mut prev_state = if state_file.exists() {
+        ron::from_str(&fs::read_to_string(&state_file)?)?
+    } else {
+        TryProveState::default()
+    };
 
     // 4. Initialize project
     let rp = Ric3Proj::with_path(proj_path.clone())?;
@@ -145,12 +125,15 @@ pub fn run(path: PathBuf) -> anyhow::Result<()> {
         }
         Some(true) => false,
     };
-
     env::set_current_dir(&orig_dir)?;
 
     // 6. Check safety BEFORE committing DUT change
     // Use tmp/dut if DUT changed, otherwise use dut/
-    let dut_dir = if dut_changed { rp.path("tmp/dut") } else { rp.path("dut") };
+    let dut_dir = if dut_changed {
+        rp.path("tmp/dut")
+    } else {
+        rp.path("dut")
+    };
     let btor = Btor::from_file(dut_dir.join("dut.btor"));
     let btorfe = BtorFrontend::new(btor);
     let mut cill = CIll::new(rcfg.clone(), rp.clone(), btorfe)?;
@@ -177,6 +160,7 @@ pub fn run(path: PathBuf) -> anyhow::Result<()> {
             }
             println!("A helper assertion is cutting off reachable states.");
             println!("Counterexample VCD: {}", cex_vcd_path.display());
+            let _ = fs::remove_dir_all(&vcd_dir);
             return Ok(());
         }
         McResult::Unknown(_) => {
@@ -218,6 +202,13 @@ pub fn run(path: PathBuf) -> anyhow::Result<()> {
         let blocked = cill.check_cti_from_str(prev_cti_str).unwrap_or(true);
         cti_blocked.insert(prop_name.clone(), blocked);
     }
+    // Early exit if we have previous CTIs and none are blocked
+    if !prev_state.ctis.is_empty() && cti_blocked.values().all(|&b| !b) {
+        println!("Previous hard-to-disprove transitions have not been blocked.");
+        // Don't update states. Keep old CTIs (remove_dir_all not run).
+        return Ok(());
+    }
+    let _ = fs::remove_dir_all(&vcd_dir);
 
     // 9. Check inductiveness (this loads invariants into solver)
     info!("Checking inductiveness of all properties.");
@@ -228,37 +219,36 @@ pub fn run(path: PathBuf) -> anyhow::Result<()> {
 
     // 10. Process all properties using pre-computed CTI blocked status
     create_dir_if_not_exists(&vcd_dir)?;
-
     let mut results = Vec::new();
     let mut new_ctis = HashMap::new();
     let mut new_proved = HashSet::new();
     let cill_res = cill.res.clone();
 
     for (id, &is_inductive) in cill_res.iter().enumerate() {
-        let name = cill
-            .get_prop_name(id)
-            .unwrap_or_else(|| format!("p{}", id));
-
+        let name = cill.get_prop_name(id).unwrap_or_else(|| format!("p{}", id));
         if is_inductive {
             // Track this property as proved for next run
             new_proved.insert(name.clone());
-
             // Check if it was previously not inductive
             let status = if prev_state.ctis.contains_key(&name) {
                 PropStatus::ProvedAfterHelper
             } else {
                 PropStatus::Proved
             };
-            results.push(PropResult { id, name, status });
+            results.push(PropResult { name, status });
         } else {
             // Generate new CTI
             let bl_witness = cill.get_cti(id)?;
-            let safe_name = sanitize_filename(&name);
+            let safe_name: String = name
+                .chars()
+                .map(|c| { if c.is_alphanumeric() || c == '-' { c } else { '_' } })
+                .collect();
             let wit_path = vcd_dir.join(format!("{}.wit", safe_name));
             let vcd_path = vcd_dir.join(format!("{}.vcd", safe_name));
             cill.save_witness(&bl_witness, &wit_path, Some(&vcd_path))?;
             let witness_str = fs::read_to_string(&wit_path)?;
 
+            let c = vcd_path.clone();
             // Determine status based on previous state
             let status = if prev_state.proved.contains(&name) {
                 // Was proved before, now fails again
@@ -266,99 +256,73 @@ pub fn run(path: PathBuf) -> anyhow::Result<()> {
             } else {
                 // Use pre-computed blocked status (checked before invariants were loaded)
                 match cti_blocked.get(&name) {
-                    Some(true) => {
-                        // Previous CTI is blocked, but new one appeared
-                        PropStatus::CtiBlockedNewAppeared { vcd: vcd_path.clone() }
-                    }
-                    Some(false) => {
-                        // Previous CTI is NOT blocked
-                        PropStatus::CtiNotBlocked { vcd: vcd_path.clone() }
-                    }
-                    None => {
-                        // No previous CTI for this property
-                        PropStatus::NewCti { vcd: vcd_path.clone() }
-                    }
+                    // Previous CTI is blocked, but new one appeared
+                    Some(true) => PropStatus::CtiBlockedNewAppeared { vcd: c },
+                    // Previous CTI is NOT blocked
+                    Some(false) => PropStatus::CtiNotBlocked { vcd: c },
+                    // No previous CTI for this property
+                    None => PropStatus::NewCti { vcd: c },
                 }
             };
 
             // Store the new CTI
             new_ctis.insert(name.clone(), witness_str);
-
-            results.push(PropResult {
-                id,
-                name,
-                status,
-            });
+            results.push(PropResult { name, status });
         }
     }
 
     // 11. Save new state
-    save_state(&proj_path, &TryProveState { ctis: new_ctis, proved: new_proved })?;
+    fs::write(
+        proj_path.join("tryprove_state.ron"),
+        ron::to_string(&TryProveState {
+            ctis: new_ctis,
+            proved: new_proved,
+        })?,
+    )?;
 
-    // 12. Print results
-    print_results(&results, &dut_path);
-
-    Ok(())
-}
-
-fn print_results(results: &[PropResult], dut_path: &PathBuf) {
-    // Separate ProvedAfterHelper from other results
-    let mut table_rows: Vec<(usize, &str, String, &str)> = Vec::new();
-    let mut num_previously_proved = 0;
-
-    for r in results {
+    // 12. Print results.
+    let help = |dut_path: &PathBuf, vcd: &PathBuf| {
+        vcd.strip_prefix(dut_path)
+            .unwrap_or(vcd)
+            .display()
+            .to_string()
+    };
+    // Collect rows, skipping CtiNotBlocked (no progress) and counting special cases
+    let mut table_rows: Vec<(&str, String, &str)> = Vec::new();
+    for r in results.as_slice() {
         match &r.status {
-            PropStatus::ProvedAfterHelper => {
-                num_previously_proved += 1;
-            }
             PropStatus::Proved => {
-                table_rows.push((r.id, &r.name, "None".to_string(), "Just Proved :D"));
+                table_rows.push((&r.name, "None".to_string(), "Already Proved Before"));
+            }
+            PropStatus::ProvedAfterHelper => {
+                table_rows.push((&r.name, "None".to_string(), "Just Proved :D"));
             }
             PropStatus::NewCti { vcd } => {
-                let vcd_rel = vcd.strip_prefix(dut_path).unwrap_or(vcd);
-                table_rows.push((r.id, &r.name, vcd_rel.display().to_string(), "Hard-to-disprove transitions found"));
+                let vcd_rel = help(&dut_path, vcd);
+                table_rows.push((&r.name, vcd_rel, "Hard-to-disprove transitions found"));
             }
             PropStatus::CtiNotBlocked { vcd } => {
-                let vcd_rel = vcd.strip_prefix(dut_path).unwrap_or(vcd);
-                table_rows.push((r.id, &r.name, vcd_rel.display().to_string(), "Previous hard transitions not blocked"));
+                let vcd_rel = help(&dut_path, vcd);
+                table_rows.push((&r.name, vcd_rel, "Previous hard transitions not blocked"));
             }
             PropStatus::CtiBlockedNewAppeared { vcd } => {
-                let vcd_rel = vcd.strip_prefix(dut_path).unwrap_or(vcd);
-                table_rows.push((r.id, &r.name, vcd_rel.display().to_string(), "Previous hard transitions blocked but new one found"));
+                table_rows.push((
+                    &r.name,
+                    help(&dut_path, vcd),
+                    "Previous hard transitions blocked but new one found",
+                ));
             }
             PropStatus::Regressed { vcd } => {
-                let vcd_rel = vcd.strip_prefix(dut_path).unwrap_or(vcd);
-                table_rows.push((r.id, &r.name, vcd_rel.display().to_string(), "REGRESSED: was proved, now fails again"));
+                let vcd_rel = help(&dut_path, vcd);
+                table_rows.push((&r.name, vcd_rel, "Regressed; was proved, fails again"));
             }
         }
     }
 
-    if table_rows.is_empty() && num_previously_proved > 0 {
-        println!("({} assertions already proved unreachable previously)", num_previously_proved);
-        return;
+    println!("Name | Waweform File | Status"); // header
+    for (name, vcd, status) in &table_rows {
+        // row contents
+        println!("{} | {} | {}", name, vcd, status);
     }
-
-    // Calculate column widths
-    let id_width = 3;
-    let name_width = table_rows.iter().map(|(_, n, _, _)| n.len()).max().unwrap_or(4).max(4);
-    let vcd_width = table_rows.iter().map(|(_, _, v, _)| v.len()).max().unwrap_or(13).max(13);
-
-    // Print header
-    println!(
-        "{:<id_width$} {:<name_width$} {:<vcd_width$} {}",
-        "ID", "Name", "Waveform File", "Status"
-    );
-
-    // Print rows
-    for (id, name, vcd, status) in &table_rows {
-        println!(
-            "{:<id_width$} {:<name_width$} {:<vcd_width$} {}",
-            id, name, vcd, status
-        );
-    }
-
-    if num_previously_proved > 0 {
-        println!();
-        println!("({} assertions already proved unreachable previously)", num_previously_proved);
-    }
+    Ok(())
 }

@@ -1,19 +1,17 @@
 use crate::cli::{
     cache::Ric3Proj,
-    cill::{CIll, CIllState},
+    cill::{CIll, CIllState, kind::CIllKind},
 };
 use btor::Btor;
-use giputils::{file::remove_if_exists, grc::Grc, hash::GHashMap, logger::with_log_level};
-use log::LevelFilter;
+use giputils::{file::remove_if_exists, hash::GHashMap, logger::with_log_level};
+use log::{LevelFilter, info};
 use logicrs::{
     LitVvec, VarSymbols,
     fol::{self, BvTermValue, TermValue},
-    satif::Satif,
 };
 use rIC3::{
     Engine, McResult, McWitness,
     frontend::{Frontend, btor::BtorFrontend},
-    gipsat::TransysSolver,
     ic3::{IC3, IC3Config},
     transys::{certify::BlWitness, unroll::TransysUnroll},
 };
@@ -43,9 +41,9 @@ impl CIll {
         cfg.pred_prop = true;
         cfg.local_proof = true;
         cfg.preproc.preproc = false;
-        cfg.time_limit = Some(10);
+        cfg.time_limit = Some(15);
         cfg.inn = true;
-        let mut results: Vec<_> = with_log_level(LevelFilter::Warn, || {
+        let mut ic3_results: Vec<_> = with_log_level(LevelFilter::Warn, || {
             (0..self.ts.bad.len())
                 .into_par_iter()
                 .map(|i| {
@@ -58,106 +56,192 @@ impl CIll {
                 .collect()
         });
         let mut invariants = LitVvec::new();
-        for (_, ic3) in results.iter_mut() {
+        let mut results = Vec::new();
+        let mut ic3_proved = Vec::new();
+        for (id, (r, ic3)) in ic3_results.iter_mut().enumerate() {
+            if *r {
+                ic3_proved.push(id);
+            }
+            results.push(*r);
             invariants.extend(ic3.invariant());
+        }
+        if !ic3_proved.is_empty() {
+            info!("IC3 proved {:?} prop.", ic3_proved);
         }
         invariants.subsume_simplify();
         let mut uts = TransysUnroll::new(&self.ts);
         uts.unroll();
-        let nts = uts.interal_signals();
-        let tsctx = Grc::new(nts.ctx());
-        let mut slv = TransysSolver::new(&tsctx);
-        for i in invariants.iter() {
-            slv.add_clause(&!i);
-        }
-        for b in self.ts.bad.iter() {
-            slv.add_clause(&[!b]);
-        }
-        for i in invariants.iter() {
-            assert!(slv.inductive(i, false));
-        }
-        for i in invariants.iter() {
-            self.slv.add_clause(&!i);
-        }
         self.save_invariants(&invariants)?;
-        for ((r, _), b) in results.iter_mut().zip(self.uts.ts.bad.iter()) {
-            if *r {
-                continue;
-            }
-            let bad = self.uts.lit_next(*b, self.uts.num_unroll);
-            *r = !self.slv.solve(&[bad]);
+        let kind_results: Vec<_> = with_log_level(LevelFilter::Error, || {
+            results
+                .iter()
+                .enumerate()
+                .filter(|(_, r)| !**r)
+                .map(|(b, _)| b)
+                .collect::<Vec<_>>()
+                .into_par_iter()
+                .map(|b| {
+                    let mut kind = CIllKind::new(b, self.ts.clone(), invariants.clone(), None);
+                    let r = kind.check().is_safe();
+                    (b, r, kind)
+                })
+                .collect()
+        });
+
+        let mut kinds = Vec::new();
+        for (b, r, kind) in kind_results {
+            results[b] = r;
+            kinds.push(kind);
         }
-        self.res = results.into_iter().map(|(r, _)| r).collect();
-        Ok(self.res.iter().all(|l| *l))
+        self.res = results;
+        let res = self.res.iter().all(|l| *l);
+        // if res {
+        // let mut proof = BlProof::new(self.ts.clone());
+        // let inv: LitVec = invariants
+        //     .iter()
+        //     .map(|inv| proof.rel.new_and(inv))
+        //     .collect();
+        // proof.bad.extend(inv);
+        // for (r, mut ic3) in ic3_results {
+        //     if r {
+        //         let sp = ic3.proof().into_bl().unwrap();
+        //         proof.merge(&sp, &self.ts);
+        //     }
+        // }
+        // if !kinds.is_empty() {
+        //     let sp = kinds[0].proof().into_bl().unwrap();
+        //     proof.merge(&sp, &self.ts);
+        // }
+        // let proof = self.ts_rst.restore_proof(proof, &self.ots);
+        // let cfg = KindConfig::default();
+        // let mut kind = Kind::new(cfg, proof.proof.clone());
+        // kind.add_tracer(Box::new(LogTracer::new("kind")));
+
+        // let proof = self.bb_map.restore_proof(&self.wts, &proof);
+        // let proof = format!("{}", self.btorfe.safe_certificate(rIC3::McProof::Wl(proof)));
+        // fs::write(&self.rp.path("cill/cert"), proof)?;
+        // assert!(
+        //     self.btorfe
+        //         .certify(&self.rp.path("dut/dut.btor"), &self.rp.path("cill/cert"))
+        // );
+        // }
+        Ok(res)
     }
 
     pub fn check_cti(&mut self) -> anyhow::Result<bool> {
         let cti_file = self.rp.path("cill/cti");
         let cti = fs::read_to_string(&cti_file)?;
-        self.check_cti_from_str(&cti)
-    }
-
-    /// Check if a CTI (given as witness string) is blocked by current assertions
-    pub fn check_cti_from_str(&mut self, cti_str: &str) -> anyhow::Result<bool> {
-        let cti = self.btorfe.deserialize_wl_unsafe_certificate(cti_str.to_string());
-        if cti.len() != self.uts.num_unroll + 1 {
-            // CTI format incompatible with current DUT
-            return Ok(true); // Treat as blocked (will generate new one)
-        }
+        let cti = self.btorfe.deserialize_wl_unsafe_certificate(cti);
         let cti = self.bb_map.bitblast_witness(&cti);
         let cti = self.ts_rst.forward_witness(&cti);
-        if cti.bad_id >= self.uts.ts.bad.len() {
-            // Property ID out of range for current DUT
+        let mut kind = CIllKind::new(cti.bad_id, self.ts.clone(), LitVvec::new(), Some(cti));
+        if kind.check().is_safe() {
             return Ok(true);
         }
-        let mut assume = vec![
-            self.uts
-                .lit_next(self.uts.ts.bad[cti.bad_id], self.uts.num_unroll),
-        ];
-        for k in 0..=self.uts.num_unroll {
-            assume.extend(
-                self.uts
-                    .lits_next(cti.input[k].iter().chain(cti.state[k].iter()), k),
-            );
+        self.rp.clear_cti()?;
+        let witness = kind.witness().into_bl().unwrap();
+        self.save_witness(
+            &witness,
+            self.rp.path("cill/cti"),
+            Some(self.rp.path("cill/cti.vcd")),
+        )?;
+        Ok(false)
+    }
+
+    /// Check if a CTI (given as witness string) is blocked by current assertions.
+    /// Used by tryprove for checking multiple CTIs.
+    pub fn check_cti_from_str(&mut self, cti_str: &str) -> anyhow::Result<bool> {
+        let cti = self
+            .btorfe
+            .deserialize_wl_unsafe_certificate(cti_str.to_string());
+        let cti = self.bb_map.bitblast_witness(&cti);
+        let cti = self.ts_rst.forward_witness(&cti);
+        if cti.bad_id >= self.ts.bad.len() {
+            // Property ID out of range for current DUT
+            return Ok(true); // Treat as blocked (will generate new one)
         }
-        Ok(!self.slv.solve(&assume))
+        let mut kind = CIllKind::new(cti.bad_id, self.ts.clone(), LitVvec::new(), Some(cti));
+        Ok(kind.check().is_safe())
     }
 
     pub fn get_cti(&mut self, id: usize) -> anyhow::Result<BlWitness> {
         let invariants = self.load_invariants()?;
-        for i in invariants.iter() {
-            self.slv.add_clause(&!i);
-        }
-        let b = self.uts.lit_next(self.uts.ts.bad[id], self.uts.num_unroll);
-        assert!(self.slv.solve(&[b]));
-        let mut wit = self.uts.witness(&self.slv);
-        wit.bad_id = id;
+        let mut kind = CIllKind::new(id, self.ts.clone(), invariants, None);
+        assert!(kind.check().is_unknown());
+        let wit = kind.witness().into_bl().unwrap();
         Ok(wit)
     }
 }
 
 impl Ric3Proj {
     pub fn refresh_cti(&self, dut_old: &Path, dut_new: &Path) -> anyhow::Result<()> {
-        match self.get_cill_state()? {
+        let prop = match self.get_cill_state()? {
             CIllState::Check => {
                 self.clear_cti()?;
                 return Ok(());
             }
-            CIllState::Block(_) => {
+            CIllState::Block(prop) => {
                 assert!(self.path("cill/cti").exists());
+                prop
             }
             CIllState::Select(_) => unreachable!(),
-        }
-        let cti_str = fs::read_to_string(self.path("cill/cti"))?;
-        match refresh_cti_for_prop(&cti_str, dut_old, dut_new) {
-            Ok(new_cti) => {
-                fs::write(self.path("cill/cti"), new_cti)?;
+        };
+        let btor_old = Btor::from_file(dut_old.join("dut.btor"));
+        let btorfe_old = BtorFrontend::new(btor_old.clone());
+        let mut cti = btorfe_old
+            .deserialize_wl_unsafe_certificate(fs::read_to_string(self.path("cill/cti"))?);
+        let ywbc_old = fs::read_to_string(dut_old.join("dut.ywb"))?;
+        let ywb_old = btor_old.ywb(&ywbc_old);
+        let wb_old = btor_old.witness_map(&ywbc_old);
+        let wb_old: GHashMap<_, _> = wb_old
+            .into_iter()
+            .filter(|(_, v)| v[0].path[0] != "\\_witness_")
+            .map(|(k, v)| (v, k))
+            .collect();
+
+        let btor_new = Btor::from_file(dut_new.join("dut.btor"));
+        let mut btorfe_new = BtorFrontend::new(btor_new.clone());
+        let ywbc_new = fs::read_to_string(dut_new.join("dut.ywb"))?;
+        let ywb_new = btor_new.ywb(&ywbc_new);
+        let wb_new = btor_new.witness_map(&ywbc_new);
+
+        let Some(bad_id) = ywb_new
+            .asserts
+            .iter()
+            .position(|s| s.eq(&ywb_old.asserts[cti.bad_id]))
+        else {
+            info!("{prop} not found. CTI has been removed. Please rerun `ric3 cill check`.");
+            self.clear_cti()?;
+            self.set_cill_state(CIllState::Check)?;
+            return Ok(());
+        };
+        cti.bad_id = bad_id;
+
+        let mut term_map = GHashMap::new();
+        for (n, s) in wb_new {
+            if let Some(o) = wb_old.get(&s) {
+                term_map.insert(o, n);
             }
-            Err(_) => {
-                self.clear_cti()?;
-                self.set_cill_state(CIllState::Check)?;
+        }
+
+        for k in 0..cti.len() {
+            for x in take(&mut cti.input[k]) {
+                if let Some(n) = term_map.get(x.t()) {
+                    cti.input[k].push(BvTermValue::new(n.clone(), x.v().clone()));
+                }
+            }
+            for x in take(&mut cti.state[k]) {
+                if let Some(n) = term_map.get(x.t()) {
+                    let x = x.into_bv();
+                    cti.state[k].push(TermValue::new(n.clone(), fol::Value::Bv(x.v().clone())));
+                }
             }
         }
+
+        fs::write(
+            self.path("cill/cti"),
+            format!("{}", btorfe_new.unsafe_certificate(McWitness::Wl(cti))),
+        )?;
         Ok(())
     }
 }
@@ -176,7 +260,11 @@ pub fn refresh_cti_for_prop(
     let ywbc_old = fs::read_to_string(dut_old.join("dut.ywb"))?;
     let ywb_old = btor_old.ywb(&ywbc_old);
     let wb_old = btor_old.witness_map(&ywbc_old);
-    let wb_old: GHashMap<_, _> = wb_old.into_iter().map(|(k, v)| (v, k)).collect();
+    let wb_old: GHashMap<_, _> = wb_old
+        .into_iter()
+        .filter(|(_, v)| v[0].path[0] != "\\_witness_")
+        .map(|(k, v)| (v, k))
+        .collect();
 
     let btor_new = Btor::from_file(dut_new.join("dut.btor"));
     let mut btorfe_new = BtorFrontend::new(btor_new.clone());
@@ -217,5 +305,8 @@ pub fn refresh_cti_for_prop(
         }
     }
 
-    Ok(format!("{}", btorfe_new.unsafe_certificate(McWitness::Wl(cti))))
+    Ok(format!(
+        "{}",
+        btorfe_new.unsafe_certificate(McWitness::Wl(cti))
+    ))
 }

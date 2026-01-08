@@ -82,8 +82,8 @@ pub struct IC3Config {
     )]
     pub drop_po: bool,
 
-    /// full assignment of last bad (used in rlive)
-    #[arg(long = "full-bad", default_value_t = false)]
+    /// full assignment of last bad (internal parameter)
+    #[arg(skip)]
     pub full_bad: bool,
 
     /// abstract array
@@ -98,8 +98,8 @@ pub struct IC3Config {
     #[arg(long = "pred-prop", default_value_t = false)]
     pub pred_prop: bool,
 
-    /// local proof (can only used in multi-prop)
-    #[arg(long = "local-proof", default_value_t = false)]
+    /// Local proof (internal parameter)
+    #[arg(skip)]
     pub local_proof: bool,
 }
 
@@ -177,7 +177,7 @@ impl IC3 {
         let nl = self.solvers.len();
         debug!("extending IC3 to level {nl}");
         if let Some(predprop) = self.predprop.as_mut() {
-            predprop.extend(self.frame.inf.iter().map(|l| l.cube()));
+            predprop.extend(self.frame.inf.iter().map(|l| l.as_litvec()));
         }
         let solver = self.inf_solver.clone();
         self.solvers.push(solver);
@@ -262,8 +262,7 @@ impl IC3 {
     }
 
     pub fn invariant(&self) -> Vec<LitVec> {
-        self.frame
-            .invariant()
+        self.inner_invariant()
             .iter()
             .map(|l| l.map_var(|l| self.rst.restore_var(l)))
             .collect()
@@ -272,11 +271,11 @@ impl IC3 {
 
 impl Engine for IC3 {
     fn check(&mut self) -> McResult {
-        self.extend();
         if !self.prep_prop_base() {
             self.tracer.trace_res(McResult::Unsafe(0));
             return McResult::Unsafe(0);
         }
+        self.extend();
         loop {
             let start = Instant::now();
             debug!("blocking phase begin");
@@ -340,7 +339,7 @@ impl Engine for IC3 {
             let piv = proof.add_init_var();
             self.rst.add_restore(iv, piv);
         }
-        let mut invariants = self.frame.invariant();
+        let mut invariants = self.inner_invariant();
         for c in self.ts.constraint.clone() {
             proof
                 .rel
@@ -371,7 +370,7 @@ impl Engine for IC3 {
             assert!(b.frame == 0);
             let mut b = Some(b);
             while let Some(bad) = b {
-                res.state.push(bad.state.cube().clone());
+                res.state.push(bad.state.as_litvec().clone());
                 res.input.push(bad.input[0].clone());
                 for i in &bad.input[1..] {
                     res.input.push(i.clone());

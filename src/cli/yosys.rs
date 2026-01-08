@@ -1,5 +1,5 @@
 use super::Ric3Config;
-use crate::cli::VcdConfig;
+use crate::cli::{Modeling, Parse, VcdConfig};
 use giputils::file::recreate_dir;
 use giputils::hash::GHashMap;
 use log::info;
@@ -7,9 +7,18 @@ use std::{
     fs,
     io::{BufReader, BufWriter, Read, Write},
     path::{Path, PathBuf},
-    process::Command,
+    process::{Command, Output},
 };
 use vcd::IdCode;
+
+fn format_output_for_error(output: &Output) -> String {
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    format!(
+        "status: {}\nstdout:\n{}\nstderr:\n{}",
+        output.status, stdout, stderr
+    )
+}
 
 #[derive(Default)]
 pub struct Yosys {
@@ -25,23 +34,38 @@ impl Yosys {
         self.commands.push(cmd.to_string());
     }
 
-    pub fn execute(&mut self, cwd: Option<&Path>) -> anyhow::Result<()> {
+    pub fn execute(
+        &mut self,
+        cwd: Option<&Path>,
+        plugin: impl IntoIterator<Item = String>,
+    ) -> anyhow::Result<()> {
         let cmds = self.commands.join(" ; ");
         let mut cmd = Command::new("yosys");
+        for p in plugin {
+            cmd.args(["-m", &p]);
+        }
         if let Some(cwd) = cwd {
             cmd.current_dir(cwd);
         }
         let output = cmd.arg("-p").arg(&cmds).output()?;
         if !output.status.success() {
-            info!("{}", String::from_utf8_lossy(&output.stdout));
-            info!("{}", String::from_utf8_lossy(&output.stderr));
-            anyhow::bail!("Yosys execution failed")
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            info!("{}", stdout);
+            info!("{}", stderr);
+            anyhow::bail!("Yosys execution failed.\n{}\n{}", stdout, stderr)
         }
         Ok(())
     }
 
     pub fn generate_btor(cfg: &Ric3Config, p: impl AsRef<Path>) -> anyhow::Result<()> {
         info!("Yosys: parsing the DUT and generating BTOR.");
+        let slang = matches!(
+            cfg.modeling,
+            Modeling {
+                parser: Parse::yosys_slang,
+            }
+        );
         recreate_dir(p.as_ref())?;
         let src_dir = p.as_ref().join("src");
         recreate_dir(&src_dir)?;
@@ -57,13 +81,28 @@ impl Yosys {
             fs::copy(f, &dest)?;
         }
         let mut yosys = Self::new();
-        for file in files.iter() {
-            yosys.add_command(&format!("read_verilog -formal -sv {}", file.display()));
+        let mut read = if slang {
+            "read_slang -D FORMAL -D YOSYS_SLANG"
+        } else {
+            "read_verilog -formal -sv"
         }
+        .to_string();
+        for file in files.iter() {
+            read.push_str(&format!(" {}", file.display()));
+        }
+        yosys.add_command(&read);
         yosys.add_command(&format!("prep -flatten -top {}", cfg.dut.top));
         yosys.add_command("hierarchy -smtcheck -nokeep_prints");
         yosys.add_command("scc -select; simplemap; select -clear");
         yosys.add_command("memory_nordff");
+        if let Some(reset) = &cfg.dut.reset {
+            if reset.starts_with("!") {
+                let reset = reset.strip_prefix("!").unwrap();
+                yosys.add_command(&format!("fminit -seq {} 0,1", reset));
+            } else {
+                yosys.add_command(&format!("fminit -seq {} 1,0", reset));
+            }
+        }
         yosys.add_command("chformal -cover -remove");
         yosys.add_command("chformal -early");
         yosys.add_command("async2sync");
@@ -84,7 +123,12 @@ impl Yosys {
             dp.join("dut.info").display(),
             dp.join("dut.btor").display(),
         ));
-        yosys.execute(Some(&src_dir))
+        let plugin = if slang {
+            vec!["slang".to_string()]
+        } else {
+            vec![]
+        };
+        yosys.execute(Some(&src_dir), plugin)
     }
 
     pub fn btor_wit_to_vcd(
@@ -109,7 +153,10 @@ impl Yosys {
         if !output.status.success() {
             info!("{}", String::from_utf8_lossy(&output.stdout));
             info!("{}", String::from_utf8_lossy(&output.stderr));
-            anyhow::bail!("Yosys execution failed")
+            anyhow::bail!(
+                "btorvcd/btorsim execution failed.\n{}",
+                format_output_for_error(&output)
+            )
         }
         let vcd_file = fs::File::open(&vcd)?;
         let mut filtered = Vec::new();

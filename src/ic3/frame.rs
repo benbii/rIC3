@@ -1,5 +1,5 @@
 use super::{IC3, proofoblig::ProofObligation};
-use crate::transys::TransysCtx;
+use crate::{gipsat::TransysSolver, transys::TransysCtx};
 use giputils::grc::Grc;
 use giputils::hash::GHashSet;
 use logicrs::{Lit, LitOrdVec, LitSet, LitVec, Var, satif::Satif};
@@ -121,18 +121,6 @@ impl Frames {
         None
     }
 
-    pub fn invariant(&self) -> Vec<LitVec> {
-        let mut invariants: Vec<_> = self.inf.iter().map(|c| c.cube()).cloned().collect();
-        if let Some(invariant) = self.iter().position(|frame| frame.is_empty()) {
-            for i in invariant..self.len() {
-                for cube in self[i].iter() {
-                    invariants.push(cube.cube().clone());
-                }
-            }
-        }
-        invariants
-    }
-
     pub fn parent_lemma(&self, lemma: &[Lit], frame: usize) -> Option<LitOrdVec> {
         if frame == 1 {
             return None;
@@ -243,7 +231,7 @@ impl IC3 {
             {
                 predprop.add_lemma(&lemma);
             }
-            self.solvers[0].add_clause(&!lemma.cube());
+            self.solvers[0].add_clause(&!lemma.as_litvec());
             self.frame[0].push(FrameLemma::new(lemma, po, None));
             return false;
         }
@@ -259,7 +247,7 @@ impl IC3 {
                 if begin.is_none() && l.subsume(&lemma) {
                     if l.eq(&lemma) {
                         self.frame[i].swap_remove(j);
-                        let clause = !lemma.cube();
+                        let clause = !lemma.as_litvec();
                         for k in i + 1..=frame {
                             self.solvers[k].add_clause(&clause);
                         }
@@ -287,7 +275,7 @@ impl IC3 {
                 inv_found = true;
             }
         }
-        let clause = !lemma.cube();
+        let clause = !lemma.as_litvec();
         let begin = begin.unwrap_or(1);
         for i in begin..=frame {
             self.solvers[i].add_clause(&clause);
@@ -309,9 +297,55 @@ impl IC3 {
         let olen = lastf.len();
         lastf.retain(|l| !l.eq(&lemma));
         assert!(lastf.len() + 1 == olen);
-        let clause = !lemma.cube();
+        let clause = !lemma.as_litvec();
         self.inf_solver.add_clause(&clause);
         self.frame.inf.push(FrameLemma::new(lemma, None, None));
+    }
+
+    pub fn inner_invariant(&self) -> Vec<LitVec> {
+        let mut invariants: Vec<_> = self
+            .frame
+            .inf
+            .iter()
+            .map(|c| c.as_litvec().clone())
+            .collect();
+        if let Some(invariant) = self.frame.iter().position(|frame| frame.is_empty()) {
+            for i in invariant..self.frame.len() {
+                for cube in self.frame[i].iter() {
+                    invariants.push(cube.as_litvec().clone());
+                }
+            }
+        } else {
+            let mut cand: Vec<_> = self
+                .frame
+                .last()
+                .unwrap()
+                .iter()
+                .map(|l| l.as_litvec().clone())
+                .collect();
+            loop {
+                let mut slv = TransysSolver::new(&self.tsctx);
+                for i in invariants.iter() {
+                    slv.add_clause(&!i);
+                }
+                for c in cand.iter() {
+                    slv.add_clause(&!c);
+                }
+                let mut new_cand = Vec::new();
+                for c in cand.iter() {
+                    if slv.inductive(c, false) {
+                        new_cand.push(c.clone());
+                    }
+                }
+                if new_cand.len() == cand.len() {
+                    invariants.extend(new_cand);
+                    break;
+                } else {
+                    cand = new_cand;
+                }
+            }
+        }
+        invariants
     }
 
     // pub fn remove_lemma(&mut self, frame: usize, lemmas: Vec<LitVec>) {

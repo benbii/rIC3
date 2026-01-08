@@ -1,25 +1,22 @@
 from __future__ import annotations
 
-import os
 from bisect import bisect_right
 from typing import Dict, List, Sequence, Tuple
 from mcp.server.fastmcp import FastMCP
 from vcdvcd import VCDVCD
 
 
-def _require_file(path: str) -> None:
-    if not path:
-        raise ValueError("vcd_path is required")
-    if not os.path.exists(path):
-        raise FileNotFoundError(f"VCD not found: {path}")
-    if not os.path.isfile(path):
-        raise ValueError(f"Not a file: {path}")
+def _strip_end_prefix(name: str) -> str:
+    """Remove '$end.' prefix from signal name if present."""
+    if name.startswith("$end."):
+        return name[5:]
+    return name
 
 
 def _load_vcd_signals(vcd_path: str) -> List[str]:
-    _require_file(vcd_path)
     vcd = VCDVCD(vcd_path, only_sigs=True)
-    return sorted(getattr(vcd, "signals", []))
+    signals = [_strip_end_prefix(s) for s in getattr(vcd, "signals", [])]
+    return sorted(signals)
 
 
 def _resolve_signal_name(available: Sequence[str], name: str) -> str:
@@ -74,7 +71,6 @@ def _expand_signal_names(
 
 def _extract_time_markers(vcd_path: str) -> List[int]:
     """Return all VCD time markers (#<time>) in file order, after $enddefinitions."""
-    _require_file(vcd_path)
     times: List[int] = []
     start_parsing = False
     with open(vcd_path, "r", encoding="utf-8", errors="replace") as f:
@@ -154,12 +150,13 @@ def _steps_json(
     vcd_path: str,
     signals: Sequence[str],
 ) -> Dict[str, List[str]]:
-    _require_file(vcd_path)
     if not signals:
         raise ValueError("signals must be a non-empty list")
 
     vcd = VCDVCD(vcd_path, only_sigs=False)
-    available = sorted(getattr(vcd, "signals", []))
+    raw_signals = getattr(vcd, "signals", [])
+    stripped_to_raw: Dict[str, str] = {_strip_end_prefix(s): s for s in raw_signals}
+    available = sorted(stripped_to_raw.keys())
     signal_names = _expand_signal_names(available, signals)
     step_times = _sample_times(vcd_path)
 
@@ -168,7 +165,8 @@ def _steps_json(
 
     sig_indexes: Dict[str, Tuple[List[int], List[str]]] = {}
     for s in signal_names:
-        tv = getattr(vcd[s], "tv", None)
+        raw_name = stripped_to_raw[s]
+        tv = getattr(vcd[raw_name], "tv", None)
         if tv is None:
             raise ValueError(f"No data for signal: {s}")
         sig_indexes[s] = _build_tv_index(tv)
@@ -187,7 +185,7 @@ mcp = FastMCP("vcd-tools")
 
 @mcp.tool(
     name="list_signals",
-    description="List all signals in a VCD file.",
+    description="List all signals in a VCD file. The vcd_path must be an absolute path.",
 )
 def list_signals(vcd_path: str) -> List[str]:
     return _load_vcd_signals(vcd_path)
@@ -196,7 +194,9 @@ def list_signals(vcd_path: str) -> List[str]:
 @mcp.tool(
     name="signal_values",
     description=(
-        "Returns the values of selected signals as a JSON object. Keys are signal names, and values are arrays representing the signal state at each step."
+        "Returns the values of selected signals as a JSON object. Keys are signal names, "
+        "and values are arrays representing the signal state at each step. "
+        "The vcd_path must be an absolute path."
     ),
 )
 def signal_values(
