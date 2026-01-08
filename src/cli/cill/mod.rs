@@ -31,9 +31,6 @@ use strum::AsRefStr;
 
 #[derive(Subcommand, Debug, Clone)]
 pub enum CIllCommands {
-    /// Query CIll State
-    State,
-
     /// Check all the properties
     Check,
 
@@ -179,7 +176,6 @@ pub fn cill(cmd: CIllCommands) -> anyhow::Result<()> {
     let rp = Ric3Proj::new()?;
     let cill_state = rp.get_cill_state()?;
     match cmd {
-        CIllCommands::State => state(rp, cill_state),
         CIllCommands::Check => check(rp, cill_state),
         CIllCommands::Abort => abort(rp, cill_state),
         CIllCommands::Select { id } => select(rp, cill_state, id),
@@ -195,7 +191,10 @@ fn check(rp: Ric3Proj, state: CIllState) -> anyhow::Result<()> {
     match rp.check_cached_dut(&rcfg.dut.src())? {
         Some(false) => {
             Yosys::generate_btor(&rcfg, rp.path("tmp/dut"))?;
-            rp.refresh_cti(&rp.path("dut"), &rp.path("tmp/dut"))?;
+            if !rp.refresh_cti(&rp.path("dut"), &rp.path("tmp/dut"))? {
+                fs::remove_dir_all(rp.path("tmp/dut"))?;
+                return Ok(());
+            }
             fs::remove_dir_all(rp.path("dut"))?;
             fs::rename(rp.path("tmp/dut"), rp.path("dut"))?;
             rp.cache_dut(&rcfg.dut.src())?;
@@ -248,9 +247,18 @@ fn check(rp: Ric3Proj, state: CIllState) -> anyhow::Result<()> {
 }
 
 fn select(rp: Ric3Proj, state: CIllState, id: usize) -> anyhow::Result<()> {
-    let CIllState::Select(res) = state else {
-        println!("No need to select a non-inductive assertion for CTI generation.");
-        return Ok(());
+    let res = match state {
+        CIllState::Check => {
+            println!("Unable to select: `cill check` has not been run. Please run `cill check`.");
+            return Ok(());
+        }
+        CIllState::Block(p) => {
+            println!(
+                "Unable to select: A CTI for {p} has already been selected. To select a different one, please run `ric3 cill abort` to clear the current, then rerun `cill check`"
+            );
+            return Ok(());
+        }
+        CIllState::Select(items) => items,
     };
     let rcfg = Ric3Config::from_file("ric3.toml")?;
     if !matches!(rp.check_cached_dut(&rcfg.dut.src())?, Some(true)) {
@@ -280,16 +288,6 @@ fn select(rp: Ric3Proj, state: CIllState, id: usize) -> anyhow::Result<()> {
         rp.path("cill/cti.vcd").display()
     );
     rp.set_cill_state(CIllState::Block(name))
-}
-
-fn state(_rp: Ric3Proj, state: CIllState) -> anyhow::Result<()> {
-    let s = match state {
-        CIllState::Check => "waiting to check the inductiveness of assertions",
-        CIllState::Block(p) => &format!("waiting for helper assertions to block CTI of {p}"),
-        CIllState::Select(_) => "waiting to select a non-inductive assertion for CTI generation",
-    };
-    println!("CIll state: {s}");
-    Ok(())
 }
 
 fn abort(rp: Ric3Proj, state: CIllState) -> anyhow::Result<()> {

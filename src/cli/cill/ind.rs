@@ -42,8 +42,7 @@ impl CIll {
         cfg.local_proof = true;
         cfg.preproc.preproc = false;
         cfg.time_limit = Some(15);
-        cfg.inn = true;
-        let mut ic3_results: Vec<_> = with_log_level(LevelFilter::Warn, || {
+        let ic3_results: Vec<_> = with_log_level(LevelFilter::Warn, || {
             (0..self.ts.bad.len())
                 .into_par_iter()
                 .map(|i| {
@@ -51,19 +50,20 @@ impl CIll {
                     cfg.prop = Some(i);
                     let mut ic3 = IC3::new(cfg.clone(), self.ts.clone(), VarSymbols::default());
                     let res = ic3.check();
-                    (matches!(res, McResult::Safe), ic3)
+                    let inv = ic3.invariant();
+                    (matches!(res, McResult::Safe), inv)
                 })
                 .collect()
         });
         let mut invariants = LitVvec::new();
         let mut results = Vec::new();
         let mut ic3_proved = Vec::new();
-        for (id, (r, ic3)) in ic3_results.iter_mut().enumerate() {
-            if *r {
+        for (id, (r, inv)) in ic3_results.into_iter().enumerate() {
+            if r {
                 ic3_proved.push(id);
             }
-            results.push(*r);
-            invariants.extend(ic3.invariant());
+            results.push(r);
+            invariants.extend(inv);
         }
         if !ic3_proved.is_empty() {
             info!("IC3 proved {:?} prop.", ic3_proved);
@@ -174,11 +174,11 @@ impl CIll {
 }
 
 impl Ric3Proj {
-    pub fn refresh_cti(&self, dut_old: &Path, dut_new: &Path) -> anyhow::Result<()> {
+    pub fn refresh_cti(&self, dut_old: &Path, dut_new: &Path) -> anyhow::Result<bool> {
         let prop = match self.get_cill_state()? {
             CIllState::Check => {
                 self.clear_cti()?;
-                return Ok(());
+                return Ok(true);
             }
             CIllState::Block(prop) => {
                 assert!(self.path("cill/cti").exists());
@@ -213,7 +213,7 @@ impl Ric3Proj {
             info!("{prop} not found. CTI has been removed. Please rerun `ric3 cill check`.");
             self.clear_cti()?;
             self.set_cill_state(CIllState::Check)?;
-            return Ok(());
+            return Ok(false);
         };
         cti.bad_id = bad_id;
 
@@ -242,7 +242,7 @@ impl Ric3Proj {
             self.path("cill/cti"),
             format!("{}", btorfe_new.unsafe_certificate(McWitness::Wl(cti))),
         )?;
-        Ok(())
+        Ok(true)
     }
 }
 

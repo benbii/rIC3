@@ -319,10 +319,10 @@ pub fn run(path: PathBuf) -> anyhow::Result<()> {
         }
     }
 
-    println!("Name | Waweform File | Status"); // header
+    println!("Name\tWaweform File\tStatus"); // header
     for (name, vcd, status) in &table_rows {
         // row contents
-        println!("{} | {} | {}", name, vcd, status);
+        println!("{}\t{}\t{}", name, vcd, status);
     }
     Ok(())
 }
