@@ -17,6 +17,7 @@ use rIC3::config::EngineConfig;
 use serde::Deserialize;
 use std::{
     fs,
+    iter::once,
     path::{Path, PathBuf},
 };
 
@@ -120,6 +121,7 @@ impl Dut {
             .iter()
             .chain(self.include_files.iter().flatten())
             .cloned()
+            .chain(once(PathBuf::from("ric3.toml")))
             .collect()
     }
 
