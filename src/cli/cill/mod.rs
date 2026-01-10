@@ -84,10 +84,12 @@ pub struct CIll {
     pub(crate) ts_rst: Restore,
     pub(crate) btorfe: BtorFrontend,
     pub(crate) res: Vec<bool>,
+    pub(crate) bmc_timeout: u64,
+    pub(crate) ic3_timeout: u64,
 }
 
 impl CIll {
-    pub fn new(rcfg: Ric3Config, rp: Ric3Proj, mut btorfe: BtorFrontend) -> anyhow::Result<Self> {
+    pub fn new(rcfg: Ric3Config, rp: Ric3Proj, mut btorfe: BtorFrontend, bmc_timeout: u64, ic3_timeout: u64) -> anyhow::Result<Self> {
         create_dir_if_not_exists(rp.path("cill"))?;
         let (wts, wsym) = btorfe.wts();
         let (mut ts, bb_map) = wts.bitblast_to_ts();
@@ -107,6 +109,8 @@ impl CIll {
             ts_rst,
             bb_map,
             res: Vec::new(),
+            bmc_timeout,
+            ic3_timeout,
         })
     }
 
@@ -122,7 +126,7 @@ impl CIll {
                 .into_par_iter()
                 .map(|step| {
                     let mut cfg = BMCConfig::default();
-                    cfg.time_limit = Some(10);
+                    cfg.time_limit = Some(self.bmc_timeout);
                     cfg.step = step;
                     cfg.preproc.scorr = false;
                     cfg.preproc.frts = false;
@@ -208,7 +212,7 @@ fn check(rcfg: Ric3Config, rp: Ric3Proj, state: CIllState) -> anyhow::Result<()>
 
     let btor = Btor::from_file(rp.path("dut/dut.btor"));
     let btorfe = BtorFrontend::new(btor);
-    let mut cill = CIll::new(rcfg, rp.clone(), btorfe)?;
+    let mut cill = CIll::new(rcfg, rp.clone(), btorfe, 5, 15)?;
 
     if !matches!(cill.check_safety()?, McResult::Unknown(_)) {
         return Ok(());
@@ -268,7 +272,7 @@ fn select(_rcfg: Ric3Config, rp: Ric3Proj, state: CIllState, id: usize) -> anyho
     }
     let btor = Btor::from_file(rp.path("dut/dut.btor"));
     let btorfe = BtorFrontend::new(btor);
-    let mut cill = CIll::new(rcfg, rp.clone(), btorfe)?;
+    let mut cill = CIll::new(rcfg, rp.clone(), btorfe, 5, 15)?;
     cill.res = res;
     if cill.res[id] {
         cill.print_ind_res()?;

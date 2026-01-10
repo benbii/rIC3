@@ -55,7 +55,7 @@ struct PropResult {
     status: PropStatus,
 }
 
-pub fn run(path: PathBuf) -> anyhow::Result<()> {
+pub fn run(path: PathBuf, bmc_timeout: u64, ic3_timeout: u64) -> anyhow::Result<()> {
     if env::var("RUST_LOG").is_err() {
         unsafe { env::set_var("RUST_LOG", "info") };
     }
@@ -136,7 +136,7 @@ pub fn run(path: PathBuf) -> anyhow::Result<()> {
     };
     let btor = Btor::from_file(dut_dir.join("dut.btor"));
     let btorfe = BtorFrontend::new(btor);
-    let mut cill = CIll::new(rcfg.clone(), rp.clone(), btorfe)?;
+    let mut cill = CIll::new(rcfg.clone(), rp.clone(), btorfe, bmc_timeout, ic3_timeout)?;
 
     match cill.check_safety()? {
         McResult::Safe => {
@@ -192,7 +192,7 @@ pub fn run(path: PathBuf) -> anyhow::Result<()> {
         // Reinitialize CIll with the now-committed dut/
         let btor = Btor::from_file(rp.path("dut/dut.btor"));
         let btorfe = BtorFrontend::new(btor);
-        cill = CIll::new(rcfg.clone(), rp.clone(), btorfe)?;
+        cill = CIll::new(rcfg, rp.clone(), btorfe, bmc_timeout, ic3_timeout)?;
     }
 
     // 8. Check old CTIs BEFORE inductiveness check (solver has no invariants yet)
@@ -204,7 +204,8 @@ pub fn run(path: PathBuf) -> anyhow::Result<()> {
     }
     // Early exit if we have previous CTIs and none are blocked
     if !prev_state.ctis.is_empty() && cti_blocked.values().all(|&b| !b) {
-        println!("Previous hard-to-disprove transitions have not been blocked.");
+        println!("No previous hard-to-disprove transitions are blocked this run :(");
+        println!("Refine your helpers and try again :(");
         // Don't update states. Keep old CTIs (remove_dir_all not run).
         return Ok(());
     }
@@ -230,10 +231,10 @@ pub fn run(path: PathBuf) -> anyhow::Result<()> {
             // Track this property as proved for next run
             new_proved.insert(name.clone());
             // Check if it was previously not inductive
-            let status = if prev_state.ctis.contains_key(&name) {
-                PropStatus::ProvedAfterHelper
-            } else {
+            let status = if prev_state.proved.contains(&name) {
                 PropStatus::Proved
+            } else {
+                PropStatus::ProvedAfterHelper
             };
             results.push(PropResult { name, status });
         } else {

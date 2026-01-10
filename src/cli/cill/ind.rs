@@ -41,7 +41,7 @@ impl CIll {
         cfg.pred_prop = true;
         cfg.local_proof = true;
         cfg.preproc.preproc = false;
-        cfg.time_limit = Some(15);
+        cfg.time_limit = Some(self.ic3_timeout);
         let ic3_results: Vec<_> = with_log_level(LevelFilter::Warn, || {
             (0..self.ts.bad.len())
                 .into_par_iter()

@@ -60,6 +60,14 @@ pub enum Commands {
     TryProve {
         /// Path to DUT directory containing ric3.toml
         path: PathBuf,
+
+        /// BMC timeout in seconds (default: 15)
+        #[arg(long, default_value = "15")]
+        bmc_timeout: u64,
+
+        /// IC3 timeout in seconds (default: 30)
+        #[arg(long, default_value = "30")]
+        ic3_timeout: u64,
     },
 }
 
@@ -70,7 +78,9 @@ pub fn cli_main() -> anyhow::Result<()> {
         Commands::Check { chk, cfg } => check::check(chk, cfg),
         Commands::Clean => clean::clean(),
         Commands::Cill { cmd } => cill(cmd),
-        Commands::TryProve { path } => tryprove::run(path),
+        Commands::TryProve { path, bmc_timeout, ic3_timeout } => {
+            tryprove::run(path, bmc_timeout, ic3_timeout)
+        }
     }
 }
 
