@@ -71,15 +71,15 @@ pub enum Commands {
     },
 }
 
-pub fn cli_main() -> anyhow::Result<()> {
+pub fn cli_main() -> u8 {
     let cli = Cli::parse();
     match cli.command {
-        Commands::Run => run::run(),
+        Commands::Run => run::run().is_err() as u8,
         Commands::Check { chk, cfg } => check::check(chk, cfg),
-        Commands::Clean => clean::clean(),
-        Commands::Cill { cmd } => cill(cmd),
+        Commands::Clean => clean::clean().is_err() as u8,
+        Commands::Cill { cmd } => cill(cmd).is_err() as u8,
         Commands::TryProve { path, bmc_timeout, ic3_timeout } => {
-            tryprove::run(path, bmc_timeout, ic3_timeout)
+            tryprove::run(path, bmc_timeout, ic3_timeout).is_err() as u8
         }
     }
 }

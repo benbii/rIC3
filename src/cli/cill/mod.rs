@@ -89,7 +89,13 @@ pub struct CIll {
 }
 
 impl CIll {
-    pub fn new(rcfg: Ric3Config, rp: Ric3Proj, mut btorfe: BtorFrontend, bmc_timeout: u64, ic3_timeout: u64) -> anyhow::Result<Self> {
+    pub fn new(
+        rcfg: Ric3Config,
+        rp: Ric3Proj,
+        mut btorfe: BtorFrontend,
+        bmc_timeout: u64,
+        ic3_timeout: u64,
+    ) -> anyhow::Result<Self> {
         create_dir_if_not_exists(rp.path("cill"))?;
         let (wts, wsym) = btorfe.wts();
         let (mut ts, bb_map) = wts.bitblast_to_ts();

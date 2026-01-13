@@ -158,8 +158,7 @@ pub fn run(path: PathBuf, bmc_timeout: u64, ic3_timeout: u64) -> anyhow::Result<
             if cex_vcd_src.exists() {
                 fs::copy(&cex_vcd_src, &cex_vcd_path)?;
             }
-            println!("A helper assertion is cutting off reachable states.");
-            println!("Counterexample VCD: {}", cex_vcd_path.display());
+            println!("Counterexample VCD copied to: {}", cex_vcd_path.display());
             let _ = fs::remove_dir_all(&vcd_dir);
             return Ok(());
         }
@@ -242,7 +241,13 @@ pub fn run(path: PathBuf, bmc_timeout: u64, ic3_timeout: u64) -> anyhow::Result<
             let bl_witness = cill.get_cti(id)?;
             let safe_name: String = name
                 .chars()
-                .map(|c| { if c.is_alphanumeric() || c == '-' { c } else { '_' } })
+                .map(|c| {
+                    if c.is_alphanumeric() || c == '-' {
+                        c
+                    } else {
+                        '_'
+                    }
+                })
                 .collect();
             let wit_path = vcd_dir.join(format!("{}.wit", safe_name));
             let vcd_path = vcd_dir.join(format!("{}.vcd", safe_name));
@@ -253,7 +258,9 @@ pub fn run(path: PathBuf, bmc_timeout: u64, ic3_timeout: u64) -> anyhow::Result<
             // Determine status based on previous state
             let status = if prev_state.proved.contains(&name) {
                 // Was proved before, now fails again
-                PropStatus::Regressed { vcd: vcd_path.clone() }
+                PropStatus::Regressed {
+                    vcd: vcd_path.clone(),
+                }
             } else {
                 // Use pre-computed blocked status (checked before invariants were loaded)
                 match cti_blocked.get(&name) {

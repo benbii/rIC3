@@ -38,13 +38,14 @@ pub struct CheckConfig {
     pub interrupt_statistic: bool,
 }
 
-fn report_res(chk: &CheckConfig, res: McResult) {
+fn report_res(chk: &CheckConfig, res: McResult) -> u8 {
     match res {
         McResult::Safe => {
             println!("UNSAT");
             if chk.witness {
                 println!("0");
             }
+            20
         }
         McResult::Unsafe(_) => {
             println!("SAT");
@@ -52,22 +53,24 @@ fn report_res(chk: &CheckConfig, res: McResult) {
                 let witness = fs::read_to_string(chk.cert.as_ref().unwrap()).unwrap();
                 println!("{witness}");
             }
+            10
         }
         McResult::Unknown(_) => {
             println!("UNKNOWN");
             if chk.witness {
                 println!("2");
             }
+            30
         }
     }
 }
 
-pub fn check(mut chk: CheckConfig, cfg: EngineConfig) -> anyhow::Result<()> {
+pub fn check(mut chk: CheckConfig, cfg: EngineConfig) -> u8 {
     if env::var("RUST_LOG").is_err() {
         unsafe { env::set_var("RUST_LOG", "info") };
     }
     logger_init();
-    chk.model = chk.model.canonicalize()?;
+    chk.model = chk.model.canonicalize().unwrap_or(chk.model);
     info!("the model to be checked: {}", chk.model.display());
     let mut tmp_cert = None;
     if chk.cert.is_none() && (chk.certify || chk.witness) {
@@ -117,12 +120,12 @@ pub fn check(mut chk: CheckConfig, cfg: EngineConfig) -> anyhow::Result<()> {
         }
         McResult::Unknown(_) => todo!(),
     }
-    report_res(&chk, res);
+    let ret = report_res(&chk, res);
     if chk.certify {
         assert!(certificate_check(&chk.model, chk.cert.as_ref().unwrap()));
     }
     drop(tmp_cert);
-    Ok(())
+    ret
 }
 
 fn interrupt_statistic(chk: &CheckConfig, engine: &mut dyn Engine) {
@@ -155,12 +158,12 @@ pub fn certificate(
     fs::write(chk.cert.as_ref().unwrap(), format!("{cert}")).unwrap();
 }
 
-pub fn portfolio_main(chk: CheckConfig, cfg: PortfolioConfig) -> anyhow::Result<()> {
+pub fn portfolio_main(chk: CheckConfig, cfg: PortfolioConfig) -> u8 {
     let mut engine = Portfolio::new(chk.model.clone(), chk.cert.clone(), cfg);
     let res = engine.check();
-    report_res(&chk, res);
+    let res = report_res(&chk, res);
     if chk.certify {
         assert!(certificate_check(&chk.model, chk.cert.as_ref().unwrap()));
     }
-    Ok(())
+    res
 }
