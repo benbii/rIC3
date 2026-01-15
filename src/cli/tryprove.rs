@@ -12,7 +12,7 @@ use super::{
 use crate::logger_init;
 use btor::Btor;
 use giputils::file::{create_dir_if_not_exists, recreate_dir};
-use log::info;
+use log::debug;
 use rIC3::{McResult, frontend::btor::BtorFrontend};
 use serde::{Deserialize, Serialize};
 use std::{
@@ -83,8 +83,6 @@ pub fn run(path: PathBuf, bmc_timeout: u64, ic3_timeout: u64) -> anyhow::Result<
 
     let vcd_dir = dut_path.join("hard_trans");
     let cex_vcd_path = dut_path.join("counterexample.vcd");
-    // Clean up CEX from previous runs to avoid stale files
-    let _ = fs::remove_file(&cex_vcd_path);
 
     // 2. Read config (need to cd for relative paths in ric3.toml)
     let orig_dir = env::current_dir()?;
@@ -154,16 +152,17 @@ pub fn run(path: PathBuf, bmc_timeout: u64, ic3_timeout: u64) -> anyhow::Result<
         McResult::Unsafe(_) => {
             // Safety failed - DO NOT commit the DUT change
             // This way next run will regenerate and CTIs stay valid against old model
+            // Clean up old counterexample.vcd before creating new one
+            let _ = fs::remove_file(&cex_vcd_path);
             let cex_vcd_src = rp.path("cill/cex.vcd");
             if cex_vcd_src.exists() {
                 fs::copy(&cex_vcd_src, &cex_vcd_path)?;
             }
-            println!("Counterexample VCD copied to: {}", cex_vcd_path.display());
-            let _ = fs::remove_dir_all(&vcd_dir);
+            println!("Counterexample VCD generated to ./counterexample.vcd");
             return Ok(());
         }
         McResult::Unknown(_) => {
-            info!("Safety check inconclusive, continuing to inductiveness check.");
+            // No output message needed - continue silently
         }
     }
 
@@ -172,15 +171,23 @@ pub fn run(path: PathBuf, bmc_timeout: u64, ic3_timeout: u64) -> anyhow::Result<
         // Refresh all stored CTIs using the new helper
         if rp.path("dut").exists() {
             let mut refreshed_ctis = HashMap::new();
+            let mut has_refresh_failure = false;
             for (prop_name, cti_str) in prev_state.ctis.drain() {
                 match refresh_cti_for_prop(&cti_str, &rp.path("dut"), &rp.path("tmp/dut")) {
                     Ok(new_cti) => {
                         refreshed_ctis.insert(prop_name, new_cti);
                     }
                     Err(e) => {
-                        info!("Failed to refresh CTI for {}: {}, dropping", prop_name, e);
+                        debug!("Failed to refresh CTI for {}: {}, dropping", prop_name, e);
+                        has_refresh_failure = true;
                     }
                 }
+            }
+            // If any CTI refresh failed (i.e. has deleted assertion), reset completely
+            if has_refresh_failure {
+                debug!("Some CTIs couldn't be refreshed. Resetting state completely.");
+                refreshed_ctis.clear();
+                // prev_state.proved.clear();
             }
             prev_state.ctis = refreshed_ctis;
             fs::remove_dir_all(rp.path("dut"))?;
@@ -188,10 +195,14 @@ pub fn run(path: PathBuf, bmc_timeout: u64, ic3_timeout: u64) -> anyhow::Result<
         fs::rename(rp.path("tmp/dut"), rp.path("dut"))?;
         rp.cache_dut(&src_abs)?;
 
-        // Reinitialize CIll with the now-committed dut/
-        let btor = Btor::from_file(rp.path("dut/dut.btor"));
-        let btorfe = BtorFrontend::new(btor);
-        cill = CIll::new(rcfg, rp.clone(), btorfe, bmc_timeout, ic3_timeout)?;
+        // Save refreshed CTIs immediately so they're available for next run even if we exit early
+        fs::write(
+            proj_path.join("tryprove_state.ron"),
+            ron::to_string(&TryProveState {
+                ctis: prev_state.ctis.clone(),
+                proved: prev_state.proved.clone(),
+            })?,
+        )?;
     }
 
     // 8. Check old CTIs BEFORE inductiveness check (solver has no invariants yet)
@@ -205,19 +216,18 @@ pub fn run(path: PathBuf, bmc_timeout: u64, ic3_timeout: u64) -> anyhow::Result<
     if !prev_state.ctis.is_empty() && cti_blocked.values().all(|&b| !b) {
         println!("No previous hard-to-disprove transitions are blocked this run :(");
         println!("Refine your helpers and try again :(");
-        // Don't update states. Keep old CTIs (remove_dir_all not run).
         return Ok(());
     }
-    let _ = fs::remove_dir_all(&vcd_dir);
 
     // 9. Check inductiveness (this loads invariants into solver)
-    info!("Checking inductiveness of all properties.");
     if cill.check_inductive()? {
         println!("Congratulations! All assertions are proved inductive.");
         return Ok(());
     }
 
     // 10. Process all properties using pre-computed CTI blocked status
+    // Clean up old hard_trans directory before creating new one
+    let _ = fs::remove_dir_all(&vcd_dir);
     create_dir_if_not_exists(&vcd_dir)?;
     let mut results = Vec::new();
     let mut new_ctis = HashMap::new();
@@ -326,7 +336,6 @@ pub fn run(path: PathBuf, bmc_timeout: u64, ic3_timeout: u64) -> anyhow::Result<
             }
         }
     }
-
     println!("Name\tWaweform File\tStatus"); // header
     for (name, vcd, status) in &table_rows {
         // row contents

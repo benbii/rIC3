@@ -59,13 +59,14 @@ pub enum Commands {
     /// Stateless proof attempt (LLM/agent friendly, no sub-subcommands)
     TryProve {
         /// Path to DUT directory containing ric3.toml
+        #[arg(default_value = ".")]
         path: PathBuf,
 
-        /// BMC timeout in seconds (default: 15)
-        #[arg(long, default_value = "15")]
+        /// BMC timeout in seconds
+        #[arg(long, default_value = "10")]
         bmc_timeout: u64,
 
-        /// IC3 timeout in seconds (default: 30)
+        /// IC3 timeout in seconds
         #[arg(long, default_value = "30")]
         ic3_timeout: u64,
     },
@@ -78,9 +79,11 @@ pub fn cli_main() -> u8 {
         Commands::Check { chk, cfg } => check::check(chk, cfg),
         Commands::Clean => clean::clean().is_err() as u8,
         Commands::Cill { cmd } => cill(cmd).is_err() as u8,
-        Commands::TryProve { path, bmc_timeout, ic3_timeout } => {
-            tryprove::run(path, bmc_timeout, ic3_timeout).is_err() as u8
-        }
+        Commands::TryProve {
+            path,
+            bmc_timeout,
+            ic3_timeout,
+        } => tryprove::run(path, bmc_timeout, ic3_timeout).is_err() as u8,
     }
 }
 

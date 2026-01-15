@@ -159,18 +159,11 @@ impl CIll {
                     .get_prop_name(witness.bad_id)
                     .unwrap_or("Unknown".to_string());
                 self.save_witness(&witness, cex, Some(&cex_vcd))?;
-                println!(
-                    "{}",
-                    format!(
-                        "A CEX violating {name} was found. VCD generated at {}.",
-                        cex_vcd.display()
-                    )
-                    .red()
-                );
+                println!("A CEX violating {name} was found.");
                 Ok(r)
             }
             None => {
-                info!("BMC found no CEX in limited steps.");
+                info!("Assertions seem unreachable. Proceeding to prove them.");
                 Ok(McResult::Unknown(None))
             }
         }
