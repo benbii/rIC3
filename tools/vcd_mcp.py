@@ -136,11 +136,33 @@ def _format_hex(val: str) -> str:
     else:
         s_bits = s
 
-    # If there are any unknown/high-impedance bits, keep it as a binary bitstring.
-    # (Do not attempt hex conversion, since hex would be ambiguous.)
     lowered = s_bits.lower()
+
+    # If there are any unknown/high-impedance bits, prefer a compact hex-ish
+    # representation for wide vectors to avoid extremely verbose output.
+    #
+    # Note: This intentionally loses precision for mixed nibbles
+    # (e.g. 0b_xxx1 -> 0x_x), trading detail for readability.
     if any(c in lowered for c in ("x", "z")):
-        return "0b_" + s_bits
+        # Keep small vectors as binary (more readable, less lossy).
+        if len(s_bits) < 8 and len(s_bits) != 4:
+            return "0b_" + s_bits
+
+        # Pad left to a nibble boundary so widths like 31b become 8 hex digits.
+        pad = (-len(s_bits)) % 4
+        bits = ("0" * pad) + lowered
+        out_digits: List[str] = []
+        for i in range(0, len(bits), 4):
+            nib = bits[i : i + 4]
+            if any(c in nib for c in ("x", "z")):
+                # If the whole nibble is Z, preserve that; otherwise mark as X.
+                if all(c == "z" for c in nib):
+                    out_digits.append("z")
+                else:
+                    out_digits.append("x")
+                continue
+            out_digits.append(format(int(nib, 2), "x"))
+        return "0x_" + "".join(out_digits)
 
     if s_bits and all(c in "01" for c in s_bits):
         h = hex(int(s_bits, 2))
@@ -164,6 +186,51 @@ def _is_all_x(values: Sequence[str]) -> bool:
                 continue
         return False
     return True
+
+
+def _is_all_x_raw(values: Sequence[str]) -> bool:
+    """Return True if each value is entirely unknown (X/Z) in raw VCD form.
+
+    Important: this must run on the raw sampled values (before formatting),
+    because formatting may intentionally lose precision for readability.
+    """
+
+    for v in values:
+        if v is None:
+            return False
+        s = str(v).strip()
+        if not s:
+            return False
+
+        if s == "x" or s == "X":
+            continue
+
+        # vcdvcd vector encodings are typically "b....".
+        if (s.startswith("b") or s.startswith("B")) and len(s) > 1:
+            bits = s[1:]
+        elif s.startswith("0b") or s.startswith("0B"):
+            bits = s[2:]
+        else:
+            bits = s
+
+        lowered = bits.lower()
+        if lowered and all(c in "xz" for c in lowered):
+            continue
+        return False
+
+    return True
+
+
+def _normalize_raw_value_for_const(v: str) -> str:
+    s = str(v).strip()
+    if not s:
+        return s
+
+    if (s.startswith("b") or s.startswith("B")) and len(s) > 1:
+        return s[1:]
+    if s.startswith("0b") or s.startswith("0B"):
+        return s[2:]
+    return s
 
 
 def _steps_text(
@@ -202,12 +269,25 @@ def _steps_text(
         if idx is None:
             continue
         times, values = idx
-        row_vals = [_format_hex(_value_at(times, values, t)) for t in step_times]
-        if _is_all_x(row_vals):
+        raw_row_vals = [_value_at(times, values, t) for t in step_times]
+        if _is_all_x_raw(raw_row_vals):
             all_x.append(s)
             if include_all_x_line:
-                lines.append(f"{s} All X, irrelavent")
+                lines.append(f"{s} All X, irrelevant")
             continue
+
+        # If the value is constant across all sampled steps, compress output.
+        # Use raw values for the const check to avoid false constants caused by
+        # lossy formatting (e.g. nibble-level X compaction).
+        if len(raw_row_vals) > 1:
+            normalized = [_normalize_raw_value_for_const(v) for v in raw_row_vals]
+            if normalized and all(n == normalized[0] for n in normalized[1:]):
+                lines.append(
+                    f"{s} constant {_format_hex(raw_row_vals[0])}"
+                )
+                continue
+
+        row_vals = [_format_hex(v) for v in raw_row_vals]
         lines.append(f"{s} " + " ".join(row_vals))
 
     text = "\n".join(lines)
@@ -251,7 +331,23 @@ def search_signals(vcd_path: str, pattern: str) -> str:
         matches = [s for s in matches if s not in all_x_set]
 
     if not matches:
+        # All matches existed, but were filtered out as irrelevant (all X).
+        if all_x:
+            if len(all_x) <= 20:
+                return (
+                    "Found 0 non-all-X signals (filtered {} all-X signals):\n{}".format(
+                        len(all_x), "\n".join(sorted(all_x))
+                    )
+                )
+            return "Found 0 non-all-X signals (filtered {} all-X signals).".format(
+                len(all_x)
+            )
         return "Found 0 signals:"
+
+    if all_x:
+        return "Found {} signals (filtered {} all-X signals):\n{}".format(
+            len(matches), len(all_x), "\n".join(matches)
+        )
 
     return "Found {} signals:\n{}".format(len(matches), "\n".join(matches))
 

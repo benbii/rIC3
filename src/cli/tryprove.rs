@@ -212,8 +212,30 @@ pub fn run(path: PathBuf, bmc_timeout: u64, ic3_timeout: u64) -> anyhow::Result<
         cti_results.insert(prop_name.clone(), result);
     }
 
-    // 10. Process all properties - always generate new CTIs (no early exit)
-    let _ = fs::remove_dir_all(&vcd_dir);
+    // 10. Preserve old VCDs for not-blocked CTIs before clearing directory
+    for (prop_name, result) in &cti_results {
+        if result.is_some() {
+            // Not blocked - preserve old VCD
+            let safe_name: String = prop_name
+                .chars()
+                .map(|c| if c.is_alphanumeric() || c == '-' { c } else { '_' })
+                .collect();
+            let vcd_path = vcd_dir.join(format!("{}.vcd", safe_name));
+            let old_vcd_path = vcd_dir.join(format!("{}.vcd.old", safe_name));
+            let _ = fs::copy(&vcd_path, &old_vcd_path);
+        }
+    }
+
+    // 11. Process all properties - always generate new CTIs (no early exit)
+    // Remove old VCDs (but .vcd.old preserved above)
+    for entry in fs::read_dir(&vcd_dir).into_iter().flatten() {
+        if let Ok(entry) = entry {
+            let path = entry.path();
+            if path.extension().map_or(false, |e| e == "vcd") {
+                let _ = fs::remove_file(&path);
+            }
+        }
+    }
     create_dir_if_not_exists(&vcd_dir)?;
     let mut results = Vec::new();
     let mut new_ctis = HashMap::new();
@@ -221,7 +243,7 @@ pub fn run(path: PathBuf, bmc_timeout: u64, ic3_timeout: u64) -> anyhow::Result<
     let cill_res = cill.res.clone();
 
     for (id, &is_inductive) in cill_res.iter().enumerate() {
-        let name = cill.get_prop_name(id).unwrap_or_else(|| format!("p{}", id));
+        let name = cill.wsym.prop[id].clone();
         if is_inductive {
             new_proved.insert(name.clone());
             let status = if prev_state.proved.contains(&name) {
@@ -229,6 +251,13 @@ pub fn run(path: PathBuf, bmc_timeout: u64, ic3_timeout: u64) -> anyhow::Result<
             } else {
                 PropStatus::ProvedAfterHelper
             };
+            // Clean up any old VCD files for this now-proved property
+            let safe_name: String = name
+                .chars()
+                .map(|c| if c.is_alphanumeric() || c == '-' { c } else { '_' })
+                .collect();
+            let _ = fs::remove_file(vcd_dir.join(format!("{}.vcd", safe_name)));
+            let _ = fs::remove_file(vcd_dir.join(format!("{}.vcd.old", safe_name)));
             results.push((name, status));
         } else {
             let safe_name: String = name
@@ -244,9 +273,7 @@ pub fn run(path: PathBuf, bmc_timeout: u64, ic3_timeout: u64) -> anyhow::Result<
             } else {
                 match cti_results.get(&name) {
                     Some(Some(witness)) => {
-                        // Not blocked - preserve old VCD, use refreshed witness
-                        let old_vcd_path = vcd_dir.join(format!("{}.vcd.old", safe_name));
-                        let _ = fs::copy(&vcd_path, &old_vcd_path);
+                        // Not blocked - use refreshed witness (old VCD already preserved above)
                         (PropStatus::CtiNotBlocked, witness.clone())
                     }
                     Some(None) => {
