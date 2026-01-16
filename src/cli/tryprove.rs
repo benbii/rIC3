@@ -39,20 +39,13 @@ pub enum PropStatus {
     /// Property was not inductive before, now it is (helper worked!)
     ProvedAfterHelper,
     /// Not inductive, first time seeing this property fail
-    NewCti { vcd: PathBuf },
-    /// Not inductive, previous CTI NOT blocked (same vulnerability)
-    CtiNotBlocked { vcd: PathBuf },
+    NewCti,
+    /// Not inductive, previous CTI NOT blocked, old preserved as .vcd.old
+    CtiNotBlocked,
     /// Not inductive, previous CTI blocked but new one appeared
-    CtiBlockedNewAppeared { vcd: PathBuf },
+    CtiBlockedNewAppeared,
     /// Was proved before, but now fails again (helper removed/weakened)
-    Regressed { vcd: PathBuf },
-}
-
-/// Result for a single property
-#[derive(Debug)]
-struct PropResult {
-    name: String,
-    status: PropStatus,
+    Regressed,
 }
 
 pub fn run(path: PathBuf, bmc_timeout: u64, ic3_timeout: u64) -> anyhow::Result<()> {
@@ -205,28 +198,20 @@ pub fn run(path: PathBuf, bmc_timeout: u64, ic3_timeout: u64) -> anyhow::Result<
         )?;
     }
 
-    // 8. Check old CTIs BEFORE inductiveness check (solver has no invariants yet)
-    //    This ensures deterministic "blocked" checks matching cill semantics
-    let mut cti_blocked: HashMap<String, bool> = HashMap::new();
-    for (prop_name, prev_cti_str) in &prev_state.ctis {
-        let blocked = cill.check_cti_from_str(prev_cti_str).unwrap_or(true);
-        cti_blocked.insert(prop_name.clone(), blocked);
-    }
-    // Early exit if we have previous CTIs and none are blocked
-    if !prev_state.ctis.is_empty() && cti_blocked.values().all(|&b| !b) {
-        println!("No previous hard-to-disprove transitions are blocked this run :(");
-        println!("Refine your helpers and try again :(");
-        return Ok(());
-    }
-
-    // 9. Check inductiveness (this loads invariants into solver)
+    // 8. Check inductiveness (this loads invariants into solver)
     if cill.check_inductive()? {
         println!("Congratulations! All assertions are proved inductive.");
         return Ok(());
     }
 
-    // 10. Process all properties using pre-computed CTI blocked status
-    // Clean up old hard_trans directory before creating new one
+    // 9. Check old CTIs AFTER inductiveness check (matching cill semantics)
+    let mut cti_blocked: HashMap<String, bool> = HashMap::new();
+    for (prop_name, prev_cti_str) in &prev_state.ctis {
+        let blocked = cill.check_cti_from_str(prev_cti_str).unwrap_or(true);
+        cti_blocked.insert(prop_name.clone(), blocked);
+    }
+
+    // 10. Process all properties - always generate new CTIs (no early exit)
     let _ = fs::remove_dir_all(&vcd_dir);
     create_dir_if_not_exists(&vcd_dir)?;
     let mut results = Vec::new();
@@ -237,55 +222,44 @@ pub fn run(path: PathBuf, bmc_timeout: u64, ic3_timeout: u64) -> anyhow::Result<
     for (id, &is_inductive) in cill_res.iter().enumerate() {
         let name = cill.get_prop_name(id).unwrap_or_else(|| format!("p{}", id));
         if is_inductive {
-            // Track this property as proved for next run
             new_proved.insert(name.clone());
-            // Check if it was previously not inductive
             let status = if prev_state.proved.contains(&name) {
                 PropStatus::Proved
             } else {
                 PropStatus::ProvedAfterHelper
             };
-            results.push(PropResult { name, status });
+            results.push((name, status));
         } else {
             // Generate new CTI
             let bl_witness = cill.get_cti(id)?;
             let safe_name: String = name
                 .chars()
-                .map(|c| {
-                    if c.is_alphanumeric() || c == '-' {
-                        c
-                    } else {
-                        '_'
-                    }
-                })
+                .map(|c| if c.is_alphanumeric() || c == '-' { c } else { '_' })
                 .collect();
-            let wit_path = vcd_dir.join(format!("{}.wit", safe_name));
             let vcd_path = vcd_dir.join(format!("{}.vcd", safe_name));
-            cill.save_witness(&bl_witness, &wit_path, Some(&vcd_path))?;
-            let witness_str = fs::read_to_string(&wit_path)?;
 
-            let c = vcd_path.clone();
-            // Determine status based on previous state
+            // Determine status and handle old VCD preservation
             let status = if prev_state.proved.contains(&name) {
-                // Was proved before, now fails again
-                PropStatus::Regressed {
-                    vcd: vcd_path.clone(),
-                }
+                PropStatus::Regressed
             } else {
-                // Use pre-computed blocked status (checked before invariants were loaded)
                 match cti_blocked.get(&name) {
-                    // Previous CTI is blocked, but new one appeared
-                    Some(true) => PropStatus::CtiBlockedNewAppeared { vcd: c },
-                    // Previous CTI is NOT blocked
-                    Some(false) => PropStatus::CtiNotBlocked { vcd: c },
-                    // No previous CTI for this property
-                    None => PropStatus::NewCti { vcd: c },
+                    Some(true) => PropStatus::CtiBlockedNewAppeared,
+                    Some(false) => {
+                        // Preserve old VCD as .vcd.old before generating new one
+                        let old_vcd_path = vcd_dir.join(format!("{}.vcd.old", safe_name));
+                        let _ = fs::copy(&vcd_path, &old_vcd_path);
+                        PropStatus::CtiNotBlocked
+                    }
+                    None => PropStatus::NewCti,
                 }
             };
 
-            // Store the new CTI
+            // Save witness to temp file (for state) and VCD
+            let wit_path = rp.path("tmp/witness.wit");
+            cill.save_witness(&bl_witness, &wit_path, Some(&vcd_path))?;
+            let witness_str = fs::read_to_string(&wit_path)?;
             new_ctis.insert(name.clone(), witness_str);
-            results.push(PropResult { name, status });
+            results.push((name, status));
         }
     }
 
@@ -298,48 +272,73 @@ pub fn run(path: PathBuf, bmc_timeout: u64, ic3_timeout: u64) -> anyhow::Result<
         })?,
     )?;
 
-    // 12. Print results.
-    let help = |dut_path: &PathBuf, vcd: &PathBuf| {
-        vcd.strip_prefix(dut_path)
-            .unwrap_or(vcd)
-            .display()
-            .to_string()
-    };
-    // Collect rows, skipping CtiNotBlocked (no progress) and counting special cases
-    let mut table_rows: Vec<(&str, String, &str)> = Vec::new();
-    for r in results.as_slice() {
-        match &r.status {
-            PropStatus::Proved => {
-                table_rows.push((&r.name, "None".to_string(), "Already Proved Before"));
+    // 12. Print results grouped by status
+    let mut not_blocked: Vec<&str> = Vec::new();
+    let mut blocked_new: Vec<&str> = Vec::new();
+    let mut new_cti: Vec<&str> = Vec::new();
+    let mut just_proved: Vec<&str> = Vec::new();
+    let mut regressed: Vec<&str> = Vec::new();
+
+    for (name, status) in &results {
+        match status {
+            PropStatus::CtiNotBlocked { .. } => {
+                not_blocked.push(name);
+            }
+            PropStatus::CtiBlockedNewAppeared { .. } => {
+                blocked_new.push(name);
+            }
+            PropStatus::NewCti { .. } => {
+                new_cti.push(name);
             }
             PropStatus::ProvedAfterHelper => {
-                table_rows.push((&r.name, "None".to_string(), "Just Proved :D"));
+                just_proved.push(name);
             }
-            PropStatus::NewCti { vcd } => {
-                let vcd_rel = help(&dut_path, vcd);
-                table_rows.push((&r.name, vcd_rel, "Hard-to-disprove transitions found"));
-            }
-            PropStatus::CtiNotBlocked { vcd } => {
-                let vcd_rel = help(&dut_path, vcd);
-                table_rows.push((&r.name, vcd_rel, "Previous hard transitions not blocked"));
-            }
-            PropStatus::CtiBlockedNewAppeared { vcd } => {
-                table_rows.push((
-                    &r.name,
-                    help(&dut_path, vcd),
-                    "Previous hard transitions blocked but new one found",
-                ));
-            }
-            PropStatus::Regressed { vcd } => {
-                let vcd_rel = help(&dut_path, vcd);
-                table_rows.push((&r.name, vcd_rel, "Regressed; was proved, fails again"));
+            PropStatus::Proved => {} // Skip already proved
+            PropStatus::Regressed => {
+                regressed.push(name);
             }
         }
     }
-    println!("Name\tWaweform File\tStatus"); // header
-    for (name, vcd, status) in &table_rows {
-        // row contents
-        println!("{}\t{}\t{}", name, vcd, status);
+
+    // Print each group
+    if !not_blocked.is_empty() {
+        println!("Your helpers did not block hard transitions of these assertions.");
+        println!("Their old hard transitions are preserved in hard_trans/{{name}}.vcd.old");
+        println!("New, likely similar hard transitions generated in hard_trans/{{name}}.vcd");
+        for name in &not_blocked {
+            println!("{}", name);
+        }
+        println!();
+    }
+    if !blocked_new.is_empty() {
+        println!("Your helpers blocked transitions to these assertions, but new ones emerge,");
+        println!("placed in hard_trans/{{name}}.vcd");
+        for name in &blocked_new {
+            println!("{}", name);
+        }
+        println!();
+    }
+    if !new_cti.is_empty() {
+        println!("Hard-to-disprove transitions found for these new assertions.");
+        println!("Waveforms to these transitions are in hard_trans/{{name}}.vcd");
+        for name in &new_cti {
+            println!("{}", name);
+        }
+        println!();
+    }
+    if !just_proved.is_empty() {
+        println!("Assertions just proved:");
+        for name in &just_proved {
+            println!("{}", name);
+        }
+        println!();
+    }
+    if !regressed.is_empty() {
+        println!("Assertions regressed (were proved before, now fail again):");
+        for name in &regressed {
+            println!("{}", name);
+        }
+        println!();
     }
     Ok(())
 }

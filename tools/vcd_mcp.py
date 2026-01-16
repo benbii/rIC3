@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import argparse
 import re
+import sys
 from bisect import bisect_right
 from typing import Dict, List, Sequence, Tuple
 from mcp.server.fastmcp import FastMCP
@@ -37,8 +39,9 @@ def _resolve_signal_name(available: Sequence[str], name: str) -> str:
 
 def _expand_signal_names(
     available: Sequence[str], requested: Sequence[str]
-) -> List[str]:
+) -> Tuple[List[str], List[str]]:
     resolved: List[str] = []
+    missing: List[str] = []
     for name in requested:
         try:
             resolved.append(_resolve_signal_name(available, name))
@@ -54,7 +57,8 @@ def _expand_signal_names(
             if sig.endswith("." + name) or sig.endswith("/" + name)
         ]
         if not suffix_matches:
-            raise ValueError(f"Signal not found: {name}")
+            missing.append(name)
+            continue
 
         # Deterministic order, while still respecting the user's requested ordering.
         resolved.extend(sorted(suffix_matches))
@@ -67,7 +71,7 @@ def _expand_signal_names(
             continue
         seen.add(s)
         out.append(s)
-    return out
+    return out, missing
 
 
 def _extract_time_markers(vcd_path: str) -> List[int]:
@@ -147,10 +151,26 @@ def _format_hex(val: str) -> str:
     return s
 
 
-def _steps_json(
+def _is_all_x(values: Sequence[str]) -> bool:
+    for v in values:
+        if v is None:
+            return False
+        s = str(v).strip()
+        if s == "X":
+            continue
+        if s.startswith("0b_"):
+            bits = s[3:].lower()
+            if bits and all(c in "xz" for c in bits):
+                continue
+        return False
+    return True
+
+
+def _steps_text(
     vcd_path: str,
     signals: Sequence[str],
-) -> Dict[str, List[str]]:
+    include_all_x_line: bool = False,
+) -> Tuple[str, List[str], List[str]]:
     if not signals:
         raise ValueError("signals must be a non-empty list")
 
@@ -158,7 +178,7 @@ def _steps_json(
     raw_signals = getattr(vcd, "signals", [])
     stripped_to_raw: Dict[str, str] = {_strip_end_prefix(s): s for s in raw_signals}
     available = sorted(stripped_to_raw.keys())
-    signal_names = _expand_signal_names(available, signals)
+    signal_names, missing = _expand_signal_names(available, signals)
     step_times = _sample_times(vcd_path)
 
     if not step_times:
@@ -166,19 +186,32 @@ def _steps_json(
 
     sig_indexes: Dict[str, Tuple[List[int], List[str]]] = {}
     for s in signal_names:
-        raw_name = stripped_to_raw[s]
+        raw_name = stripped_to_raw.get(s)
+        if raw_name is None:
+            continue
         tv = getattr(vcd[raw_name], "tv", None)
         if tv is None:
-            raise ValueError(f"No data for signal: {s}")
+            missing.append(s)
+            continue
         sig_indexes[s] = _build_tv_index(tv)
 
-    result: Dict[str, List[str]] = {}
+    lines: List[str] = []
+    all_x: List[str] = []
     for s in signal_names:
-        times, values = sig_indexes[s]
+        idx = sig_indexes.get(s)
+        if idx is None:
+            continue
+        times, values = idx
         row_vals = [_format_hex(_value_at(times, values, t)) for t in step_times]
-        result[s] = row_vals
+        if _is_all_x(row_vals):
+            all_x.append(s)
+            if include_all_x_line:
+                lines.append(f"{s} All X, irrelavent")
+            continue
+        lines.append(f"{s} " + " ".join(row_vals))
 
-    return result
+    text = "\n".join(lines)
+    return text, missing, all_x
 
 
 mcp = FastMCP("vcd-tools")
@@ -186,31 +219,103 @@ mcp = FastMCP("vcd-tools")
 
 @mcp.tool(
     name="search_signals",
-    description="Search signals in a VCD file by regex pattern. Returns matching signal names. The vcd_path must be an absolute path.",
+    description=(
+        "Search signals in a VCD file by regex pattern. "
+        "Include values (one signal per line) if few results found. Otherwise "
+        "show names only. Path must be absolute."
+    ),
 )
-def search_signals(vcd_path: str, pattern: str) -> List[str]:
+def search_signals(vcd_path: str, pattern: str) -> str:
     signals = _load_vcd_signals(vcd_path)
     regex = re.compile(pattern)
-    return [s for s in signals if regex.search(s)]
+    matches = [s for s in signals if regex.search(s)]
+
+    step_times = _sample_times(vcd_path)
+    trans_nr = len(step_times)
+    found_sig_nr = len(matches)
+
+    if found_sig_nr * trans_nr <= 40 and matches:
+        text, _missing, _all_x = _steps_text(
+            vcd_path,
+            matches,
+            include_all_x_line=True,
+        )
+        return text
+
+    if not matches:
+        return "Found 0 signals:"
+
+    _text, _missing, all_x = _steps_text(vcd_path, matches)
+    if all_x:
+        all_x_set = set(all_x)
+        matches = [s for s in matches if s not in all_x_set]
+
+    if not matches:
+        return "Found 0 signals:"
+
+    return "Found {} signals:\n{}".format(len(matches), "\n".join(matches))
 
 
 @mcp.tool(
     name="signal_values",
     description=(
-        "Returns the values of selected signals as a JSON object. Keys are signal names, "
-        "and values are arrays representing the signal state at each step. "
-        "The vcd_path must be an absolute path."
+        "Prints values of selected signals, one per line. "
+        "Path must be absolute."
     ),
 )
 def signal_values(
     vcd_path: str,
     signals: List[str],
-) -> Dict[str, List[str]]:
-    return _steps_json(
+) -> str:
+    text, missing, all_x = _steps_text(
         vcd_path,
         signals,
     )
+    lines: List[str] = []
+    if missing:
+        lines.append("Not found: " + " ".join(missing))
+    if all_x:
+        lines.append("Irrelevant all X signals: " + ", ".join(all_x))
+    if text:
+        lines.append(text)
+    return "\n".join(lines)
+
+
+def _run_cli(argv: Sequence[str]) -> int:
+    parser = argparse.ArgumentParser(description="VCD tools")
+    parser.add_argument(
+        "--cli",
+        action="store_true",
+        help="Enable CLI mode instead of MCP server",
+    )
+    subparsers = parser.add_subparsers(dest="command", required=True)
+
+    search_p = subparsers.add_parser("search", help="Search signals by regex")
+    search_p.add_argument("--vcd", required=True, help="Absolute path to VCD")
+    search_p.add_argument("--pattern", required=True, help="Regex pattern")
+
+    values_p = subparsers.add_parser("values", help="Print values for signals")
+    values_p.add_argument("--vcd", required=True, help="Absolute path to VCD")
+    values_p.add_argument(
+        "--signal",
+        action="append",
+        dest="signals",
+        required=True,
+        help="Signal name (repeatable)",
+    )
+
+    args = parser.parse_args(argv)
+
+    if args.command == "search":
+        print(search_signals(args.vcd, args.pattern))
+        return 0
+    if args.command == "values":
+        print(signal_values(args.vcd, args.signals))
+        return 0
+    return 2
 
 
 if __name__ == "__main__":
+    if "--cli" in sys.argv[1:]:
+        sys.exit(_run_cli(sys.argv[1:]))
     mcp.run()
