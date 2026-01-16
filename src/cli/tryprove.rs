@@ -13,7 +13,7 @@ use crate::logger_init;
 use btor::Btor;
 use giputils::file::{create_dir_if_not_exists, recreate_dir};
 use log::debug;
-use rIC3::{McResult, frontend::btor::BtorFrontend};
+use rIC3::{McResult, frontend::btor::BtorFrontend, transys::certify::BlWitness};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::{HashMap, HashSet},
@@ -204,11 +204,12 @@ pub fn run(path: PathBuf, bmc_timeout: u64, ic3_timeout: u64) -> anyhow::Result<
         return Ok(());
     }
 
-    // 9. Check old CTIs AFTER inductiveness check (matching cill semantics)
-    let mut cti_blocked: HashMap<String, bool> = HashMap::new();
+    // 9. Check old CTIs and get refreshed witnesses (matching cill semantics)
+    // Maps prop name -> Some(witness) if not blocked, None if blocked
+    let mut cti_results: HashMap<String, Option<BlWitness>> = HashMap::new();
     for (prop_name, prev_cti_str) in &prev_state.ctis {
-        let blocked = cill.check_cti_from_str(prev_cti_str).unwrap_or(true);
-        cti_blocked.insert(prop_name.clone(), blocked);
+        let result = cill.check_cti_from_str(prev_cti_str)?;
+        cti_results.insert(prop_name.clone(), result);
     }
 
     // 10. Process all properties - always generate new CTIs (no early exit)
@@ -230,27 +231,32 @@ pub fn run(path: PathBuf, bmc_timeout: u64, ic3_timeout: u64) -> anyhow::Result<
             };
             results.push((name, status));
         } else {
-            // Generate new CTI
-            let bl_witness = cill.get_cti(id)?;
             let safe_name: String = name
                 .chars()
                 .map(|c| if c.is_alphanumeric() || c == '-' { c } else { '_' })
                 .collect();
             let vcd_path = vcd_dir.join(format!("{}.vcd", safe_name));
 
-            // Determine status and handle old VCD preservation
-            let status = if prev_state.proved.contains(&name) {
-                PropStatus::Regressed
+            // Determine status and get witness
+            let (status, bl_witness) = if prev_state.proved.contains(&name) {
+                // Regressed - need fresh CTI
+                (PropStatus::Regressed, cill.get_cti(id)?)
             } else {
-                match cti_blocked.get(&name) {
-                    Some(true) => PropStatus::CtiBlockedNewAppeared,
-                    Some(false) => {
-                        // Preserve old VCD as .vcd.old before generating new one
+                match cti_results.get(&name) {
+                    Some(Some(witness)) => {
+                        // Not blocked - preserve old VCD, use refreshed witness
                         let old_vcd_path = vcd_dir.join(format!("{}.vcd.old", safe_name));
                         let _ = fs::copy(&vcd_path, &old_vcd_path);
-                        PropStatus::CtiNotBlocked
+                        (PropStatus::CtiNotBlocked, witness.clone())
                     }
-                    None => PropStatus::NewCti,
+                    Some(None) => {
+                        // Blocked - need fresh CTI
+                        (PropStatus::CtiBlockedNewAppeared, cill.get_cti(id)?)
+                    }
+                    None => {
+                        // New property - need fresh CTI
+                        (PropStatus::NewCti, cill.get_cti(id)?)
+                    }
                 }
             };
 
@@ -281,13 +287,13 @@ pub fn run(path: PathBuf, bmc_timeout: u64, ic3_timeout: u64) -> anyhow::Result<
 
     for (name, status) in &results {
         match status {
-            PropStatus::CtiNotBlocked { .. } => {
+            PropStatus::CtiNotBlocked => {
                 not_blocked.push(name);
             }
-            PropStatus::CtiBlockedNewAppeared { .. } => {
+            PropStatus::CtiBlockedNewAppeared => {
                 blocked_new.push(name);
             }
-            PropStatus::NewCti { .. } => {
+            PropStatus::NewCti => {
                 new_cti.push(name);
             }
             PropStatus::ProvedAfterHelper => {
