@@ -174,7 +174,8 @@ impl Portfolio {
                 Ok(msg) => match msg {
                     Some(WaitStatus::Exited(pid, code)) => {
                         if let Some((mut child, engine)) = running.remove(&pid) {
-                            if code == 0 {
+                            let is_normal_exit = code == 0 || code == 10 || code == 20;
+                            if is_normal_exit {
                                 let stdout = child.stdout.take().unwrap();
                                 let reader = BufReader::new(stdout);
                                 let mut res = None;
@@ -182,6 +183,14 @@ impl Portfolio {
                                     match l.as_str() {
                                         "SAT" => res = Some(false),
                                         "UNSAT" => res = Some(true),
+                                        _ => (),
+                                    }
+                                }
+
+                                if res.is_none() {
+                                    match code {
+                                        10 => res = Some(false),
+                                        20 => res = Some(true),
                                         _ => (),
                                     }
                                 }
