@@ -120,11 +120,15 @@ def _value_at(times: Sequence[int], values: Sequence[str], t: int) -> str:
     return values[idx]
 
 
+def _strip_inner_ws(s: str) -> str:
+    return "".join(s.split())
+
+
 def _format_hex(val: str) -> str:
     if val is None or val == "x":
         return "X"
 
-    s = str(val).strip()
+    s = _strip_inner_ws(str(val).strip())
     if not s:
         return s
 
@@ -138,28 +142,23 @@ def _format_hex(val: str) -> str:
 
     lowered = s_bits.lower()
 
-    # If there are any unknown/high-impedance bits, prefer a compact hex-ish
-    # representation for wide vectors to avoid extremely verbose output.
-    #
-    # Note: This intentionally loses precision for mixed nibbles
-    # (e.g. 0b_xxx1 -> 0x_x), trading detail for readability.
     if any(c in lowered for c in ("x", "z")):
-        # Keep small vectors as binary (more readable, less lossy).
-        if len(s_bits) < 8 and len(s_bits) != 4:
-            return "0b_" + s_bits
-
-        # Pad left to a nibble boundary so widths like 31b become 8 hex digits.
+        # Compact to hex; any nibble containing X/Z becomes x or z.
         pad = (-len(s_bits)) % 4
         bits = ("0" * pad) + lowered
         out_digits: List[str] = []
         for i in range(0, len(bits), 4):
             nib = bits[i : i + 4]
             if any(c in nib for c in ("x", "z")):
-                # If the whole nibble is Z, preserve that; otherwise mark as X.
                 if all(c == "z" for c in nib):
                     out_digits.append("z")
-                else:
+                    continue
+                if all(c in ("x", "z") for c in nib):
                     out_digits.append("x")
+                    continue
+                # Mixed known/unknown: treat X/Z as 0 to preserve known bits.
+                nib_bits = "".join("0" if c in ("x", "z") else c for c in nib)
+                out_digits.append(format(int(nib_bits, 2), "x"))
                 continue
             out_digits.append(format(int(nib, 2), "x"))
         return "0x_" + "".join(out_digits)
@@ -173,56 +172,8 @@ def _format_hex(val: str) -> str:
     return s
 
 
-def _is_all_x(values: Sequence[str]) -> bool:
-    for v in values:
-        if v is None:
-            return False
-        s = str(v).strip()
-        if s == "X":
-            continue
-        if s.startswith("0b_"):
-            bits = s[3:].lower()
-            if bits and all(c in "xz" for c in bits):
-                continue
-        return False
-    return True
-
-
-def _is_all_x_raw(values: Sequence[str]) -> bool:
-    """Return True if each value is entirely unknown (X/Z) in raw VCD form.
-
-    Important: this must run on the raw sampled values (before formatting),
-    because formatting may intentionally lose precision for readability.
-    """
-
-    for v in values:
-        if v is None:
-            return False
-        s = str(v).strip()
-        if not s:
-            return False
-
-        if s == "x" or s == "X":
-            continue
-
-        # vcdvcd vector encodings are typically "b....".
-        if (s.startswith("b") or s.startswith("B")) and len(s) > 1:
-            bits = s[1:]
-        elif s.startswith("0b") or s.startswith("0B"):
-            bits = s[2:]
-        else:
-            bits = s
-
-        lowered = bits.lower()
-        if lowered and all(c in "xz" for c in lowered):
-            continue
-        return False
-
-    return True
-
-
 def _normalize_raw_value_for_const(v: str) -> str:
-    s = str(v).strip()
+    s = _strip_inner_ws(str(v).strip())
     if not s:
         return s
 
@@ -236,8 +187,7 @@ def _normalize_raw_value_for_const(v: str) -> str:
 def _steps_text(
     vcd_path: str,
     signals: Sequence[str],
-    include_all_x_line: bool = False,
-) -> Tuple[str, List[str], List[str]]:
+) -> Tuple[str, List[str]]:
     if not signals:
         raise ValueError("signals must be a non-empty list")
 
@@ -263,18 +213,12 @@ def _steps_text(
         sig_indexes[s] = _build_tv_index(tv)
 
     lines: List[str] = []
-    all_x: List[str] = []
     for s in signal_names:
         idx = sig_indexes.get(s)
         if idx is None:
             continue
         times, values = idx
         raw_row_vals = [_value_at(times, values, t) for t in step_times]
-        if _is_all_x_raw(raw_row_vals):
-            all_x.append(s)
-            if include_all_x_line:
-                lines.append(f"{s} All X, irrelevant")
-            continue
 
         # If the value is constant across all sampled steps, compress output.
         # Use raw values for the const check to avoid false constants caused by
@@ -291,7 +235,7 @@ def _steps_text(
         lines.append(f"{s} " + " ".join(row_vals))
 
     text = "\n".join(lines)
-    return text, missing, all_x
+    return text, missing
 
 
 mcp = FastMCP("vcd-tools")
@@ -315,39 +259,11 @@ def search_signals(vcd_path: str, pattern: str) -> str:
     found_sig_nr = len(matches)
 
     if found_sig_nr * trans_nr <= 40 and matches:
-        text, _missing, _all_x = _steps_text(
-            vcd_path,
-            matches,
-            include_all_x_line=True,
-        )
+        text, _missing = _steps_text(vcd_path, matches)
         return text
 
     if not matches:
         return "Found 0 signals:"
-
-    _text, _missing, all_x = _steps_text(vcd_path, matches)
-    if all_x:
-        all_x_set = set(all_x)
-        matches = [s for s in matches if s not in all_x_set]
-
-    if not matches:
-        # All matches existed, but were filtered out as irrelevant (all X).
-        if all_x:
-            if len(all_x) <= 20:
-                return (
-                    "Found 0 non-all-X signals (filtered {} all-X signals):\n{}".format(
-                        len(all_x), "\n".join(sorted(all_x))
-                    )
-                )
-            return "Found 0 non-all-X signals (filtered {} all-X signals).".format(
-                len(all_x)
-            )
-        return "Found 0 signals:"
-
-    if all_x:
-        return "Found {} signals (filtered {} all-X signals):\n{}".format(
-            len(matches), len(all_x), "\n".join(matches)
-        )
 
     return "Found {} signals:\n{}".format(len(matches), "\n".join(matches))
 
@@ -363,15 +279,13 @@ def signal_values(
     vcd_path: str,
     signals: List[str],
 ) -> str:
-    text, missing, all_x = _steps_text(
+    text, missing = _steps_text(
         vcd_path,
         signals,
     )
     lines: List[str] = []
     if missing:
         lines.append("Not found: " + " ".join(missing))
-    if all_x:
-        lines.append("Irrelevant all X signals: " + ", ".join(all_x))
     if text:
         lines.append(text)
     return "\n".join(lines)

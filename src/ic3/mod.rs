@@ -99,7 +99,7 @@ pub struct IC3Config {
     pub pred_prop: bool,
 
     /// Local proof (internal parameter)
-    #[arg(skip)]
+    #[arg(long = "local-proof", default_value_t = false)]
     pub local_proof: bool,
 }
 

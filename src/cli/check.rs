@@ -36,6 +36,10 @@ pub struct CheckConfig {
     /// interrupt statistic
     #[arg(long, default_value_t = false)]
     pub interrupt_statistic: bool,
+
+    /// skip simplification
+    #[arg(long, default_value_t = false)]
+    pub skip_simp: bool,
 }
 
 fn report_res(chk: &CheckConfig, res: McResult) -> u8 {
@@ -86,11 +90,15 @@ pub fn check(mut chk: CheckConfig, cfg: EngineConfig) -> u8 {
     let mut frontend: Box<dyn Frontend> = match chk.model.extension() {
         Some(ext) if (ext == "aig") | (ext == "aag") => {
             let aig = Aig::from_file(&chk.model);
-            Box::new(AigFrontend::new(aig))
+            let mut fe = AigFrontend::new(aig);
+            fe.set_skip_simp(chk.skip_simp);
+            Box::new(fe)
         }
         Some(ext) if (ext == "btor") | (ext == "btor2") => {
             let btor = Btor::from_file(&chk.model);
-            Box::new(BtorFrontend::new(btor))
+            let mut fe = BtorFrontend::new(btor);
+            fe.set_skip_simp(chk.skip_simp);
+            Box::new(fe)
         }
         _ => {
             error!("Unsupported file format. Supported extensions are: .aig, .aag, .btor, .btor2.");

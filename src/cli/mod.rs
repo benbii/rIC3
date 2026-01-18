@@ -72,18 +72,17 @@ pub enum Commands {
     },
 }
 
-pub fn cli_main() -> u8 {
+pub fn cli_main() -> Result<u8, anyhow::Error> {
+    fs::create_dir_all("/tmp/rIC3")?;
     let cli = Cli::parse();
     match cli.command {
-        Commands::Run => run::run().is_err() as u8,
-        Commands::Check { chk, cfg } => check::check(chk, cfg),
-        Commands::Clean => clean::clean().is_err() as u8,
-        Commands::Cill { cmd } => cill(cmd).is_err() as u8,
+        Commands::Run => run::run().map(|_| 0),
+        Commands::Check { chk, cfg } => Ok(check::check(chk, cfg)),
+        Commands::Clean => clean::clean().map(|_| 0),
+        Commands::Cill { cmd } => cill(cmd).map(|_| 0),
         Commands::TryProve {
-            path,
-            bmc_timeout,
-            ic3_timeout,
-        } => tryprove::run(path, bmc_timeout, ic3_timeout).is_err() as u8,
+            path, bmc_timeout, ic3_timeout,
+        } => tryprove::run(path, bmc_timeout, ic3_timeout).map(|_| 0),
     }
 }
 

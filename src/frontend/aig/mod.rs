@@ -125,9 +125,11 @@ fn aig_symbols(aig: &Aig) -> VarSymbols {
 pub struct AigFrontend {
     oaig: Aig,
     ots: Transys,
-    ts: Transys,
-    ts_symbols: VarSymbols,
-    rst: VarVMap,
+    ts: Option<Transys>,
+    ts_symbols: Option<VarSymbols>,
+    rst: Option<VarVMap>,
+    osymbols: VarSymbols,
+    skip_simp: bool,
 }
 
 impl AigFrontend {
@@ -162,24 +164,52 @@ impl AigFrontend {
         }
         let ots = Transys::from_aig(&aig, true);
         let osymbols = aig_symbols(&aig);
-        let (aig, rst) = aig_preprocess(&aig);
-        let inv_rst = rst.inverse();
-        let ts_symbols = osymbols.map_var(inv_rst.try_map_fn());
-        let ts = Transys::from_aig(&aig, true);
+
         Self {
-            oaig,
+            oaig: aig,
             ots,
-            ts,
-            ts_symbols,
-            rst,
+            ts: None,
+            ts_symbols: None,
+            rst: None,
+            osymbols,
+            skip_simp: false,
         }
+    }
+
+    pub fn set_skip_simp(&mut self, skip: bool) {
+        self.skip_simp = skip;
+    }
+
+    fn ensure_ts(&mut self) {
+        if self.ts.is_some() {
+            return;
+        }
+
+        let (aig, rst) = if self.skip_simp {
+            (self.oaig.clone(), None)
+        } else {
+            let (aig, rst) = aig_preprocess(&self.oaig);
+            (aig, Some(rst))
+        };
+
+        if let Some(rst) = &rst {
+            let inv_rst = rst.inverse();
+            let ts_symbols = self.osymbols.map_var(inv_rst.try_map_fn());
+            self.ts_symbols = Some(ts_symbols);
+        } else {
+            self.ts_symbols = Some(self.osymbols.clone());
+        }
+
+        let ts = Transys::from_aig(&aig, true);
+        self.ts = Some(ts);
+        self.rst = rst;
     }
 
     pub fn is_safety(&self) -> bool {
         if !self.oaig.bads.is_empty() {
             true
         } else {
-            assert!(!self.ts.justice.is_empty());
+            assert!(!self.ots.justice.is_empty());
             false
         }
     }
@@ -187,7 +217,11 @@ impl AigFrontend {
 
 impl Frontend for AigFrontend {
     fn ts(&mut self) -> (Transys, VarSymbols) {
-        (self.ts.clone(), self.ts_symbols.clone())
+        self.ensure_ts();
+        (
+            self.ts.as_ref().unwrap().clone(),
+            self.ts_symbols.as_ref().unwrap().clone(),
+        )
     }
 
     fn safe_certificate(&mut self, proof: McProof) -> Box<dyn Display> {
@@ -200,13 +234,18 @@ impl Frontend for AigFrontend {
         certifaiger = certifaiger.reencode();
         certifaiger.symbols.clear();
         for (i, v) in proof.proof.input().enumerate() {
-            if let Some(r) = self.rst.get(&v) {
-                certifaiger.set_symbol(certifaiger.inputs[i], &format!("= {}", (**r) * 2));
+            if let Some(rst) = &self.rst {
+                if let Some(r) = rst.get(&v) {
+                    certifaiger.set_symbol(certifaiger.inputs[i], &format!("= {}", (**r) * 2));
+                }
             }
         }
         for (i, v) in proof.proof.latch().enumerate() {
-            if let Some(r) = self.rst.get(&v) {
-                certifaiger.set_symbol(certifaiger.latchs[i].input, &format!("= {}", (**r) * 2));
+            if let Some(rst) = &self.rst {
+                if let Some(r) = rst.get(&v) {
+                    certifaiger
+                        .set_symbol(certifaiger.latchs[i].input, &format!("= {}", (**r) * 2));
+                }
             }
         }
         Box::new(certifaiger)
@@ -214,10 +253,14 @@ impl Frontend for AigFrontend {
 
     fn unsafe_certificate(&mut self, witness: McWitness) -> Box<dyn Display> {
         let witness = witness.into_bl().unwrap();
-        let mut wit = witness.filter_map_var(|v: Var| self.rst.get(&v).copied());
+        let mut wit = if let Some(rst) = &self.rst {
+            witness.filter_map_var(|v: Var| rst.get(&v).copied())
+        } else {
+            witness
+        };
         let mut res = vec!["1".to_string()];
         if self.is_safety() {
-            res.push(format!("b{}", witness.bad_id));
+            res.push(format!("b{}", wit.bad_id));
         } else {
             res.push("j0".to_string());
         }

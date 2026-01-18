@@ -1,11 +1,10 @@
 mod cli;
 
 use crate::cli::cli_main;
-use std::{fs, io::Write, process::ExitCode};
+use std::{io::Write, process::ExitCode};
 
 fn main() -> ExitCode {
-    fs::create_dir_all("/tmp/rIC3").unwrap();
-    ExitCode::from(cli_main())
+    ExitCode::from(cli_main().unwrap() as u8)
 }
 
 fn logger_init() {

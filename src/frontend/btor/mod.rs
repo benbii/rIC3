@@ -69,6 +69,7 @@ pub struct BtorFrontend {
     no_next: GHashSet<Term>,
     rst: Restore,
     bb_rst: Option<BitblastMap>,
+    skip_simp: bool,
 }
 
 impl BtorFrontend {
@@ -96,7 +97,12 @@ impl BtorFrontend {
             no_next,
             rst,
             bb_rst: None,
+            skip_simp: false,
         }
+    }
+
+    pub fn set_skip_simp(&mut self, skip: bool) {
+        self.skip_simp = skip;
     }
 }
 
@@ -165,9 +171,11 @@ impl BtorFrontend {
 impl Frontend for BtorFrontend {
     fn ts(&mut self) -> (bl::Transys, VarSymbols) {
         let mut wts = self.wts.clone();
-        wts.coi_refine();
-        wts.simplify();
-        wts.coi_refine();
+        if !self.skip_simp {
+            wts.coi_refine();
+            wts.simplify();
+            wts.coi_refine();
+        }
         // let btor = Btor::from(&wts);
         // btor.to_file("simp.btor");
         let (ts, bb_rst) = wts.bitblast_to_ts();
