@@ -125,8 +125,8 @@ def _strip_inner_ws(s: str) -> str:
 
 
 def _format_hex(val: str) -> str:
-    if val is None or val == "x":
-        return "X"
+    if val is None:
+        return "0x_x"
 
     s = _strip_inner_ws(str(val).strip())
     if not s:
@@ -141,6 +141,9 @@ def _format_hex(val: str) -> str:
         s_bits = s
 
     lowered = s_bits.lower()
+
+    if 1 <= len(lowered) <= 7:
+        return "0b_" + lowered
 
     if any(c in lowered for c in ("x", "z")):
         # Compact to hex; any nibble containing X/Z becomes x or z.
@@ -164,10 +167,12 @@ def _format_hex(val: str) -> str:
         return "0x_" + "".join(out_digits)
 
     if s_bits and all(c in "01" for c in s_bits):
-        h = hex(int(s_bits, 2))
-        if h.startswith("0x"):
-            return "0x_" + h[2:]
-        return h
+        val_int = int(s_bits, 2)
+        # Calculate expected hex digits based on bit length
+        # 1-4 bits -> 1 hex digit, 5-8 bits -> 2 hex digits, etc.
+        num_hex_digits = (len(s_bits) + 3) // 4
+        h = format(val_int, f"0{num_hex_digits}x")
+        return "0x_" + h
 
     return s
 
@@ -184,10 +189,31 @@ def _normalize_raw_value_for_const(v: str) -> str:
     return s
 
 
-def _steps_text(
+def _is_raw_value_x(val: str) -> bool:
+    if val is None:
+        return True
+    s = _strip_inner_ws(str(val).strip()).lower()
+    if not s:
+        return True
+    if s in ("x", "z"):
+        return True
+
+    if s.startswith("b"):
+        s = s[1:]
+    elif s.startswith("0b"):
+        s = s[2:]
+
+    # If it contains any known bit (0 or 1), it is not "All X"
+    for c in s:
+        if c in ("0", "1"):
+            return False
+    return True
+
+
+def _get_steps_data(
     vcd_path: str,
     signals: Sequence[str],
-) -> Tuple[str, List[str]]:
+) -> Tuple[List[str], Dict[str, List[str]], List[str], List[int]]:
     if not signals:
         raise ValueError("signals must be a non-empty list")
 
@@ -212,13 +238,34 @@ def _steps_text(
             continue
         sig_indexes[s] = _build_tv_index(tv)
 
-    lines: List[str] = []
+    sig_data: Dict[str, List[str]] = {}
     for s in signal_names:
         idx = sig_indexes.get(s)
         if idx is None:
             continue
         times, values = idx
         raw_row_vals = [_value_at(times, values, t) for t in step_times]
+        sig_data[s] = raw_row_vals
+
+    return signal_names, sig_data, missing, step_times
+
+
+def _format_signal_lines(
+    signal_names: List[str],
+    sig_data: Dict[str, List[str]],
+    mask_all_x: bool = False,
+) -> str:
+    lines: List[str] = []
+    for s in signal_names:
+        raw_row_vals = sig_data.get(s)
+        if raw_row_vals is None:
+            continue
+
+        if mask_all_x:
+            # Check if all values are X
+            if all(_is_raw_value_x(v) for v in raw_row_vals):
+                lines.append(f"{s} irrelevant(all-x)")
+                continue
 
         # If the value is constant across all sampled steps, compress output.
         # Use raw values for the const check to avoid false constants caused by
@@ -226,15 +273,21 @@ def _steps_text(
         if len(raw_row_vals) > 1:
             normalized = [_normalize_raw_value_for_const(v) for v in raw_row_vals]
             if normalized and all(n == normalized[0] for n in normalized[1:]):
-                lines.append(
-                    f"{s} constant {_format_hex(raw_row_vals[0])}"
-                )
+                lines.append(f"{s} constant {_format_hex(raw_row_vals[0])}")
                 continue
 
         row_vals = [_format_hex(v) for v in raw_row_vals]
         lines.append(f"{s} " + " ".join(row_vals))
 
-    text = "\n".join(lines)
+    return "\n".join(lines)
+
+
+def _steps_text(
+    vcd_path: str,
+    signals: Sequence[str],
+) -> Tuple[str, List[str]]:
+    signal_names, sig_data, missing, _ = _get_steps_data(vcd_path, signals)
+    text = _format_signal_lines(signal_names, sig_data, mask_all_x=False)
     return text, missing
 
 
@@ -254,18 +307,32 @@ def search_signals(vcd_path: str, pattern: str) -> str:
     regex = re.compile(pattern)
     matches = [s for s in signals if regex.search(s)]
 
-    step_times = _sample_times(vcd_path)
-    trans_nr = len(step_times)
-    found_sig_nr = len(matches)
-
-    if found_sig_nr * trans_nr <= 40 and matches:
-        text, _missing = _steps_text(vcd_path, matches)
-        return text
-
     if not matches:
         return "Found 0 signals:"
 
-    return "Found {} signals:\n{}".format(len(matches), "\n".join(matches))
+    # We need values to determine if signals are "All X", which are filtered out
+    # in both display modes (values shown or just names).
+    signal_names, sig_data, missing, step_times = _get_steps_data(vcd_path, matches)
+
+    trans_nr = len(step_times)
+    found_sig_nr = len(matches)
+
+    all_x_sigs = set()
+    for s, vals in sig_data.items():
+        if all(_is_raw_value_x(v) for v in vals):
+            all_x_sigs.add(s)
+
+    if found_sig_nr * trans_nr <= 35:
+        return _format_signal_lines(signal_names, sig_data, mask_all_x=True)
+
+    filtered_matches = [s for s in signal_names if s not in all_x_sigs]
+
+    if not filtered_matches:
+        return "Found 0 signals (all matches were X/irrelevant):"
+
+    return "Showing {} signals and hiding {} irrelevant (all-x) ones:\n{}".format(
+        len(filtered_matches), len(all_x_sigs), "\n".join(filtered_matches)
+    )
 
 
 @mcp.tool(

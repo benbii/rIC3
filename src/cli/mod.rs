@@ -63,11 +63,11 @@ pub enum Commands {
         path: PathBuf,
 
         /// BMC timeout in seconds
-        #[arg(long, default_value = "10")]
+        #[arg(long, default_value = "30")]
         bmc_timeout: u64,
 
         /// IC3 timeout in seconds
-        #[arg(long, default_value = "30")]
+        #[arg(long, default_value = "200")]
         ic3_timeout: u64,
     },
 }
