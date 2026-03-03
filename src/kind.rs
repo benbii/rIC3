@@ -3,7 +3,10 @@ use crate::{
     config::{EngineConfig, EngineConfigBase, PreprocConfig},
     impl_config_deref,
     tracer::{Tracer, TracerIf},
-    transys::{Transys, TransysIf, certify::Restore, nodep::NoDepTransys, unroll::TransysUnroll},
+    transys::{
+        Transys, TransysIf, certify::Restore, nodep::NoDepTransys, preproc_serde::PreprocModel,
+        unroll::TransysUnroll,
+    },
 };
 use clap::{Args, Parser};
 use log::{error, info};
@@ -72,13 +75,20 @@ impl Kind {
     pub fn new(cfg: KindConfig, mut ts: Transys) -> Self {
         cfg.validate();
         let ots = ts.clone();
-        let mut rst = Restore::new(&ts);
         if let Some(prop) = cfg.prop
             && !cfg.local_proof
         {
             ts.bad = LitVec::from(ts.bad[prop]);
         }
-        (ts, rst) = ts.preproc(&cfg.preproc, rst);
+        let (model, loaded) = PreprocModel::load_or_preproc(ts, &cfg.preproc);
+        let (mut ts, mut rst) = (model.ts, model.rst);
+        if loaded {
+            if let Some(prop) = cfg.prop
+                && !cfg.local_proof
+            {
+                ts.bad = LitVec::from(ts.bad[prop]);
+            }
+        }
         ts.remove_gate_init(&mut rst);
         let mut ts = ts.remove_dep();
         ts.assert_constraint();

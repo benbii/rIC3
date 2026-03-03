@@ -183,7 +183,7 @@ impl BlProof {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Restore {
     pub(crate) bvmap: VarVMap,
     pub(crate) fvmap: VarVMap,

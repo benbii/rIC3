@@ -3,7 +3,7 @@ use crate::{
     config::{EngineConfig, EngineConfigBase, PreprocConfig},
     ic3::{IC3, IC3Config},
     impl_config_deref,
-    transys::{Transys, TransysIf, certify::Restore},
+    transys::{Transys, TransysIf, certify::Restore, preproc_serde::PreprocModel},
 };
 use clap::{Args, Parser};
 use log::{LevelFilter, debug, error, warn};
@@ -134,8 +134,26 @@ impl Rlive {
             panic!();
         }
         let mut rst = Restore::new(&ts);
+        let mut loaded_preproc = false;
+        if let Some(load_path) = &cfg.preproc.load_preproc {
+            match PreprocModel::load(load_path) {
+                Ok(model) => {
+                    ts = model.ts;
+                    rst = model.rst;
+                    loaded_preproc = true;
+                    if cfg.preproc.fake_preproc_wait {
+                        std::thread::sleep(std::time::Duration::from_secs(
+                            model.preproc_time_secs,
+                        ));
+                    }
+                }
+                Err(err) => {
+                    error!("Load preproc model {:?} failed: {:?}", load_path, err);
+                }
+            }
+        }
         ts.normalize_justice();
-        if cfg.preproc.preproc {
+        if cfg.preproc.preproc && !loaded_preproc {
             ts.simplify(&mut rst);
         }
         assert!(ts.justice.len() == 1);

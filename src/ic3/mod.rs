@@ -6,7 +6,8 @@ use crate::{
     impl_config_deref,
     tracer::{Tracer, TracerIf},
     transys::{
-        Transys, TransysCtx, TransysIf, certify::Restore, lift::TsLift, unroll::TransysUnroll,
+        Transys, TransysCtx, TransysIf, certify::Restore, lift::TsLift,
+        preproc_serde::PreprocModel, unroll::TransysUnroll,
     },
 };
 use activity::Activity;
@@ -211,13 +212,21 @@ impl IC3 {
             if !cfg.local_proof {
                 ts.bad = LitVec::from(ts.bad[prop]);
             }
-        } else {
-            ts.compress_bads();
         }
-        let rst = Restore::new(&ts);
         let rng = StdRng::seed_from_u64(cfg.rseed);
         let statistic = Statistic::default();
-        let (mut ts, mut rst) = ts.preproc(&cfg.preproc, rst);
+        let (model, loaded) = PreprocModel::load_or_preproc(ts, &cfg.preproc);
+        let (mut ts, mut rst) = (model.ts, model.rst);
+        if loaded {
+            if let Some(prop) = cfg.prop
+                && !cfg.local_proof
+            {
+                ts.bad = LitVec::from(ts.bad[prop]);
+            }
+        }
+        if cfg.prop.is_none() {
+            ts.compress_bads();
+        }
         ts.remove_gate_init(&mut rst);
         let mut uts = TransysUnroll::new(&ts);
         uts.unroll();

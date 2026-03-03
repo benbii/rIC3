@@ -10,7 +10,7 @@ use rIC3::{
     frontend::{Frontend, aig::AigFrontend, btor::BtorFrontend, certificate_check},
     portfolio::{Portfolio, PortfolioConfig},
     tracer::LogTracer,
-    transys::TransysIf,
+    transys::{TransysIf, preproc_serde::PreprocModel},
 };
 use std::{env, fs, mem::transmute, path::PathBuf, process::exit};
 
@@ -95,6 +95,30 @@ pub fn check(mut chk: CheckConfig, cfg: EngineConfig) -> anyhow::Result<()> {
         }
     };
     let log_tracer = Box::new(LogTracer::new(cfg.as_ref()));
+    if let Some(pcfg) = preproc_cfg(&cfg) {
+        if pcfg.export_preproc.is_some() && pcfg.load_preproc.is_some() {
+            error!("cannot use both --export-preproc and --load-preproc");
+            exit(1);
+        }
+        if let Some(export_path) = &pcfg.export_preproc {
+            if cfg.is_wl() {
+                error!("export-preproc is only supported for bit-level engines");
+                exit(1);
+            }
+            let (ts, _symbols) = frontend.ts();
+            info!("origin ts has {}", ts.statistic());
+            let model = PreprocModel::run(ts, pcfg);
+            model
+                .save(export_path)
+                .expect("Failed to export preprocessed model");
+            info!(
+                "Exported preprocessed model to {:?} (preproc took {}s)",
+                export_path, model.preproc_time_secs
+            );
+            return Ok(());
+        }
+    }
+
     let mut engine: Box<dyn Engine> = if cfg.is_wl() {
         let (wts, _symbols) = frontend.wts();
         // info!("origin ts has {}", ts.statistic());
@@ -123,6 +147,17 @@ pub fn check(mut chk: CheckConfig, cfg: EngineConfig) -> anyhow::Result<()> {
     }
     drop(tmp_cert);
     Ok(())
+}
+
+fn preproc_cfg(cfg: &EngineConfig) -> Option<&rIC3::config::PreprocConfig> {
+    match cfg {
+        EngineConfig::IC3(cfg) => Some(&cfg.preproc),
+        EngineConfig::Kind(cfg) => Some(&cfg.preproc),
+        EngineConfig::BMC(cfg) => Some(&cfg.preproc),
+        EngineConfig::MultiProp(cfg) => Some(&cfg.preproc),
+        EngineConfig::Rlive(cfg) => Some(&cfg.preproc),
+        _ => None,
+    }
 }
 
 fn interrupt_statistic(chk: &CheckConfig, engine: &mut dyn Engine) {

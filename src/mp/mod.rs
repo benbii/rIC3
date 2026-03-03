@@ -7,6 +7,7 @@ use crate::{
     transys::{
         Transys,
         certify::{BlProof, Restore},
+        preproc_serde::PreprocModel,
     },
 };
 use clap::{ArgAction, Args};
@@ -22,7 +23,7 @@ pub struct MultiPropConfig {
     base: EngineConfigBase,
 
     #[command(flatten)]
-    preproc: PreprocConfig,
+    pub preproc: PreprocConfig,
 
     /// Disable parallel checking
     #[arg(long = "no-parallel", action = ArgAction::SetFalse, default_value_t = true)]
@@ -55,8 +56,8 @@ impl MultiProp {
     pub fn new(cfg: MultiPropConfig, ts: Transys) -> Self {
         cfg.validate();
         let ots = ts.clone();
-        let rst = Restore::new(&ts);
-        let (mut ts, mut rst) = ts.preproc(&cfg.preproc, rst);
+        let (model, _loaded) = PreprocModel::load_or_preproc(ts, &cfg.preproc);
+        let (mut ts, mut rst) = (model.ts, model.rst);
         ts.remove_gate_init(&mut rst);
         let mut ic3_cfg = IC3Config::default();
         ic3_cfg.local_proof = true;

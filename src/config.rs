@@ -5,6 +5,7 @@ use crate::{
 use clap::{ArgAction, Args, Parser};
 use enum_as_inner::EnumAsInner;
 use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
 use strum::AsRefStr;
 
 /// Macro to implement Deref and DerefMut for config structs that wrap EngineConfigBase
@@ -114,6 +115,18 @@ pub struct PreprocConfig {
     /// scorr time limit in seconds
     #[arg(long = "scorr-tl", default_value_t = 200)]
     pub scorr_tl: u64,
+
+    /// export preprocessed model to file (runs preprocessing only, then exits)
+    #[arg(long = "export-preproc")]
+    pub export_preproc: Option<PathBuf>,
+
+    /// load preprocessed model from file (skips preprocessing)
+    #[arg(long = "load-preproc")]
+    pub load_preproc: Option<PathBuf>,
+
+    /// when loading a preprocessed model, wait for the recorded preprocess time
+    #[arg(long = "fake-preproc-wait", default_value_t = false)]
+    pub fake_preproc_wait: bool,
 }
 
 impl Default for PreprocConfig {
@@ -124,6 +137,9 @@ impl Default for PreprocConfig {
             frts_tl: 1000,
             scorr: true,
             scorr_tl: 200,
+            export_preproc: None,
+            load_preproc: None,
+            fake_preproc_wait: false,
         }
     }
 }

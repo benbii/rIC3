@@ -3,7 +3,10 @@ use crate::{
     config::{EngineConfig, EngineConfigBase, PreprocConfig},
     impl_config_deref,
     tracer::{Tracer, TracerIf},
-    transys::{Transys, TransysIf, certify::Restore, nodep::NoDepTransys, unroll::TransysUnroll},
+    transys::{
+        Transys, TransysIf, certify::Restore, nodep::NoDepTransys, preproc_serde::PreprocModel,
+        unroll::TransysUnroll,
+    },
 };
 use clap::{Args, Parser};
 use log::info;
@@ -56,12 +59,12 @@ pub struct BMC {
 }
 
 impl BMC {
-    pub fn new(cfg: BMCConfig, mut ts: Transys) -> Self {
+    pub fn new(cfg: BMCConfig, ts: Transys) -> Self {
         let ots = ts.clone();
-        ts.compress_bads();
         let mut rng = StdRng::seed_from_u64(cfg.rseed);
-        let rst = Restore::new(&ts);
-        let (ts, mut rst) = ts.preproc(&cfg.preproc, rst);
+        let (model, _loaded) = PreprocModel::load_or_preproc(ts, &cfg.preproc);
+        let (mut ts, mut rst) = (model.ts, model.rst);
+        ts.compress_bads();
         let mut ts = ts.remove_dep();
         ts.assert_constraint();
         if cfg.preproc.preproc {
