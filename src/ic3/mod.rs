@@ -16,14 +16,10 @@ use frame::{Frame, Frames};
 use giputils::{grc::Grc, logger::IntervalLogger};
 use log::{Level, debug, error, info, trace};
 use logicrs::{Lit, LitOrdVec, LitVec, LitVvec, Var, VarSymbols, satif::Satif};
-use nix::libc;
 use proofoblig::{ProofObligation, ProofObligationQueue};
 use rand::{SeedableRng, rngs::StdRng};
 use serde::{Deserialize, Serialize};
 use std::{
-    fs::OpenOptions,
-    io::Write,
-    os::fd::AsRawFd,
     path::PathBuf,
     sync::{Arc, atomic::AtomicBool},
     time::Instant,
@@ -181,72 +177,6 @@ impl IC3 {
     #[inline]
     pub fn level(&self) -> usize {
         self.solvers.len() - 1
-    }
-
-    fn inf_lemma_record(lemma: &LitOrdVec) -> Option<Vec<u8>> {
-        let mut lits = Vec::new();
-        for lit in lemma.iter() {
-            if lit.var().is_constant() {
-                continue;
-            }
-            let Ok(var) = i32::try_from(lit.var().0) else {
-                error!("invariant dump skipped: variable id out of i32 range");
-                return None;
-            };
-            lits.push(if lit.polarity() { var } else { -var });
-        }
-
-        let Ok(nlits) = u32::try_from(lits.len()) else {
-            error!("invariant dump skipped: lemma too large");
-            return None;
-        };
-
-        let mut bytes = Vec::with_capacity(4 + lits.len() * 4);
-        bytes.extend_from_slice(&nlits.to_le_bytes());
-        for lit in lits {
-            bytes.extend_from_slice(&lit.to_le_bytes());
-        }
-        Some(bytes)
-    }
-
-    pub(super) fn stream_inf_lemma(&self, lemma: &LitOrdVec) {
-        let Some(path) = self.cfg.inv_dump.as_ref() else {
-            return;
-        };
-
-        let Ok(mut file) = OpenOptions::new()
-            .create(true)
-            .read(true)
-            .append(true)
-            .open(path)
-        else {
-            error!("cannot open invariant dump file: {:?}", path);
-            return;
-        };
-
-        let lock_rc = unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX) };
-        if lock_rc != 0 {
-            let err = std::io::Error::last_os_error();
-            error!("cannot lock invariant dump file {:?}: {:?}", path, err);
-            return;
-        }
-
-        let Some(record) = Self::inf_lemma_record(lemma) else {
-            let _ = unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_UN) };
-            return;
-        };
-
-        let write_res = (|| -> std::io::Result<()> {
-            file.write_all(&record)?;
-            file.sync_data()?;
-            Ok(())
-        })();
-
-        let _ = unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_UN) };
-
-        if let Err(err) = write_res {
-            error!("cannot append invariant dump {:?}: {:?}", path, err);
-        }
     }
 
     fn extend(&mut self) {

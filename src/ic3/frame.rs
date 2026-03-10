@@ -299,7 +299,6 @@ impl IC3 {
         assert!(lastf.len() + 1 == olen);
         let clause = !lemma.as_litvec();
         self.inf_solver.add_clause(&clause);
-        self.stream_inf_lemma(&lemma);
         self.frame.inf.push(FrameLemma::new(lemma, None, None));
     }
 

@@ -2,8 +2,11 @@ use crate::{
     ic3::{IC3, frame::FrameLemma, mic::MicType},
     transys::TransysIf,
 };
+use log::error;
 use logicrs::{LitOrdVec, LitVec};
+use nix::libc;
 use rand::seq::SliceRandom;
+use std::{fs::OpenOptions, io::Write, os::fd::AsRawFd};
 
 impl IC3 {
     pub fn propagate(&mut self, from: Option<usize>) -> bool {
@@ -58,7 +61,13 @@ impl IC3 {
         false
     }
 
-    pub fn propagete_to_inf_rec(&mut self, lastf: &mut Vec<FrameLemma>, ctp: LitVec) -> bool {
+    pub fn propagete_to_inf_rec(
+        &mut self,
+        lastf: &mut Vec<FrameLemma>,
+        ctp: LitVec,
+        dump_buf: &mut Vec<u8>,
+        dump: bool,
+    ) -> bool {
         let ctp = LitOrdVec::new(ctp);
         let Some(lidx) = lastf.iter().position(|l| l.subsume(&ctp)) else {
             return false;
@@ -70,6 +79,21 @@ impl IC3 {
                     self.obligations.remove(po);
                 }
                 self.add_inf_lemma(lemma.as_litvec().clone());
+                if !dump { return true }
+                let mut nlits = 0u32;
+                let dump_start = dump_buf.len();
+                dump_buf.extend_from_slice(&0u32.to_le_bytes());
+                for lit in lemma.iter() {
+                    if lit.var().is_constant() {
+                        continue;
+                    }
+                    let var = i32::try_from(lit.var().0).unwrap();
+                    dump_buf.extend_from_slice(
+                        &(if lit.polarity() { var } else { -var }).to_le_bytes(),
+                    );
+                    nlits += 1;
+                }
+                dump_buf[dump_start..dump_start + 4].copy_from_slice(&nlits.to_le_bytes());
                 return true;
             } else {
                 let target = self.tsctx.lits_next(lemma.as_litvec());
@@ -78,7 +102,7 @@ impl IC3 {
                     target.iter().chain(self.tsctx.constraint.iter()),
                     |i, _| i == 0,
                 );
-                if !self.propagete_to_inf_rec(lastf, ctp) {
+                if !self.propagete_to_inf_rec(lastf, ctp, dump_buf, dump) {
                     return false;
                 }
             }
@@ -89,6 +113,8 @@ impl IC3 {
         let level = self.level();
         self.frame[level].shuffle(&mut self.rng);
         let mut lastf = self.frame[level].clone();
+        let dump = self.cfg.inv_dump.is_some();
+        let mut dump_buf = Vec::new();
         while let Some(mut lemma) = lastf.pop() {
             loop {
                 if self.inf_solver.inductive(&lemma, true) {
@@ -96,6 +122,22 @@ impl IC3 {
                         self.obligations.remove(po);
                     }
                     self.add_inf_lemma(lemma.as_litvec().clone());
+                    if !dump { break; }
+                    let mut nlits = 0u32;
+                    let dump_start = dump_buf.len();
+                    dump_buf.extend_from_slice(&0u32.to_le_bytes());
+                    for lit in lemma.iter() {
+                        if lit.var().is_constant() {
+                            continue;
+                        }
+                        let var = i32::try_from(lit.var().0).unwrap();
+                        dump_buf.extend_from_slice(
+                            &(if lit.polarity() { var } else { -var }).to_le_bytes(),
+                        );
+                        nlits += 1;
+                    }
+                    debug_assert!(dump_buf.len() >= dump_start + 4); // due to extend_from_slice
+                    dump_buf[dump_start..dump_start + 4].copy_from_slice(&nlits.to_le_bytes());
                     break;
                 } else {
                     let target = self.tsctx.lits_next(lemma.as_litvec());
@@ -104,11 +146,27 @@ impl IC3 {
                         target.iter().chain(self.tsctx.constraint.iter()),
                         |i, _| i == 0,
                     );
-                    if !self.propagete_to_inf_rec(&mut lastf, ctp) {
+                    if !self.propagete_to_inf_rec(&mut lastf, ctp, &mut dump_buf, dump) {
                         break;
                     }
                 }
             }
+        }
+
+        if dump_buf.is_empty() {
+            return;
+        }
+        let path = self.cfg.inv_dump.as_ref().unwrap();
+        if let Err(err) = (|| -> std::io::Result<()> {
+            let mut file = OpenOptions::new().create(true).append(true).open(path)?;
+            let lock_rc = unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX) };
+            if lock_rc != 0 { return Err(std::io::Error::last_os_error()); }
+            file.write_all(&dump_buf)?;
+            file.sync_data()?;
+            let _ = unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_UN) };
+            Ok(())
+        })() {
+            error!("cannot append invariant dump {:?}: {:?}", path, err);
         }
     }
 }
