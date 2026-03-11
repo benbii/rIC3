@@ -2,7 +2,6 @@ use crate::{
     Engine, McResult, McWitness,
     config::EngineConfigBase,
     impl_config_deref,
-    tracer::{Tracer, TracerIf},
     wltransys::{WlTransys, unroll::WlTransysUnroll},
 };
 use clap::Args;
@@ -25,7 +24,6 @@ pub struct WlBMC {
     uts: WlTransysUnroll,
     solver: bitwuzla::Bitwuzla,
     solver_k: usize,
-    tracer: Tracer,
 }
 
 impl WlBMC {
@@ -43,7 +41,6 @@ impl WlBMC {
             uts,
             solver,
             solver_k: 0,
-            tracer: Tracer::new(),
         }
     }
 
@@ -64,17 +61,13 @@ impl Engine for WlBMC {
             self.load_trans_to(k);
             let assump = self.uts.next(&self.uts.ts.bad[0], k);
             if self.solver.solve(&[assump]) {
-                self.tracer.trace_res(crate::McResult::Unsafe(k));
+                info!("wl-bmc found a counterexample at depth {k}");
                 return McResult::Unsafe(k);
             }
-            self.tracer.trace_res(crate::McResult::Unknown(Some(k)));
+            info!("wl-bmc found no counterexample at exact depth {k}");
         }
         info!("bmc reached bound {}, stopping search", self.cfg.end);
         McResult::Unknown(Some(self.cfg.end))
-    }
-
-    fn add_tracer(&mut self, tracer: Box<dyn TracerIf>) {
-        self.tracer.add_tracer(tracer);
     }
 
     fn witness(&mut self) -> McWitness {

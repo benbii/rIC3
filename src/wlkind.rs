@@ -2,7 +2,6 @@ use crate::{
     Engine, McProof, McResult, McWitness,
     config::EngineConfigBase,
     impl_config_deref,
-    tracer::{Tracer, TracerIf},
     wltransys::{WlTransys, certify::WlProof, unroll::WlTransysUnroll},
 };
 use clap::Args;
@@ -26,7 +25,6 @@ pub struct WlKind {
     solver_trans_k: usize,
     solver_bad_k: usize,
     owts: WlTransys,
-    tracer: Tracer,
 }
 
 impl WlKind {
@@ -42,7 +40,6 @@ impl WlKind {
             solver_trans_k: 0,
             solver_bad_k: 0,
             owts,
-            tracer: Tracer::new(),
         }
     }
 
@@ -84,7 +81,7 @@ impl Engine for WlKind {
                 self.load_bad_to(k - 1);
                 let bad_at_k = self.uts.next(&self.uts.ts.bad[0], k);
                 if !self.solver.solve(&[bad_at_k]) {
-                    self.tracer.trace_res(crate::McResult::Safe);
+                    info!("wl-kind proved the property");
                     return McResult::Safe;
                 }
             }
@@ -97,17 +94,13 @@ impl Engine for WlKind {
             assump.push(bad_at_k);
 
             if self.solver.solve(&assump) {
-                self.tracer.trace_res(crate::McResult::Unsafe(k));
+                info!("wl-kind found a counterexample at depth {k}");
                 return McResult::Unsafe(k);
             }
-            self.tracer.trace_res(crate::McResult::Unknown(Some(k)));
+            info!("wl-kind found no counterexample at exact depth {k}");
         }
         info!("kind reached bound {}, stopping search", self.cfg.end);
         McResult::Unknown(Some(self.cfg.end))
-    }
-
-    fn add_tracer(&mut self, tracer: Box<dyn TracerIf>) {
-        self.tracer.add_tracer(tracer);
     }
 
     fn witness(&mut self) -> McWitness {

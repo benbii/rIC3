@@ -120,7 +120,6 @@ impl CIll {
         // let proof = self.ts_rst.restore_proof(proof, &self.ots);
         // let cfg = KindConfig::default();
         // let mut kind = Kind::new(cfg, proof.proof.clone());
-        // kind.add_tracer(Box::new(LogTracer::new("kind")));
 
         // let proof = self.bb_map.restore_proof(&self.wts, &proof);
         // let proof = format!("{}", self.btorfe.safe_certificate(rIC3::McProof::Wl(proof)));

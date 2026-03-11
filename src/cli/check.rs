@@ -9,7 +9,6 @@ use rIC3::{
     create_bl_engine, create_wl_engine,
     frontend::{Frontend, aig::AigFrontend, btor::BtorFrontend, certificate_check},
     portfolio::{Portfolio, PortfolioConfig},
-    tracer::LogTracer,
     transys::{TransysIf, preproc_serde::PreprocModel},
 };
 use std::{env, fs, mem::transmute, path::PathBuf, process::exit};
@@ -94,7 +93,6 @@ pub fn check(mut chk: CheckConfig, cfg: EngineConfig) -> anyhow::Result<()> {
             exit(1);
         }
     };
-    let log_tracer = Box::new(LogTracer::new(cfg.as_ref()));
     if let Some(pcfg) = preproc_cfg(&cfg) {
         if pcfg.export_preproc.is_some() && pcfg.load_preproc.is_some() {
             error!("cannot use both --export-preproc and --load-preproc");
@@ -128,7 +126,6 @@ pub fn check(mut chk: CheckConfig, cfg: EngineConfig) -> anyhow::Result<()> {
         info!("origin ts has {}", ts.statistic());
         create_bl_engine(cfg.clone(), ts, symbols)
     };
-    engine.add_tracer(log_tracer);
     interrupt_statistic(&chk, engine.as_mut());
     let res = engine.check();
     engine.statistic();

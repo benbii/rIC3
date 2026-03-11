@@ -54,7 +54,6 @@ pub trait TransysIf {
         self.next(var.lit()).var()
     }
 
-    #[inline]
     fn lits_next<'a>(&self, lits: impl IntoIterator<Item = &'a Lit>) -> LitVec {
         lits.into_iter().map(|l| self.next(*l)).collect()
     }
@@ -74,7 +73,6 @@ pub trait TransysIf {
         cnf
     }
 
-    #[inline]
     fn load_init<S: Satif + ?Sized>(&self, satif: &mut S) {
         satif.new_var_to(self.max_var());
         for cls in self.inits() {
@@ -82,7 +80,6 @@ pub trait TransysIf {
         }
     }
 
-    #[inline]
     fn load_trans(&self, satif: &mut impl Satif, constraint: bool) {
         satif.new_var_to(self.max_var());
         for c in self.trans() {
@@ -95,7 +92,6 @@ pub trait TransysIf {
         }
     }
 
-    #[inline]
     fn statistic(&self) -> String {
         format!(
             "{} vars, {} inputs, {} latches, {} clauses, {} constraints",

@@ -2,7 +2,6 @@ use super::{Transys, TransysIf};
 use crate::transys::certify::Restore;
 use giputils::hash::GHashMap;
 use logicrs::{Cnf, Lit, LitVec, Var, satif::Satif};
-use std::mem::take;
 
 #[derive(Default, Debug, Clone)]
 pub struct NoDepTransys {
@@ -16,12 +15,6 @@ pub struct NoDepTransys {
 }
 
 impl NoDepTransys {
-    pub fn assert_constraint(&mut self) {
-        for c in take(&mut self.constraint) {
-            self.rel.add_clause(&[c]);
-        }
-    }
-
     pub fn simplify(&mut self, rst: &mut Restore) {
         let mut simp_solver = cadical::CaDiCaL::new();
         simp_solver.new_var_to(self.max_var());
@@ -72,7 +65,7 @@ impl NoDepTransys {
         if self.bad.len() <= 1 {
             return;
         }
-        let bad = take(&mut self.bad);
+        let bad = std::mem::take(&mut self.bad);
         self.bad = LitVec::from(self.rel.new_or(bad));
     }
 }

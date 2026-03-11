@@ -79,7 +79,9 @@ impl IC3 {
                     self.obligations.remove(po);
                 }
                 self.add_inf_lemma(lemma.as_litvec().clone());
-                if !dump { return true }
+                if !dump {
+                    return true;
+                }
                 let mut nlits = 0u32;
                 let dump_start = dump_buf.len();
                 dump_buf.extend_from_slice(&0u32.to_le_bytes());
@@ -122,7 +124,9 @@ impl IC3 {
                         self.obligations.remove(po);
                     }
                     self.add_inf_lemma(lemma.as_litvec().clone());
-                    if !dump { break; }
+                    if !dump {
+                        break;
+                    }
                     let mut nlits = 0u32;
                     let dump_start = dump_buf.len();
                     dump_buf.extend_from_slice(&0u32.to_le_bytes());
@@ -160,7 +164,9 @@ impl IC3 {
         if let Err(err) = (|| -> std::io::Result<()> {
             let mut file = OpenOptions::new().create(true).append(true).open(path)?;
             let lock_rc = unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX) };
-            if lock_rc != 0 { return Err(std::io::Error::last_os_error()); }
+            if lock_rc != 0 {
+                return Err(std::io::Error::last_os_error());
+            }
             file.write_all(&dump_buf)?;
             file.sync_data()?;
             let _ = unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_UN) };

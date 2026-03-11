@@ -3,7 +3,6 @@ use crate::{
     config::{EngineConfigBase, PreprocConfig},
     ic3::{IC3, IC3Config},
     impl_config_deref,
-    tracer::{Tracer, TracerIf},
     transys::{
         Transys,
         certify::{BlProof, Restore},
@@ -47,7 +46,6 @@ pub struct MultiProp {
     rst: Restore,
     ic3: Vec<IC3>,
     ic3_cfg: IC3Config,
-    tracer: Tracer,
     parallel: bool,
     results: Vec<McResult>,
 }
@@ -73,7 +71,6 @@ impl MultiProp {
             rst,
             ic3: Vec::new(),
             ic3_cfg,
-            tracer: Tracer::new(),
             parallel,
         }
     }
@@ -138,9 +135,5 @@ impl Engine for MultiProp {
         let wit = self.ic3[bid].witness().into_bl().unwrap();
         let wit = self.rst.restore_witness(&wit);
         McWitness::Bl(wit)
-    }
-
-    fn add_tracer(&mut self, tracer: Box<dyn TracerIf>) {
-        self.tracer.add_tracer(tracer);
     }
 }

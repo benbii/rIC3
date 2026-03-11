@@ -2,43 +2,37 @@ use crate::{
     Engine, McResult, McWitness,
     config::{EngineConfig, EngineConfigBase, PreprocConfig},
     impl_config_deref,
-    tracer::{Tracer, TracerIf},
     transys::{
         Transys, TransysIf, certify::Restore, nodep::NoDepTransys, preproc_serde::PreprocModel,
         unroll::TransysUnroll,
     },
 };
+use cadical::CaDiCaL;
 use clap::{Args, Parser};
+use kissat::Kissat;
 use log::info;
 use logicrs::{LitVec, satif::Satif};
 use rand::{Rng, SeedableRng, rngs::StdRng};
 use serde::{Deserialize, Serialize};
-use std::time::{Duration, Instant};
 
 #[derive(Args, Clone, Debug, Serialize, Deserialize)]
 pub struct BMCConfig {
     #[command(flatten)]
     pub base: EngineConfigBase,
-
     #[command(flatten)]
     pub preproc: PreprocConfig,
-
     /// per-step time limit (applies to each BMC step, not the overall solver run).
     /// The overall `time_limit` option sets the total time limit for the entire solver run.
     #[arg(long = "step-time-limit")]
     pub step_time_limit: Option<u64>,
-
     /// use kissat solver in bmc, otherwise cadical
     #[arg(long = "kissat", default_value_t = false)]
     pub kissat: bool,
-
     /// dynamic step
     #[arg(long = "dyn-step", default_value_t = false)]
     pub dyn_step: bool,
 }
-
 impl_config_deref!(BMCConfig);
-
 impl Default for BMCConfig {
     fn default() -> Self {
         let cfg = EngineConfig::parse_from(["", "bmc"]);
@@ -46,16 +40,18 @@ impl Default for BMCConfig {
     }
 }
 
+enum S {
+    C(CaDiCaL),
+    K(Kissat, StdRng),
+}
 pub struct BMC {
     ots: Transys,
     uts: TransysUnroll<NoDepTransys>,
     cfg: BMCConfig,
-    solver: Box<dyn Satif>,
     solver_k: usize,
     rst: Restore,
     step: usize,
-    rng: StdRng,
-    tracer: Tracer,
+    solver: S,
 }
 
 impl BMC {
@@ -66,18 +62,24 @@ impl BMC {
         let (mut ts, mut rst) = (model.ts, model.rst);
         ts.compress_bads();
         let mut ts = ts.remove_dep();
-        ts.assert_constraint();
+        for c in std::mem::take(&mut ts.constraint) {
+            ts.rel.add_clause(&[c]);
+        }
         if cfg.preproc.preproc {
             ts.simplify(&mut rst);
         }
         let uts = TransysUnroll::new(&ts);
-        let mut solver: Box<dyn Satif> = if cfg.kissat {
-            Box::new(kissat::Kissat::new())
+        let solver = if cfg.kissat {
+            let mut s = Kissat::new();
+            s.set_seed(rng.random());
+            ts.load_init(&mut s);
+            S::K(s, rng)
         } else {
-            Box::new(cadical::CaDiCaL::new())
+            let mut c = CaDiCaL::new();
+            c.set_seed(rng.random());
+            ts.load_init(&mut c);
+            S::C(c)
         };
-        solver.set_seed(rng.random());
-        ts.load_init(solver.as_mut());
         let step = if cfg.dyn_step {
             (10_000_000 / (*ts.max_var() as usize + ts.rel.clauses().len())).max(1)
         } else {
@@ -86,90 +88,63 @@ impl BMC {
         Self {
             ots,
             uts,
-            step,
             cfg,
-            solver,
             solver_k: 0,
             rst,
-            rng,
-            tracer: Tracer::new(),
-        }
-    }
-
-    pub fn load_trans_to(&mut self, k: usize) {
-        while self.solver_k < k + 1 {
-            self.uts
-                .load_trans(self.solver.as_mut(), self.solver_k, true);
-            self.solver_k += 1;
-        }
-    }
-
-    pub fn reset_solver(&mut self) {
-        self.solver = if self.cfg.kissat {
-            Box::new(kissat::Kissat::new())
-        } else {
-            Box::new(cadical::CaDiCaL::new())
-        };
-        self.solver.set_seed(self.rng.random());
-        self.uts.ts.load_init(self.solver.as_mut());
-        for i in 0..self.solver_k {
-            self.uts.load_trans(self.solver.as_mut(), i, true);
+            step,
+            solver,
         }
     }
 }
 
 impl Engine for BMC {
     fn check(&mut self) -> McResult {
-        let start = Instant::now();
-        for k in (self.cfg.start..=self.cfg.end).step_by(self.step) {
-            let mut time_limit = self.cfg.step_time_limit;
-            if let Some(limit) = self.cfg.time_limit {
-                let time = start.elapsed().as_secs();
-                if start.elapsed().as_secs() >= limit {
-                    return McResult::Unknown(k.checked_sub(1));
+        if let S::C(c) = &mut self.solver {
+            for d in (self.cfg.start..=self.cfg.end).step_by(self.step) {
+                self.uts.unroll_to(d);
+                while self.solver_k < d + 1 {
+                    self.uts.load_trans(c, self.solver_k, true);
+                    self.solver_k += 1;
                 }
-                let remain = limit - time;
-                time_limit = Some(time_limit.map_or(remain, |tl| tl.min(remain)));
-            }
-            self.uts.unroll_to(k);
-            self.load_trans_to(k);
-            let mut assump: LitVec = self.uts.lits_next(&self.uts.ts.bad, k).collect();
-            if self.cfg.kissat {
-                for b in assump.iter() {
-                    self.solver.add_clause(&[*b]);
+                let assump: LitVec = self.uts.lits_next(&self.uts.ts.bad, d).collect();
+                if c.solve(&assump) {
+                    info!("bmc found a counterexample at depth {d}");
+                    return McResult::Unsafe(d);
                 }
-                assump.clear();
+                info!("bmc found no counterexample at exact depth {d}");
             }
-            let r = if let Some(limit) = time_limit {
-                let Some(r) =
-                    self.solver
-                        .solve_with_limit(&assump, vec![], Duration::from_secs(limit))
-                else {
-                    continue;
-                };
-                r
-            } else {
-                self.solver.solve(&assump)
-            };
-            if r {
-                self.tracer.trace_res(crate::McResult::Unsafe(k));
-                return McResult::Unsafe(k);
-            }
-            self.tracer.trace_res(crate::McResult::Unknown(Some(k)));
-            if self.cfg.kissat {
-                self.reset_solver();
+        } else if let S::K(k, rng) = &mut self.solver {
+            for d in (self.cfg.start..=self.cfg.end).step_by(self.step) {
+                self.uts.unroll_to(d);
+                while self.solver_k < d + 1 {
+                    self.uts.load_trans(k, self.solver_k, true);
+                    self.solver_k += 1;
+                }
+                for b in self.uts.lits_next(&self.uts.ts.bad, d) {
+                    k.add_clause(&[b]);
+                }
+                if k.solve(&[]) {
+                    info!("bmc found a counterexample at depth {d}");
+                    return McResult::Unsafe(d);
+                }
+                info!("bmc found no counterexample at exact depth {d}");
+                *k = Kissat::new();
+                k.set_seed(rng.random());
+                self.uts.ts.load_init(k);
+                for i in 0..self.solver_k {
+                    self.uts.load_trans(k, i, true);
+                }
             }
         }
         info!("bmc reached bound {}, stopping search", self.cfg.end);
         McResult::Unknown(Some(self.cfg.end))
     }
 
-    fn add_tracer(&mut self, tracer: Box<dyn TracerIf>) {
-        self.tracer.add_tracer(tracer);
-    }
-
     fn witness(&mut self) -> McWitness {
-        let mut wit = self.uts.witness(self.solver.as_ref());
+        let mut wit = match &self.solver {
+            S::C(c) => self.uts.witness(c),
+            S::K(k, _) => self.uts.witness(k),
+        };
         wit = wit.map(|l| self.rst.restore(l));
         for s in wit.state.iter_mut() {
             *s = self.rst.restore_eq_state(s);

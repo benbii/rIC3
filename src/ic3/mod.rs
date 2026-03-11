@@ -4,7 +4,6 @@ use crate::{
     gipsat::{SolverStatistic, TransysSolver},
     ic3::{block::BlockResult, localabs::LocalAbs, predprop::PredProp},
     impl_config_deref,
-    tracer::{Tracer, TracerIf},
     transys::{
         Transys, TransysCtx, TransysIf, certify::Restore, lift::TsLift,
         preproc_serde::PreprocModel, unroll::TransysUnroll,
@@ -169,7 +168,6 @@ pub struct IC3 {
 
     rng: StdRng,
     filog: IntervalLogger,
-    tracer: Tracer,
     stop_ctrl: Arc<AtomicBool>,
 }
 
@@ -270,7 +268,6 @@ impl IC3 {
             predprop,
             rng,
             filog: Default::default(),
-            tracer: Tracer::new(),
             stop_ctrl: Arc::new(AtomicBool::new(false)),
         }
     }
@@ -286,7 +283,7 @@ impl IC3 {
 impl Engine for IC3 {
     fn check(&mut self) -> McResult {
         if !self.prep_prop_base() {
-            self.tracer.trace_res(McResult::Unsafe(0));
+            info!("ic3 found a counterexample at depth 0");
             return McResult::Unsafe(0);
         }
         self.extend();
@@ -297,12 +294,12 @@ impl Engine for IC3 {
                 match self.block(None) {
                     BlockResult::Failure(depth) => {
                         self.statistic.block.overall_time += start.elapsed();
-                        self.tracer.trace_res(McResult::Unsafe(depth));
+                        info!("ic3 found a counterexample at depth {depth}");
                         return McResult::Unsafe(depth);
                     }
                     BlockResult::Proved => {
                         self.statistic.block.overall_time += start.elapsed();
-                        self.tracer.trace_res(McResult::Safe);
+                        info!("ic3 proved the property");
                         return McResult::Safe;
                     }
                     BlockResult::OverallTimeLimitExceeded => {
@@ -330,21 +327,17 @@ impl Engine for IC3 {
             debug!("blocking phase end");
             self.statistic.block.overall_time += start.elapsed();
             self.filog.log(Level::Info, self.frame.statistic(true));
-            self.tracer.trace_res(McResult::Unknown(Some(self.level())));
+            info!("ic3 found no counterexample up to depth {}", self.level());
             self.extend();
             let start = Instant::now();
             let propagate = self.propagate(None);
             self.statistic.overall_propagate_time += start.elapsed();
             if propagate {
-                self.tracer.trace_res(McResult::Safe);
+                info!("ic3 proved the property");
                 return McResult::Safe;
             }
             self.propagate_to_inf();
         }
-    }
-
-    fn add_tracer(&mut self, tracer: Box<dyn TracerIf>) {
-        self.tracer.add_tracer(tracer);
     }
 
     fn proof(&mut self) -> McProof {

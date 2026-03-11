@@ -142,9 +142,7 @@ impl Rlive {
                     rst = model.rst;
                     loaded_preproc = true;
                     if cfg.preproc.fake_preproc_wait {
-                        std::thread::sleep(std::time::Duration::from_secs(
-                            model.preproc_time_secs,
-                        ));
+                        std::thread::sleep(std::time::Duration::from_secs(model.preproc_time_secs));
                     }
                 }
                 Err(err) => {

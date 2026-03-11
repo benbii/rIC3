@@ -2,7 +2,6 @@ use crate::{
     BlProof, Engine, McProof, McResult, McWitness,
     config::{EngineConfig, EngineConfigBase, PreprocConfig},
     impl_config_deref,
-    tracer::{Tracer, TracerIf},
     transys::{
         Transys, TransysIf, certify::Restore, nodep::NoDepTransys, preproc_serde::PreprocModel,
         unroll::TransysUnroll,
@@ -68,7 +67,6 @@ pub struct Kind {
     slv_bad_k: usize,
     ots: Transys,
     rst: Restore,
-    tracer: Tracer,
 }
 
 impl Kind {
@@ -91,9 +89,8 @@ impl Kind {
         }
         ts.remove_gate_init(&mut rst);
         let mut ts = ts.remove_dep();
-        ts.assert_constraint();
-        if cfg.preproc.preproc {
-            ts.simplify(&mut rst);
+        for c in std::mem::take(&mut ts.constraint) {
+            ts.rel.add_clause(&[c]);
         }
         if cfg.prop.is_none() {
             // keep bad literals
@@ -112,7 +109,6 @@ impl Kind {
             slv_bad_k: 0,
             ots,
             rst,
-            tracer: Tracer::new(),
         }
     }
 
@@ -153,7 +149,7 @@ impl Engine for Kind {
                 let bad = self.get_bad(k);
                 let res = self.solver.solve(&[bad]);
                 if !res {
-                    self.tracer.trace_res(McResult::Safe);
+                    info!("kind proved the property");
                     return McResult::Safe;
                 }
             }
@@ -161,18 +157,14 @@ impl Engine for Kind {
                 let mut assump: LitVec = self.uts.ts.inits().iter().flatten().copied().collect();
                 assump.push(self.get_bad(k));
                 if self.solver.solve(&assump) {
-                    self.tracer.trace_res(McResult::Unsafe(k));
+                    info!("kind found a counterexample at depth {k}");
                     return McResult::Unsafe(k);
                 }
             }
-            self.tracer.trace_res(McResult::Unknown(Some(k)));
+            info!("kind found no counterexample at exact depth {k}");
         }
         info!("kind reached bound {}, stopping search", self.cfg.end);
         McResult::Unknown(Some(self.cfg.end))
-    }
-
-    fn add_tracer(&mut self, tracer: Box<dyn TracerIf>) {
-        self.tracer.add_tracer(tracer);
     }
 
     fn proof(&mut self) -> McProof {

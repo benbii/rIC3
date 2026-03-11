@@ -9,7 +9,6 @@ pub mod kind;
 pub mod mp;
 pub mod portfolio;
 pub mod rlive;
-pub mod tracer;
 pub mod transys;
 pub mod wlbmc;
 pub mod wlkind;
@@ -17,7 +16,6 @@ pub mod wltransys;
 
 use crate::{
     config::EngineConfig,
-    tracer::TracerIf,
     transys::{
         Transys,
         certify::{BlProof, BlWitness},
@@ -85,8 +83,6 @@ pub enum McWitness {
 
 pub trait Engine: Send {
     fn check(&mut self) -> McResult;
-
-    fn add_tracer(&mut self, _tracer: Box<dyn TracerIf>) {}
 
     fn statistic(&mut self) {}
 
