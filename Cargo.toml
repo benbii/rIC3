@@ -13,9 +13,6 @@ name = "ric3"
 path = "src/main.rs"
 
 [dependencies]
-aig = { path = "./deps/aig-rs", version = "0.4.6" }
-cadical = { package = "satif-cadical", path = "./deps/cadical-rs", version = "0.2.2" }
-kissat = { package = "satif-kissat", path = "./deps/kissat-rs", version = "0.5.2" }
 bitwuzla = { package = "smtif-bitwuzla", path = "./deps/bitwuzla-rs", version = "0.1.0" }
 logicrs = { path = "./deps/logicrs", version = "0.6.1" }
 giputils = { path = "./deps/giputils", version = "0.3.6" }
@@ -43,6 +40,9 @@ tabled = { version = "0.20.0", features = ["ansi"] }
 vcd = "0.7.0"
 enum-as-inner = "0.7.0"
 rayon = "1.10.0"
+
+[build-dependencies]
+cmake = "0.1.50"
 
 [profile.dev]
 opt-level = 3

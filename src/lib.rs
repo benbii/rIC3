@@ -1,11 +1,14 @@
 #![allow(non_snake_case)]
 
+pub mod aig;
 pub mod bmc;
+pub mod cadical;
 pub mod config;
 pub mod frontend;
 pub mod gipsat;
 pub mod ic3;
 pub mod kind;
+pub mod kissat;
 pub mod mp;
 pub mod portfolio;
 pub mod rlive;

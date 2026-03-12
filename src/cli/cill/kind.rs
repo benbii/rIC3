@@ -32,7 +32,7 @@ impl CIllKind {
         assert!(!ts.has_gate_init());
         let mut uts = TransysUnroll::new(&ts);
         uts.enable_simple_path();
-        let solver: Box<dyn Satif> = Box::new(cadical::CaDiCaL::new());
+        let solver: Box<dyn Satif> = Box::new(rIC3::cadical::CaDiCaL::new());
         Self {
             prop,
             uts,

@@ -100,7 +100,7 @@ impl Kind {
         if cfg.simple_path {
             uts.enable_simple_path();
         }
-        let solver: Box<dyn Satif> = Box::new(cadical::CaDiCaL::new());
+        let solver: Box<dyn Satif> = Box::new(crate::cadical::CaDiCaL::new());
         Self {
             uts,
             cfg,

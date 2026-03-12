@@ -7,9 +7,9 @@ use crate::{
         unroll::TransysUnroll,
     },
 };
-use cadical::CaDiCaL;
+use crate::cadical::CaDiCaL;
 use clap::{Args, Parser};
-use kissat::Kissat;
+use crate::kissat::Kissat;
 use log::info;
 use logicrs::{LitVec, satif::Satif};
 use rand::{Rng, SeedableRng, rngs::StdRng};

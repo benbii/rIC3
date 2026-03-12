@@ -1,9 +1,9 @@
 use super::Frontend;
 use crate::{
     McProof, McWitness,
+    aig::{Aig, AigEdge},
     transys::{Transys, TransysIf},
 };
-use aig::{Aig, AigEdge};
 use giputils::hash::GHashMap;
 use log::{debug, error, warn};
 use logicrs::{Lbool, Lit, LitVec, Var, VarSymbols, VarVMap};

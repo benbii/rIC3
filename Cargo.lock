@@ -25,17 +25,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "aig"
-version = "0.4.6"
-dependencies = [
- "cc",
- "giputils",
- "libc",
- "logicrs",
- "serde",
-]
-
-[[package]]
 name = "allocator-api2"
 version = "0.2.21"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1461,13 +1450,13 @@ checksum = "69cdb34c158ceb288df11e18b4bd39de994f6657d83847bdffdbd7f346754b0f"
 name = "rIC3"
 version = "1.5.2"
 dependencies = [
- "aig",
  "anyhow",
  "bincode",
  "bitfield-struct",
  "btor",
  "chrono",
  "clap",
+ "cmake",
  "ctrlc",
  "enum-as-inner 0.7.0",
  "env_logger",
@@ -1480,8 +1469,6 @@ dependencies = [
  "ratatui",
  "rayon",
  "ron",
- "satif-cadical",
- "satif-kissat",
  "serde",
  "sha2",
  "smtif-bitwuzla",
@@ -1727,25 +1714,6 @@ name = "ryu"
 version = "1.0.23"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9774ba4a74de5f7b1c1451ed6cd5285a32eddb5cccb8cc655a4e50009e06477f"
-
-[[package]]
-name = "satif-cadical"
-version = "0.2.2"
-dependencies = [
- "aig",
- "cmake",
- "giputils",
- "logicrs",
-]
-
-[[package]]
-name = "satif-kissat"
-version = "0.5.3"
-dependencies = [
- "cmake",
- "giputils",
- "logicrs",
-]
 
 [[package]]
 name = "scopeguard"
