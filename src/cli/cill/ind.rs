@@ -6,10 +6,7 @@ use btor::Btor;
 use chrono::TimeDelta;
 use giputils::{hash::GHashMap, logger::with_log_level};
 use log::{LevelFilter, info};
-use logicrs::{
-    LitVvec, VarSymbols,
-    fol::{self, BvTermValue, TermValue},
-};
+use logicrs::{LitVvec, fol::{self, BvTermValue, TermValue}};
 use rIC3::{
     Engine, McResult, McWitness,
     frontend::{Frontend, btor::BtorFrontend},
@@ -43,7 +40,7 @@ impl CIll {
                             cfg.inn = true;
                             cfg.prop = Some(i);
                             let mut ic3 =
-                                IC3::new(cfg.clone(), self.ts.clone(), VarSymbols::default());
+                                IC3::new(cfg.clone(), self.ts.clone());
                             let res = ic3.check();
                             let inv = ic3.invariant();
                             (matches!(res, McResult::Safe), inv)

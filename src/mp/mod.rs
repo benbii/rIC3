@@ -12,7 +12,6 @@ use crate::{
 use clap::{ArgAction, Args};
 use giputils::logger::with_log_level;
 use log::{LevelFilter, error};
-use logicrs::VarSymbols;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 
@@ -85,7 +84,7 @@ impl Engine for MultiProp {
                     .map(|i| {
                         let mut cfg = self.ic3_cfg.clone();
                         cfg.prop = Some(i);
-                        let mut ic3 = IC3::new(cfg, self.ts.clone(), VarSymbols::default());
+                        let mut ic3 = IC3::new(cfg, self.ts.clone());
                         let result = ic3.check();
                         (ic3, result)
                     })
@@ -104,7 +103,7 @@ impl Engine for MultiProp {
             for i in 0..self.ts.bad.len() {
                 let mut cfg = self.ic3_cfg.clone();
                 cfg.prop = Some(i);
-                let mut ic3 = IC3::new(cfg, self.ts.clone(), VarSymbols::default());
+                let mut ic3 = IC3::new(cfg, self.ts.clone());
                 let result = ic3.check();
                 self.ic3.push(ic3);
                 self.results[i] = result;

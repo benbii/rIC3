@@ -1,7 +1,7 @@
 use super::IC3;
 use log::trace;
 use logicrs::{Lit, LitVec, satif::Satif};
-use rand::{Rng, seq::SliceRandom};
+use rand::seq::SliceRandom;
 use std::time::Instant;
 
 impl IC3 {
@@ -15,11 +15,7 @@ impl IC3 {
             let res = self.solvers.last_mut().unwrap().solve(&[self.tsctx.bad[0]]);
             self.statistic.block.get_bad_time += start.elapsed();
             res.then(|| {
-                if self.cfg.full_bad {
-                    self.get_full_pred(self.solvers.len())
-                } else {
-                    self.get_pred(self.solvers.len(), true)
-                }
+                self.get_pred(self.solvers.len(), true)
             })
         }
     }
@@ -84,28 +80,5 @@ impl IC3 {
         let (state, input) = self.lift.lift(solver, cls.iter().chain(cst.iter()), order);
         self.statistic.block.get_pred_time += start.elapsed();
         (state, input)
-    }
-
-    pub(super) fn get_full_pred(&mut self, frame: usize) -> (LitVec, Vec<LitVec>) {
-        let solver = &mut self.solvers[frame - 1];
-        let mut inputs = LitVec::new();
-        for input in self.tsctx.input.iter() {
-            let lit = input.lit();
-            if let Some(v) = solver.sat_value(lit) {
-                inputs.push(lit.not_if(!v));
-            } else {
-                inputs.push(lit.not_if(self.rng.random_bool(0.5)));
-            }
-        }
-        let mut latchs = LitVec::new();
-        for latch in self.tsctx.latch.iter() {
-            let lit = latch.lit();
-            if let Some(v) = solver.sat_value(lit) {
-                latchs.push(lit.not_if(!v));
-            } else {
-                latchs.push(lit.not_if(self.rng.random_bool(0.5)));
-            }
-        }
-        (latchs, vec![inputs])
     }
 }

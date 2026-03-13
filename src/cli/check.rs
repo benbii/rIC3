@@ -103,7 +103,7 @@ pub fn check(mut chk: CheckConfig, cfg: EngineConfig) -> anyhow::Result<()> {
                 error!("export-preproc is only supported for bit-level engines");
                 exit(1);
             }
-            let (ts, _symbols) = frontend.ts();
+            let ts = frontend.ts();
             info!("origin ts has {}", ts.statistic());
             let model = PreprocModel::run(ts, pcfg);
             model
@@ -122,9 +122,9 @@ pub fn check(mut chk: CheckConfig, cfg: EngineConfig) -> anyhow::Result<()> {
         // info!("origin ts has {}", ts.statistic());
         create_wl_engine(cfg.clone(), wts)
     } else {
-        let (ts, symbols) = frontend.ts();
+        let ts = frontend.ts();
         info!("origin ts has {}", ts.statistic());
-        create_bl_engine(cfg.clone(), ts, symbols)
+        create_bl_engine(cfg.clone(), ts)
     };
     interrupt_statistic(&chk, engine.as_mut());
     let res = engine.check();

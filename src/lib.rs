@@ -105,10 +105,9 @@ pub trait Engine: Send {
 pub fn create_bl_engine(
     cfg: EngineConfig,
     ts: Transys,
-    sym: logicrs::VarSymbols,
 ) -> Box<dyn Engine> {
     match cfg {
-        EngineConfig::IC3(cfg) => Box::new(ic3::IC3::new(cfg, ts, sym)),
+        EngineConfig::IC3(cfg) => Box::new(ic3::IC3::new(cfg, ts)),
         EngineConfig::Kind(cfg) => Box::new(kind::Kind::new(cfg, ts)),
         EngineConfig::BMC(cfg) => Box::new(bmc::BMC::new(cfg, ts)),
         EngineConfig::MultiProp(cfg) => Box::new(mp::MultiProp::new(cfg, ts)),

@@ -2,7 +2,7 @@ use super::{
     DagCnfSolver,
     cdb::{CREF_NONE, CRef},
 };
-use giputils::gvec::Gvec;
+use giputils::nckvec::NckVec;
 use log::{debug, trace};
 use logicrs::{Lbool, LitOrdVec, LitVec, VarMap};
 use std::{mem::take, time::Instant};
@@ -45,7 +45,7 @@ impl DagCnfSolver {
         }
     }
 
-    pub fn simplify_satisfied_clauses(&mut self, mut clauses: Gvec<CRef>) -> Gvec<CRef> {
+    pub fn simplify_satisfied_clauses(&mut self, mut clauses: NckVec<CRef>) -> NckVec<CRef> {
         let mut i = 0;
         'm: while i < clauses.len() {
             let cid = clauses[i];
@@ -106,7 +106,7 @@ impl DagCnfSolver {
         );
     }
 
-    fn simplify_subsume(&mut self, clauses: Gvec<CRef>) -> Gvec<CRef> {
+    fn simplify_subsume(&mut self, clauses: NckVec<CRef>) -> NckVec<CRef> {
         debug!("simplify subsume");
         let mut clauses: Vec<(CRef, LitOrdVec)> = clauses
             .into_iter()

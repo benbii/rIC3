@@ -5,7 +5,6 @@ use clap::{Args, Parser};
 use giputils::hash::GHashMap;
 use giputils::logger::with_log_level;
 use log::{error, info};
-use logicrs::VarSymbols;
 use nix::errno::Errno;
 use nix::sys::wait::{WaitStatus, waitpid};
 use nix::unistd::Pid;
@@ -247,7 +246,6 @@ pub struct LightPortfolioConfig {
 
 pub struct LightPortfolio {
     ts: Transys,
-    sym: VarSymbols,
     cfg: LightPortfolioConfig,
     ecfgs: Vec<EngineConfig>,
     engines: Vec<Box<dyn Engine>>,
@@ -258,14 +256,12 @@ impl LightPortfolio {
     pub fn new(
         cfg: LightPortfolioConfig,
         ts: Transys,
-        sym: VarSymbols,
         ecfgs: Vec<EngineConfig>,
     ) -> Self {
         Self {
             cfg,
             ecfgs,
             ts,
-            sym,
             engines: Vec::new(),
             stop_flag: Arc::new(AtomicBool::new(false)),
         }
@@ -278,7 +274,7 @@ impl Engine for LightPortfolio {
             .ecfgs
             .clone()
             .into_par_iter()
-            .map(|ecfg| create_bl_engine(ecfg, self.ts.clone(), self.sym.clone()))
+            .map(|ecfg| create_bl_engine(ecfg, self.ts.clone()))
             .collect();
         let stops: Vec<_> = engines.iter().map(|e| e.get_stop_ctrl()).collect();
         let (tx, rx) = mpsc::channel();

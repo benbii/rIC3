@@ -1,5 +1,5 @@
 use crate::gipsat::{ClauseKind, DagCnfSolver, cdb::CRef};
-use giputils::gvec::Gvec;
+use giputils::nckvec::NckVec;
 use logicrs::{Lit, LitMap, Var};
 use std::mem::take;
 
@@ -53,7 +53,7 @@ impl Default for Eqc {
 }
 
 impl DagCnfSolver {
-    fn clean_eq_inner(&mut self, mut clauses: Gvec<CRef>, kind: ClauseKind) -> Gvec<CRef> {
+    fn clean_eq_inner(&mut self, mut clauses: NckVec<CRef>, kind: ClauseKind) -> NckVec<CRef> {
         let mut i = 0;
         'm: while i < clauses.len() {
             let cid = clauses[i];

@@ -14,10 +14,7 @@ use crate::{
 use btor::Btor;
 use giputils::hash::{GHashMap, GHashSet};
 use log::{debug, error, warn};
-use logicrs::{
-    LboolVec, VarSymbols,
-    fol::{self, BvTermValue, Term, TermValue},
-};
+use logicrs::{LboolVec, fol::{self, BvTermValue, Term, TermValue}};
 use std::{fmt::Display, mem::take, path::Path, process::Command};
 
 impl WlTransys {
@@ -163,7 +160,7 @@ impl BtorFrontend {
 }
 
 impl Frontend for BtorFrontend {
-    fn ts(&mut self) -> (bl::Transys, VarSymbols) {
+    fn ts(&mut self) -> bl::Transys {
         let mut wts = self.wts.clone();
         wts.simplify();
         wts.coi_refine();
@@ -171,7 +168,7 @@ impl Frontend for BtorFrontend {
         // btor.to_file("simp.btor");
         let (ts, bb_rst) = wts.bitblast_to_ts();
         self.bb_rst = Some(bb_rst);
-        (ts, VarSymbols::new())
+        ts
     }
 
     fn wts(&mut self) -> (WlTransys, WlTsSymbol) {

@@ -1,6 +1,6 @@
 use super::DagCnfSolver;
 use bitfield_struct::bitfield;
-use giputils::gvec::Gvec;
+use giputils::nckvec::NckVec;
 use giputils::hash::GHashMap;
 use log::debug;
 use logicrs::{Lit, LitOrdVec, LitVec};
@@ -251,10 +251,10 @@ pub enum ClauseKind {
 #[derive(Clone)]
 pub struct ClauseDB {
     allocator: Allocator,
-    pub lemmas: Gvec<CRef>,
-    pub trans: Gvec<CRef>,
-    pub learnt: Gvec<CRef>,
-    pub temporary: Gvec<CRef>,
+    pub lemmas: NckVec<CRef>,
+    pub trans: NckVec<CRef>,
+    pub learnt: NckVec<CRef>,
+    pub temporary: NckVec<CRef>,
     act_inc: f32,
 }
 

@@ -15,7 +15,7 @@ pub use cdb::ClauseKind;
 use cdb::{CREF_NONE, CRef, ClauseDB};
 use domain::Domain;
 use giputils::bitvec::BitVec;
-use giputils::gvec::Gvec;
+use giputils::nckvec::NckVec;
 use logicrs::satif::Satif;
 use logicrs::{DagCnf, Lbool, VarAssign, VarRange};
 use logicrs::{Lit, LitSet, LitVec, Var, VarMap};
@@ -34,7 +34,7 @@ pub struct DagCnfSolver {
     cdb: ClauseDB,
     watchers: Watchers,
     value: VarAssign,
-    trail: Gvec<Lit>,
+    trail: NckVec<Lit>,
     pos_in_trail: Vec<u32>,
     level: VarMap<u32>,
     reason: VarMap<CRef>,

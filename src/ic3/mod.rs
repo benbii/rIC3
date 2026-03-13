@@ -13,8 +13,8 @@ use activity::Activity;
 use clap::{ArgAction, Args, Parser};
 use frame::{Frame, Frames};
 use giputils::{logger::IntervalLogger};
-use log::{Level, debug, error, info, trace};
-use logicrs::{Lit, LitOrdVec, LitVec, LitVvec, Var, VarSymbols, satif::Satif};
+use log::{Level, debug, info, trace};
+use logicrs::{Lit, LitOrdVec, LitVec, LitVvec, Var, satif::Satif};
 use proofoblig::{ProofObligation, ProofObligationQueue};
 use rand::{SeedableRng, rngs::StdRng};
 use serde::{Deserialize, Serialize};
@@ -41,75 +41,52 @@ mod utils;
 pub struct IC3Config {
     #[command(flatten)]
     pub base: EngineConfigBase,
-
     #[command(flatten)]
     pub preproc: PreprocConfig,
-
     /// dynamic generalization
     #[arg(long = "dynamic", default_value_t = false)]
     pub dynamic: bool,
-
     /// counterexample to generalization
     #[arg(long = "ctg", action = ArgAction::Set, default_value_t = true)]
     pub ctg: bool,
-
     /// max number of ctg
     #[arg(long = "ctg-max", default_value_t = 3)]
     pub ctg_max: usize,
-
     /// ctg limit
     #[arg(long = "ctg-limit", default_value_t = 1)]
     pub ctg_limit: usize,
-
     /// counterexample to propagation
     #[arg(long = "ctp", default_value_t = false)]
     pub ctp: bool,
-
     /// internal signals (FMCAD'21 https://doi.org/10.34727/2021/isbn.978-3-85448-046-4_14)
     #[arg(long = "inn", default_value_t = false)]
     pub inn: bool,
-
     /// abstract constrains
     #[arg(long = "abs-cst", default_value_t = false)]
     pub abs_cst: bool,
-
     /// abstract trans
     #[arg(long = "abs-trans", default_value_t = false)]
     pub abs_trans: bool,
-
     /// dropping proof-obligation
-    #[arg(
-        long = "drop-po", action = ArgAction::Set, default_value_t = true,
-    )]
+    #[arg(long = "drop-po", action = ArgAction::Set, default_value_t = true)]
     pub drop_po: bool,
-
-    /// full assignment of last bad (internal parameter)
-    #[arg(skip)]
-    pub full_bad: bool,
-
     /// abstract array
     #[arg(long = "abs-array", default_value_t = false)]
     pub abs_array: bool,
-
     /// finding parent lemma in mic (CAV'23 https://doi.org/10.1007/978-3-031-37703-7_14)
     #[arg(long = "parent-lemma", action = ArgAction::Set, default_value_t = true)]
     pub parent_lemma: bool,
-
     /// predicate property
     #[arg(long = "pred-prop", default_value_t = false)]
     pub pred_prop: bool,
-
     /// stream infinity-frame lemmas to this file as DIMACS-like clauses (append mode)
     #[arg(long = "inv-dump")]
     pub inv_dump: Option<PathBuf>,
-
     /// Local proof (internal parameter)
     #[arg(skip)]
     pub local_proof: bool,
 }
-
 impl_config_deref!(IC3Config);
-
 impl Default for IC3Config {
     fn default() -> Self {
         let cfg = EngineConfig::parse_from(["", "ic3"]);
@@ -117,41 +94,9 @@ impl Default for IC3Config {
     }
 }
 
-impl IC3Config {
-    fn validate(&self) {
-        if self.dynamic && self.drop_po {
-            error!("cannot enable both dynamic and drop-po");
-            panic!();
-        }
-        if self.inn {
-            let pre = "cannot enable both inn and";
-            if self.abs_cst || self.abs_trans {
-                error!("{pre} (abs_cst or abs_trans)");
-                panic!();
-            }
-        }
-        if self.full_bad {
-            error!("full-bad can't be used now");
-            panic!();
-        }
-        if self.local_proof {
-            if !self.pred_prop {
-                error!("local-proof should used with pred-prop");
-                panic!();
-            }
-            if self.prop.is_none() {
-                error!("A property ID must be specified for local proof.");
-                panic!();
-            }
-        }
-    }
-}
-
 pub struct IC3 {
     cfg: IC3Config,
     ts: Transys,
-    #[allow(unused)]
-    symbols: VarSymbols,
     tsctx: Box<TransysCtx>,
     solvers: Vec<TransysSolver>,
     inf_solver: TransysSolver,
@@ -208,8 +153,21 @@ impl IC3 {
 }
 
 impl IC3 {
-    pub fn new(cfg: IC3Config, mut ts: Transys, symbols: VarSymbols) -> Self {
-        cfg.validate();
+    pub fn new(mut cfg: IC3Config, mut ts: Transys) -> Self {
+        // validate config
+        if cfg.dynamic && cfg.drop_po {
+            panic!("cannot enable both dynamic and drop-po");
+        }
+        if cfg.inn && (cfg.abs_cst || cfg.abs_trans) {
+            panic!("cannot enable both inn and (abs_cst or abs_trans)");
+        }
+        if cfg.local_proof {
+            cfg.pred_prop = true;
+            if cfg.prop.is_none() {
+                panic!("A property ID must be specified for local proof.");
+            }
+        }
+
         let ots = ts.clone();
         if let Some(prop) = cfg.prop {
             if !cfg.local_proof {
@@ -252,7 +210,6 @@ impl IC3 {
         Self {
             cfg,
             ts,
-            symbols,
             tsctx,
             activity,
             solvers: Vec::new(),

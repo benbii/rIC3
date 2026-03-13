@@ -2,7 +2,7 @@ use super::{
     DagCnfSolver,
     cdb::{CREF_NONE, CRef, Clause},
 };
-use giputils::gvec::Gvec;
+use giputils::nckvec::NckVec;
 use logicrs::{Lbool, Lit, LitMap, Var};
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -20,7 +20,7 @@ impl Watcher {
 
 #[derive(Default, Clone)]
 pub struct Watchers {
-    pub wtrs: LitMap<Gvec<Watcher>>,
+    pub wtrs: LitMap<NckVec<Watcher>>,
 }
 
 impl Watchers {
@@ -56,7 +56,7 @@ impl DagCnfSolver {
             let p = self.trail[self.propagated];
             self.propagated += 1;
             let mut w = 0;
-            let wtrs_p_vec = &mut self.watchers.wtrs[p] as *mut Gvec<Watcher>;
+            let wtrs_p_vec = &mut self.watchers.wtrs[p] as *mut NckVec<Watcher>;
             let wtrs_p_dat = unsafe { (*wtrs_p_vec).as_mut_ptr() };
             let mut wtrs_p_len = unsafe { (*wtrs_p_vec).len() };
             'next_cls: while w < wtrs_p_len {
@@ -116,7 +116,7 @@ impl DagCnfSolver {
             let p = self.trail[self.propagated];
             self.propagated += 1;
             let mut w = 0;
-            let wtrs_p_vec = &mut self.watchers.wtrs[p] as *mut Gvec<Watcher>;
+            let wtrs_p_vec = &mut self.watchers.wtrs[p] as *mut NckVec<Watcher>;
             let wtrs_p_dat = unsafe { (*wtrs_p_vec).as_mut_ptr() };
             let mut wtrs_p_len = unsafe { (*wtrs_p_vec).len() };
             'next_cls: while w < wtrs_p_len {

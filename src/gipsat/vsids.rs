@@ -1,12 +1,12 @@
 use super::{DagCnfSolver, cdb::CREF_NONE};
-use giputils::{OptionU32, gvec::Gvec};
+use giputils::{OptionU32, nckvec::NckVec};
 use logicrs::{Lbool, Lit, LitVec, Var, VarMap};
 use rand::Rng;
 use std::ops::{Index, MulAssign};
 
 #[derive(Default, Clone)]
 pub struct BinaryHeap {
-    heap: Gvec<Var>,
+    heap: NckVec<Var>,
     pos: VarMap<OptionU32>,
 }
 
@@ -103,7 +103,7 @@ pub struct Activity {
     activity: VarMap<f64>,
     act_inc: f64,
     bucket_heap: BinaryHeap,
-    bucket_table: Gvec<u32>,
+    bucket_table: NckVec<u32>,
 }
 
 impl Index<Var> for Activity {
@@ -174,7 +174,7 @@ impl Activity {
 
 impl Default for Activity {
     fn default() -> Self {
-        let mut bucket_table = Gvec::new();
+        let mut bucket_table = NckVec::new();
         bucket_table.push(0);
         Self {
             act_inc: 1.0,
@@ -247,7 +247,7 @@ impl Default for Vsids {
 
 #[derive(Clone)]
 pub struct Bucket {
-    buckets: Gvec<Gvec<Var>>,
+    buckets: NckVec<NckVec<Var>>,
     in_bucket: VarMap<bool>,
     head: u32,
 }
@@ -255,7 +255,7 @@ pub struct Bucket {
 impl Bucket {
     #[inline]
     pub fn new() -> Self {
-        let mut buckets: Gvec<_> = Gvec::new();
+        let mut buckets: NckVec<_> = NckVec::new();
         buckets.reserve(10);
         Self {
             buckets,

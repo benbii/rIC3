@@ -6,7 +6,7 @@ use crate::{
 };
 use giputils::hash::GHashMap;
 use log::{debug, error, warn};
-use logicrs::{Lbool, Lit, LitVec, Var, VarSymbols, VarVMap};
+use logicrs::{Lbool, Lit, LitVec, Var, VarVMap};
 use std::{fmt::Display, path::Path, process::Command};
 
 impl From<&Transys> for Aig {
@@ -102,31 +102,10 @@ fn aig_preprocess(aig: &Aig) -> (Aig, VarVMap) {
     (aig, restore)
 }
 
-fn aig_symbols(aig: &Aig) -> VarSymbols {
-    let mut symbol = VarSymbols::new();
-    for &x in aig.inputs.iter().chain(aig.latchs.iter().map(|l| &l.input)) {
-        if let Some(s) = aig.symbols.get(&x) {
-            for s in s.split(' ') {
-                let mut rs = s;
-                let mut idx = 0;
-                if s.ends_with(']')
-                    && let Some(start) = s.rfind('[')
-                {
-                    idx = s[start + 1..s.len() - 1].parse::<usize>().unwrap();
-                    rs = &s[..start];
-                }
-                symbol.insert(Var::from(x), rs.to_string(), idx);
-            }
-        }
-    }
-    symbol
-}
-
 pub struct AigFrontend {
     oaig: Aig,
     ots: Transys,
     ts: Transys,
-    ts_symbols: VarSymbols,
     rst: VarVMap,
 }
 
@@ -161,16 +140,12 @@ impl AigFrontend {
             aig.fairness.clear();
         }
         let ots = Transys::from_aig(&aig, true);
-        let osymbols = aig_symbols(&aig);
         let (aig, rst) = aig_preprocess(&aig);
-        let inv_rst = rst.inverse();
-        let ts_symbols = osymbols.map_var(inv_rst.try_map_fn());
         let ts = Transys::from_aig(&aig, true);
         Self {
             oaig,
             ots,
             ts,
-            ts_symbols,
             rst,
         }
     }
@@ -186,15 +161,14 @@ impl AigFrontend {
 }
 
 impl Frontend for AigFrontend {
-    fn ts(&mut self) -> (Transys, VarSymbols) {
-        (self.ts.clone(), self.ts_symbols.clone())
+    fn ts(&mut self) -> Transys {
+        self.ts.clone()
     }
 
     fn safe_certificate(&mut self, proof: McProof) -> Box<dyn Display> {
         let proof = proof.into_bl().unwrap();
         if !self.is_safety() {
-            error!("rIC3 does not support certificate generation for safe liveness properties");
-            panic!();
+            panic!("rIC3 does not support certificate generation for safe liveness properties");
         }
         let mut certifaiger = Aig::from(&proof.proof);
         certifaiger = certifaiger.reencode();

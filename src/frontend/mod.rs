@@ -5,7 +5,6 @@ use crate::{
     wltransys::{WlTransys, symbol::WlTsSymbol},
 };
 use log::{error, info};
-use logicrs::VarSymbols;
 use std::{
     fmt::Display,
     path::{Path, PathBuf},
@@ -15,7 +14,7 @@ pub mod aig;
 pub mod btor;
 
 pub trait Frontend {
-    fn ts(&mut self) -> (Transys, VarSymbols);
+    fn ts(&mut self) -> Transys;
 
     fn wts(&mut self) -> (WlTransys, WlTsSymbol) {
         panic!("frontend unsupported for wltransys")
