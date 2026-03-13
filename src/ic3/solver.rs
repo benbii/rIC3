@@ -1,7 +1,6 @@
 use super::IC3;
-use crate::transys::TransysIf;
 use log::trace;
-use logicrs::{Lit, LitOrdVec, LitVec, Var, satif::Satif};
+use logicrs::{Lit, LitVec, satif::Satif};
 use rand::{Rng, seq::SliceRandom};
 use std::time::Instant;
 
@@ -27,18 +26,6 @@ impl IC3 {
 }
 
 impl IC3 {
-    #[inline]
-    #[allow(unused)]
-    pub(super) fn sat_contained(&mut self, frame: usize, lemma: &LitOrdVec) -> bool {
-        !self.solvers[frame].solve(lemma)
-    }
-
-    #[inline]
-    #[allow(unused)]
-    pub(super) fn blocked(&mut self, frame: usize, cube: &LitVec, strengthen: bool) -> bool {
-        self.solvers[frame - 1].inductive(cube, strengthen)
-    }
-
     pub(super) fn blocked_with_ordered(
         &mut self,
         frame: usize,
@@ -120,16 +107,5 @@ impl IC3 {
             }
         }
         (latchs, vec![inputs])
-    }
-
-    #[allow(unused)]
-    pub(super) fn new_var(&mut self) -> Var {
-        let var = self.tsctx.new_var();
-        for s in self.solvers.iter_mut() {
-            assert!(var == s.new_var());
-        }
-        todo!();
-        // assert!(var == self.lift.new_var());
-        var
     }
 }

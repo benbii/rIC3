@@ -1,6 +1,5 @@
 use super::{IC3, proofoblig::ProofObligation};
 use crate::{gipsat::TransysSolver, transys::TransysCtx};
-use giputils::grc::Grc;
 use giputils::hash::GHashSet;
 use logicrs::{Lit, LitOrdVec, LitSet, LitVec, Var, satif::Satif};
 use std::{
@@ -77,7 +76,7 @@ pub struct Frames {
 }
 
 impl Frames {
-    pub fn new(ts: &Grc<TransysCtx>) -> Self {
+    pub fn new(ts: &TransysCtx) -> Self {
         let mut tmp_lit_set = LitSet::new();
         tmp_lit_set.reserve(ts.max_latch);
         Self {

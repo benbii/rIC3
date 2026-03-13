@@ -1,11 +1,11 @@
 use super::IC3;
-use giputils::grc::Grc;
 use log::trace;
 use logicrs::{LitOrdVec, LitVec};
 use std::cmp::Ordering;
 use std::collections::{BTreeSet, btree_set};
 use std::fmt::{self, Debug};
 use std::ops::{Deref, DerefMut};
+use std::sync::Arc;
 
 #[derive(Default)]
 pub struct ProofObligationInner {
@@ -66,7 +66,7 @@ impl Debug for ProofObligationInner {
 
 #[derive(Clone, Default)]
 pub struct ProofObligation {
-    inner: Grc<ProofObligationInner>,
+    inner: Arc<ProofObligationInner>,
 }
 
 impl ProofObligation {
@@ -78,7 +78,7 @@ impl ProofObligation {
         next: Option<Self>,
     ) -> Self {
         Self {
-            inner: Grc::new(ProofObligationInner {
+            inner: Arc::new(ProofObligationInner {
                 frame,
                 input,
                 state: lemma,
@@ -114,14 +114,14 @@ impl Deref for ProofObligation {
 impl DerefMut for ProofObligation {
     #[inline]
     fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.inner
+        unsafe { &mut *(Arc::as_ptr(&self.inner) as *mut ProofObligationInner) }
     }
 }
 
 impl PartialEq for ProofObligation {
     #[inline]
     fn eq(&self, other: &Self) -> bool {
-        self.inner == other.inner
+        Arc::ptr_eq(&self.inner, &other.inner)
     }
 }
 

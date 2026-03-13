@@ -1,9 +1,8 @@
 use crate::{
     gipsat::TransysSolver,
     ic3::{IC3, proofoblig::ProofObligation},
-    transys::{Transys, lift::TsLift, unroll::TransysUnroll},
+    transys::{Transys, TransysCtx, lift::TsLift, unroll::TransysUnroll},
 };
-use giputils::grc::Grc;
 use log::info;
 use logicrs::{Lit, LitOrdVec, LitVec, satif::Satif};
 use rand::seq::SliceRandom;
@@ -11,6 +10,7 @@ use std::time::Instant;
 
 pub struct PredProp {
     bts: Transys,
+    tsctx: Box<TransysCtx>,
     slv: TransysSolver,
     lift: TsLift,
     inn: bool,
@@ -27,10 +27,12 @@ impl PredProp {
             bts.bad = LitVec::from([bts.bad[lp]]);
         }
         bts.constraint.extend(!&uts.ts.bad);
-        let slv = TransysSolver::new(&Grc::new(bts.ctx()));
+        let tsctx = Box::new(bts.ctx());
+        let slv = TransysSolver::new(&tsctx);
         let lift = TsLift::new(uts);
         Self {
             bts,
+            tsctx,
             slv,
             lift,
             inn,
@@ -42,7 +44,8 @@ impl PredProp {
     }
 
     pub fn extend<'a>(&'a mut self, lemmas: impl IntoIterator<Item = &'a LitVec>) {
-        self.slv = TransysSolver::new(&Grc::new(self.bts.ctx()));
+        self.tsctx = Box::new(self.bts.ctx());
+        self.slv = TransysSolver::new(&self.tsctx);
         for l in lemmas.into_iter() {
             self.slv.add_clause(&!l);
         }

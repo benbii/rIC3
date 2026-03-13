@@ -12,7 +12,7 @@ use crate::{
 use activity::Activity;
 use clap::{ArgAction, Args, Parser};
 use frame::{Frame, Frames};
-use giputils::{grc::Grc, logger::IntervalLogger};
+use giputils::{logger::IntervalLogger};
 use log::{Level, debug, error, info, trace};
 use logicrs::{Lit, LitOrdVec, LitVec, LitVvec, Var, VarSymbols, satif::Satif};
 use proofoblig::{ProofObligation, ProofObligationQueue};
@@ -152,7 +152,7 @@ pub struct IC3 {
     ts: Transys,
     #[allow(unused)]
     symbols: VarSymbols,
-    tsctx: Grc<TransysCtx>,
+    tsctx: Box<TransysCtx>,
     solvers: Vec<TransysSolver>,
     inf_solver: TransysSolver,
     lift: TsLift,
@@ -243,7 +243,7 @@ impl IC3 {
                 cfg.inn,
             )
         });
-        let tsctx = Grc::new(ts.ctx());
+        let tsctx = Box::new(ts.ctx());
         let activity = Activity::new(&tsctx);
         let frame = Frames::new(&tsctx);
         let inf_solver = TransysSolver::new(&tsctx);

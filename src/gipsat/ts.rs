@@ -2,26 +2,27 @@ use crate::{
     gipsat::{DagCnfSolver, SolverStatistic},
     transys::{TransysCtx, TransysIf},
 };
-use giputils::grc::Grc;
 use logicrs::{Lit, LitVec, Var, satif::Satif};
 
 #[derive(Clone)]
 pub struct TransysSolver {
     pub dcs: DagCnfSolver,
-    ts: Grc<TransysCtx>,
+    ts: *const TransysCtx,
 
     relind: LitVec,
 }
 
+unsafe impl Send for TransysSolver {}
+
 impl TransysSolver {
-    pub fn new(ts: &Grc<TransysCtx>) -> Self {
+    pub fn new(ts: &TransysCtx) -> Self {
         let mut dcs = DagCnfSolver::new(&ts.rel);
         for c in ts.constraint.iter() {
             dcs.add_clause(&[*c]);
         }
         Self {
             dcs,
-            ts: ts.clone(),
+            ts,
             relind: Default::default(),
         }
     }
@@ -33,14 +34,15 @@ impl TransysSolver {
 
     #[allow(unused)]
     pub fn trivial_pred(&mut self) -> (LitVec, LitVec) {
+        let ts = unsafe { &*self.ts };
         let mut input = LitVec::new();
-        for i in self.ts.input() {
+        for i in ts.input() {
             if let Some(v) = self.dcs.sat_value_lit(i) {
                 input.push(v);
             }
         }
         let mut latch = LitVec::new();
-        for l in self.ts.latch() {
+        for l in ts.latch() {
             if let Some(v) = self.dcs.sat_value_lit(l) {
                 latch.push(v);
             }
@@ -55,7 +57,7 @@ impl TransysSolver {
         mut constraint: Vec<LitVec>,
     ) -> bool {
         self.relind = LitVec::from(cube);
-        let assump = self.ts.lits_next(cube);
+        let assump = unsafe { &*self.ts }.lits_next(cube);
         if strengthen {
             constraint.push(LitVec::from_iter(cube.iter().map(|l| !*l)));
         }
@@ -67,22 +69,23 @@ impl TransysSolver {
     }
 
     pub fn inductive_core(&mut self) -> Option<LitVec> {
+        let ts = unsafe { &*self.ts };
         let mut ans = LitVec::new();
         for &l in self.relind.iter() {
-            let nl = self.ts.next(l);
+            let nl = ts.next(l);
             if self.dcs.unsat_has(nl) {
                 ans.push(l);
             }
         }
-        if self.ts.cube_subsume_init(&ans) {
+        if ts.cube_subsume_init(&ans) {
             ans = LitVec::new();
             let new = self.relind.iter().find(|&&l| {
-                self.ts.init_map[l.var()]
+                ts.init_map[l.var()]
                     .and_then(|l| l.try_constant())
                     .is_some_and(|i| i != l.polarity())
             })?;
             for &l in self.relind.iter() {
-                let nl = self.ts.next(l);
+                let nl = ts.next(l);
                 if self.dcs.unsat_has(nl) {
                     ans.push(l);
                 }
@@ -90,7 +93,7 @@ impl TransysSolver {
                     ans.push(l);
                 }
             }
-            assert!(!self.ts.cube_subsume_init(&ans));
+            assert!(!ts.cube_subsume_init(&ans));
         }
         Some(ans)
     }
