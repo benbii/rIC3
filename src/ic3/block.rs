@@ -94,15 +94,14 @@ impl IC3 {
                     self.add_obligation(po.clone());
                     if self.check_witness_by_bmc(po.depth) {
                         return BlockResult::Failure(po.depth);
-                    } else {
-                        self.obligations.clear();
-                        for f in self.frame.iter_mut() {
-                            for l in f.iter_mut() {
-                                l.po = None;
-                            }
-                        }
-                        continue;
                     }
+                    self.obligations.clear();
+                    for f in self.frame.iter_mut() {
+                        for l in f.iter_mut() {
+                            l.1 = None;
+                        }
+                    }
+                    continue;
                 } else if po.frame > 0 {
                     let lemma = po.state.as_litvec();
                     debug_assert!(!self.solvers[0].solve(lemma));
@@ -118,7 +117,7 @@ impl IC3 {
                 }
                 continue;
             }
-            po.bump_act();
+            po.act += 1.0;
             if self.cfg.drop_po && po.act > 20.0 {
                 continue;
             }
@@ -180,7 +179,6 @@ impl IC3 {
         BlockResult::Success
     }
 
-    #[allow(unused)]
     fn trivial_block_rec(
         &mut self,
         frame: usize,

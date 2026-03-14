@@ -126,7 +126,7 @@ impl IC3 {
         let nl = self.solvers.len();
         debug!("extending IC3 to level {nl}");
         if let Some(predprop) = self.predprop.as_mut() {
-            predprop.extend(self.frame.inf.iter().map(|l| l.as_litvec()));
+            predprop.extend(self.frame.inf.iter().map(|(l, _)| l.as_litvec()));
         }
         let solver = self.inf_solver.clone();
         self.solvers.push(solver);

@@ -1,5 +1,5 @@
 use crate::{
-    ic3::{IC3, frame::FrameLemma, mic::MicType},
+    ic3::{Frame, IC3, mic::MicType},
     transys::TransysIf,
 };
 // use log::error;
@@ -13,25 +13,26 @@ impl IC3 {
         let level = self.level();
         let from = from.unwrap_or(self.frame.early).max(1);
         for frame_idx in from..level {
-            self.frame[frame_idx].sort_by_key(|x| x.len());
+            self.frame[frame_idx].sort_by_key(|(x, _)| x.len());
             let frame = self.frame[frame_idx].clone();
             for mut lemma in frame {
+                // HELP: semantic difference here? Is only .0 compared before?
                 if self.frame[frame_idx].iter().all(|l| l.ne(&lemma)) {
                     continue;
                 }
                 for ctp in 0..3 {
-                    if self.blocked_with_ordered(frame_idx + 1, &lemma, false) {
+                    if self.blocked_with_ordered(frame_idx + 1, &lemma.0, false) {
                         let core = self.solvers[frame_idx]
                             .inductive_core()
-                            .unwrap_or(lemma.as_litvec().clone());
-                        if let Some(po) = &mut lemma.po
+                            .unwrap_or(lemma.0.as_litvec().clone());
+                        if let Some(po) = &mut lemma.1
                             && po.frame < frame_idx + 2
                             && self.obligations.remove(po)
                         {
                             po.push_to(frame_idx + 2);
                             self.obligations.add(po.clone());
                         }
-                        self.add_lemma(frame_idx + 1, core, true, lemma.po);
+                        self.add_lemma(frame_idx + 1, core, true, lemma.1);
                         self.statistic.ctp.statistic(ctp > 0);
                         break;
                     }
@@ -63,22 +64,22 @@ impl IC3 {
 
     pub fn propagete_to_inf_rec(
         &mut self,
-        lastf: &mut Vec<FrameLemma>,
+        lastf: &mut Frame,
         ctp: LitVec,
         // dump_buf: &mut Vec<u8>,
         // dump: bool,
     ) -> bool {
         let ctp = LitOrdVec::new(ctp);
-        let Some(lidx) = lastf.iter().position(|l| l.subsume(&ctp)) else {
+        let Some(lidx) = lastf.iter().position(|(l, _)| l.subsume(&ctp)) else {
             return false;
         };
         let mut lemma = lastf.swap_remove(lidx);
         loop {
-            if self.inf_solver.inductive(&lemma, true) {
-                if let Some(po) = &mut lemma.po {
+            if self.inf_solver.inductive(&lemma.0, true) {
+                if let Some(po) = &mut lemma.1 {
                     self.obligations.remove(po);
                 }
-                self.add_inf_lemma(lemma.as_litvec().clone());
+                self.add_inf_lemma(lemma.0.as_litvec().clone());
                 // if !dump {
                 //     return true;
                 // }
@@ -98,7 +99,7 @@ impl IC3 {
                 // dump_buf[dump_start..dump_start + 4].copy_from_slice(&nlits.to_le_bytes());
                 return true;
             } else {
-                let target = self.tsctx.lits_next(lemma.as_litvec());
+                let target = self.tsctx.lits_next(lemma.0.as_litvec());
                 let (ctp, _) = self.lift.lift(
                     &mut self.inf_solver,
                     target.iter().chain(self.tsctx.constraint.iter()),
@@ -120,11 +121,11 @@ impl IC3 {
         // let mut dump_buf = Vec::new();
         while let Some(mut lemma) = lastf.pop() {
             loop {
-                if self.inf_solver.inductive(&lemma, true) {
-                    if let Some(po) = &mut lemma.po {
+                if self.inf_solver.inductive(&lemma.0, true) {
+                    if let Some(po) = &mut lemma.1 {
                         self.obligations.remove(po);
                     }
-                    self.add_inf_lemma(lemma.as_litvec().clone());
+                    self.add_inf_lemma(lemma.0.as_litvec().clone());
                     // if !dump {
                     //     break;
                     // }
@@ -145,7 +146,7 @@ impl IC3 {
                     // dump_buf[dump_start..dump_start + 4].copy_from_slice(&nlits.to_le_bytes());
                     break;
                 } else {
-                    let target = self.tsctx.lits_next(lemma.as_litvec());
+                    let target = self.tsctx.lits_next(lemma.0.as_litvec());
                     let (ctp, _) = self.lift.lift(
                         &mut self.inf_solver,
                         target.iter().chain(self.tsctx.constraint.iter()),

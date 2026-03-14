@@ -1,71 +1,9 @@
 use super::{IC3, proofoblig::ProofObligation};
 use crate::{gipsat::TransysSolver, transys::TransysCtx};
 use logicrs::{Lit, LitOrdVec, LitSet, LitVec, Var, satif::Satif};
-use std::{
-    fmt::Write,
-    ops::{Deref, DerefMut},
-};
+use std::{fmt::Write, ops::{Deref, DerefMut}};
 
-#[derive(Clone)]
-pub struct FrameLemma {
-    lemma: LitOrdVec,
-    pub po: Option<ProofObligation>,
-    pub _ctp: Option<LitVec>,
-}
-
-impl FrameLemma {
-    #[inline]
-    pub fn new(lemma: LitOrdVec, po: Option<ProofObligation>, ctp: Option<LitVec>) -> Self {
-        Self {
-            lemma,
-            po,
-            _ctp: ctp,
-        }
-    }
-}
-
-impl Deref for FrameLemma {
-    type Target = LitOrdVec;
-
-    #[inline]
-    fn deref(&self) -> &Self::Target {
-        &self.lemma
-    }
-}
-
-impl DerefMut for FrameLemma {
-    #[inline]
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.lemma
-    }
-}
-
-#[derive(Default)]
-pub struct Frame {
-    lemmas: Vec<FrameLemma>,
-}
-
-impl Frame {
-    pub fn new() -> Self {
-        Self { lemmas: Vec::new() }
-    }
-}
-
-impl Deref for Frame {
-    type Target = Vec<FrameLemma>;
-
-    #[inline]
-    fn deref(&self) -> &Self::Target {
-        &self.lemmas
-    }
-}
-
-impl DerefMut for Frame {
-    #[inline]
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.lemmas
-    }
-}
+pub type Frame = Vec<(LitOrdVec, Option<ProofObligation>)>;
 
 pub struct Frames {
     frames: Vec<Frame>,
@@ -102,17 +40,17 @@ impl Frames {
         if let Some(frame) = frame {
             for (i, fi) in self.frames.iter_mut().enumerate().skip(frame) {
                 for j in 0..fi.len() {
-                    if fi[j].lemma.subsume_set(lemma, &self.tmp_lit_set) {
+                    if fi[j].0.subsume_set(lemma, &self.tmp_lit_set) {
                         self.tmp_lit_set.clear();
-                        return Some((Some(i), &mut fi[j].po));
+                        return Some((Some(i), &mut fi[j].1));
                     }
                 }
             }
         }
         for j in 0..self.inf.len() {
-            if self.inf[j].lemma.subsume_set(lemma, &self.tmp_lit_set) {
+            if self.inf[j].0.subsume_set(lemma, &self.tmp_lit_set) {
                 self.tmp_lit_set.clear();
-                return Some((None, &mut self.inf[j].po));
+                return Some((None, &mut self.inf[j].1));
             }
         }
         self.tmp_lit_set.clear();
@@ -124,9 +62,9 @@ impl Frames {
             return None;
         }
         let lemma = LitOrdVec::new(LitVec::from(lemma));
-        for c in self.frames[frame - 1].iter() {
+        for (c, _) in self.frames[frame - 1].iter() {
             if c.subsume(&lemma) {
-                return Some(c.lemma.clone());
+                return Some(c.clone());
             }
         }
         None
@@ -152,20 +90,17 @@ impl Frames {
 
 impl Deref for Frames {
     type Target = Vec<Frame>;
-
     #[inline]
     fn deref(&self) -> &Self::Target {
         &self.frames
     }
 }
-
 impl DerefMut for Frames {
     #[inline]
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.get_mut()
     }
 }
-
 impl Frames {
     #[inline]
     pub fn get_mut(&mut self) -> &mut Vec<Frame> {
@@ -174,6 +109,7 @@ impl Frames {
 }
 
 impl IC3 {
+    // HELP: abusing `inline`?
     #[inline]
     pub(super) fn add_lemma(
         &mut self,
@@ -191,7 +127,7 @@ impl IC3 {
                 predprop.add_lemma(&lemma);
             }
             self.solvers[0].add_clause(&!lemma.as_litvec());
-            self.frame[0].push(FrameLemma::new(lemma, po, None));
+            self.frame[0].push((lemma, po));
             return false;
         }
         if contained_check && self.frame.trivial_contained(Some(frame), &lemma).is_some() {
@@ -202,29 +138,28 @@ impl IC3 {
         'fl: for i in (1..=frame).rev() {
             let mut j = 0;
             while j < self.frame[i].len() {
-                let l = &self.frame[i][j];
+                let (l, _) = &self.frame[i][j];
                 if begin.is_none() && l.subsume(&lemma) {
-                    if l.eq(&lemma) {
-                        self.frame[i].swap_remove(j);
-                        let clause = !lemma.as_litvec();
-                        for k in i + 1..=frame {
-                            self.solvers[k].add_clause(&clause);
-                        }
-                        if self.level() == frame
-                            && let Some(predprop) = self.predprop.as_mut()
-                        {
-                            predprop.add_lemma(&lemma);
-                        }
-                        self.frame[frame].push(FrameLemma::new(lemma, po, None));
-                        self.frame.early = self.frame.early.min(i + 1);
-                        return self.frame[i].is_empty();
-                    } else {
+                    if l.ne(&lemma) {
                         begin = Some(i + 1);
                         break 'fl;
                     }
+                    self.frame[i].swap_remove(j);
+                    let clause = !lemma.as_litvec();
+                    for k in i + 1..=frame {
+                        self.solvers[k].add_clause(&clause);
+                    }
+                    if self.level() == frame
+                        && let Some(predprop) = self.predprop.as_mut()
+                    {
+                        predprop.add_lemma(&lemma);
+                    }
+                    self.frame[frame].push((lemma, po));
+                    self.frame.early = self.frame.early.min(i + 1);
+                    return self.frame[i].is_empty();
                 }
-                if lemma.subsume(l) {
-                    let _remove = self.frame[i].swap_remove(j);
+                if lemma.subsume(&l) {
+                    let _ = self.frame[i].swap_remove(j);
                     // self.solvers[i].remove_lemma(&remove);
                     continue;
                 }
@@ -244,7 +179,7 @@ impl IC3 {
         {
             predprop.add_lemma(&lemma);
         }
-        self.frame[frame].push(FrameLemma::new(lemma, po, None));
+        self.frame[frame].push((lemma, po));
         self.frame.early = self.frame.early.min(begin);
         inv_found
     }
@@ -254,11 +189,11 @@ impl IC3 {
         assert!(self.frame.trivial_contained(None, &lemma).is_none());
         let lastf = self.frame.last_mut().unwrap();
         let olen = lastf.len();
-        lastf.retain(|l| !l.eq(&lemma));
+        lastf.retain(|(l, _)| !l.eq(&lemma));
         assert!(lastf.len() + 1 == olen);
         let clause = !lemma.as_litvec();
         self.inf_solver.add_clause(&clause);
-        self.frame.inf.push(FrameLemma::new(lemma, None, None));
+        self.frame.inf.push((lemma, None));
     }
 
     pub fn inner_invariant(&self) -> Vec<LitVec> {
@@ -266,69 +201,48 @@ impl IC3 {
             .frame
             .inf
             .iter()
-            .map(|c| c.as_litvec().clone())
+            .map(|(c, _)| c.as_litvec().clone())
             .collect();
         if let Some(invariant) = self.frame.iter().position(|frame| frame.is_empty()) {
             for i in invariant..self.frame.len() {
-                for cube in self.frame[i].iter() {
+                for (cube, _) in self.frame[i].iter() {
                     invariants.push(cube.as_litvec().clone());
                 }
             }
-            invariants
-        } else {
-            let iter_max = 5;
-            let mut cand: Vec<_> = self
-                .frame
-                .last()
-                .unwrap()
-                .iter()
-                .map(|l| l.as_litvec().clone())
-                .collect();
-            for k in 0..=iter_max {
-                if k == iter_max {
-                    return invariants;
-                }
-                let mut slv = TransysSolver::new(&self.tsctx);
-                for i in invariants.iter() {
-                    slv.add_clause(&!i);
-                }
-                for c in cand.iter() {
-                    slv.add_clause(&!c);
-                }
-                let mut new_cand = Vec::new();
-                for c in cand.iter() {
-                    if slv.inductive(c, false) {
-                        new_cand.push(c.clone());
-                    }
-                }
-                if new_cand.len() == cand.len() {
-                    break;
-                } else {
-                    cand = new_cand;
+            return invariants;
+        }
+
+        let iter_max = 5;
+        let mut cand: Vec<_> = self
+            .frame
+            .last()
+            .unwrap()
+            .iter()
+            .map(|(l, _)| l.as_litvec().clone())
+            .collect();
+        for k in 0..=iter_max {
+            if k == iter_max {
+                return invariants;
+            }
+            let mut slv = TransysSolver::new(&self.tsctx);
+            for i in invariants.iter() {
+                slv.add_clause(&!i);
+            }
+            for c in cand.iter() {
+                slv.add_clause(&!c);
+            }
+            let mut new_cand = Vec::new();
+            for c in cand.iter() {
+                if slv.inductive(c, false) {
+                    new_cand.push(c.clone());
                 }
             }
-            invariants.extend(cand);
-            invariants
+            if new_cand.len() == cand.len() {
+                break;
+            }
+            cand = new_cand;
         }
+        invariants.extend(cand);
+        invariants
     }
-
-    // pub fn remove_lemma(&mut self, frame: usize, lemmas: Vec<LitVec>) {
-    //     let lemmas: HashSet<LitOrdVec> = HashSet::from_iter(lemmas.into_iter().map(LitOrdVec::new));
-    //     for i in (1..=frame).rev() {
-    //         let mut j = 0;
-    //         while j < self.frame[i].len() {
-    //             if let Some(po) = &mut self.frame[i][j].po {
-    //                 po.removed = true;
-    //             }
-    //             if lemmas.contains(&self.frame[i][j]) {
-    //                 for s in self.solvers[..=frame].iter_mut() {
-    //                     s.remove_lemma(&self.frame[i][j]);
-    //                 }
-    //                 self.frame[i].swap_remove(j);
-    //             } else {
-    //                 j += 1;
-    //             }
-    //         }
-    //     }
-    // }
 }

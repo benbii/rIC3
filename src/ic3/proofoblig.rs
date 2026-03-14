@@ -90,10 +90,6 @@ impl ProofObligation {
         }
     }
 
-    pub fn bump_act(&mut self) {
-        self.act += 1.0;
-    }
-
     pub fn push_to(&mut self, frame: usize) {
         for _ in self.frame..frame {
             self.act *= 0.6;
