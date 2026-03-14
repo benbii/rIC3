@@ -10,7 +10,7 @@ use crate::{
     },
 };
 use clap::{ArgAction, Args};
-use giputils::logger::with_log_level;
+use logicrs::logger::with_log_level;
 use log::{LevelFilter, error};
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};

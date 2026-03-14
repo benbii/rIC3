@@ -12,7 +12,7 @@ use crate::{
 use activity::Activity;
 use clap::{ArgAction, Args, Parser};
 use frame::{Frame, Frames};
-use giputils::{logger::IntervalLogger};
+use logicrs::{logger::IntervalLogger};
 use log::{Level, debug, info, trace};
 use logicrs::{Lit, LitOrdVec, LitVec, LitVvec, Var, satif::Satif};
 use proofoblig::{ProofObligation, ProofObligationQueue};

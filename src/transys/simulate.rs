@@ -2,7 +2,7 @@ use crate::{
     gipsat::DagCnfSolver,
     transys::{Transys, TransysIf},
 };
-use giputils::bitvec::BitVec;
+use logicrs::bitvec::BitVec;
 use logicrs::{LitVec, Var, VarBitVec, satif::Satif};
 use rand::{SeedableRng, rngs::StdRng};
 

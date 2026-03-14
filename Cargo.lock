@@ -753,17 +753,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "giputils"
-version = "0.3.6"
-dependencies = [
- "ahash",
- "log",
- "rand 0.9.2",
- "serde",
- "tempfile",
-]
-
-[[package]]
 name = "hashbrown"
 version = "0.15.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1007,7 +996,6 @@ dependencies = [
  "ahash",
  "enum-as-inner 0.6.1",
  "enumflags2",
- "giputils",
  "inventory",
  "lazy_static",
  "log",
@@ -1447,7 +1435,6 @@ dependencies = [
  "ctrlc",
  "enum-as-inner 0.7.0",
  "env_logger",
- "giputils",
  "lazy_static",
  "log",
  "logicrs",

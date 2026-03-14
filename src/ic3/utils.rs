@@ -1,4 +1,4 @@
-use giputils::statistic::{Average, CountedDuration, RunningTime, SuccessRate};
+use logicrs::statistic::{Average, CountedDuration, RunningTime, SuccessRate};
 use std::{fmt::Debug, time::Duration};
 
 #[derive(Debug, Clone, Default)]

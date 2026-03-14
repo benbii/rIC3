@@ -1,5 +1,5 @@
 use crate::gipsat::{ClauseKind, DagCnfSolver, cdb::CRef};
-use giputils::nckvec::NckVec;
+use logicrs::nckvec::NckVec;
 use logicrs::{Lit, LitMap, Var};
 use std::mem::take;
 

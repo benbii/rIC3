@@ -7,7 +7,7 @@ use crate::{cli::cache::DutHash, logger_init};
 use anyhow::Ok;
 use chrono::TimeDelta;
 use clap::Subcommand;
-use giputils::{
+use logicrs::{
     file::{create_dir_if_not_exists, recreate_dir, remove_if_exists},
     logger::with_log_level,
 };

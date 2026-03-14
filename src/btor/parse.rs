@@ -1,6 +1,6 @@
 use super::Btor;
 use ahash::HashMap;
-use giputils::bitvec::BitVec;
+use logicrs::bitvec::BitVec;
 use logicrs::fol::{
     Sort, Term,
     op::{self, DynOp},

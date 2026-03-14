@@ -1,5 +1,5 @@
 use super::{DagCnfSolver, cdb::CREF_NONE};
-use giputils::{OptionU32, nckvec::NckVec};
+use logicrs::{OptionU32, nckvec::NckVec};
 use logicrs::{Lbool, Lit, LitVec, Var, VarMap};
 use rand::Rng;
 use std::ops::{Index, MulAssign};

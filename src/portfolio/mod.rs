@@ -3,7 +3,7 @@ use crate::transys::Transys;
 use crate::{Engine, McResult, create_bl_engine, impl_config_deref};
 use clap::{Args, Parser};
 use ahash::HashMap;
-use giputils::logger::with_log_level;
+use logicrs::logger::with_log_level;
 use log::{error, info};
 use nix::errno::Errno;
 use nix::sys::wait::{WaitStatus, waitpid};

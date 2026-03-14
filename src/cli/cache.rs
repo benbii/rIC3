@@ -1,6 +1,6 @@
 use crate::cli::run::PropMcInfo;
 use ahash::HashMap;
-use giputils::file::{create_dir_if_not_exists, remove_if_exists};
+use logicrs::file::{create_dir_if_not_exists, remove_if_exists};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use sha2::{Digest, Sha256};
 use std::{

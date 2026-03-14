@@ -1,4 +1,4 @@
-use giputils::statistic::{Average, AverageDuration};
+use logicrs::statistic::{Average, AverageDuration};
 use std::ops::AddAssign;
 
 #[derive(Debug, Default, Clone, Copy)]

@@ -1,9 +1,29 @@
 use cmake::Config;
-#[cfg(feature = "vendor")]
-use giputils::build::copy_build;
 use std::io;
 #[cfg(feature = "vendor")]
+use std::{
+    env,
+    fs::remove_dir_all,
+    path::{Path, PathBuf},
+};
+#[cfg(feature = "vendor")]
 use std::process::Command;
+
+#[cfg(feature = "vendor")]
+fn copy_build(src: &str, f: impl FnOnce(&Path) -> io::Result<()>) -> io::Result<PathBuf> {
+    let src_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap()).join(src);
+    let cp_dir = PathBuf::from(env::var("OUT_DIR").unwrap()).join(src);
+    if cp_dir.exists() {
+        remove_dir_all(&cp_dir).unwrap();
+    }
+    Command::new("cp")
+        .arg("-r")
+        .arg(src_dir.as_path())
+        .arg(&cp_dir)
+        .status()?;
+    f(&cp_dir)?;
+    Ok(cp_dir)
+}
 
 #[cfg(feature = "vendor")]
 fn build_bitwuzla_vendor() -> io::Result<()> {

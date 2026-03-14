@@ -1,6 +1,6 @@
 use super::DagCnfSolver;
 use bitfield_struct::bitfield;
-use giputils::nckvec::NckVec;
+use logicrs::nckvec::NckVec;
 use ahash::HashMap;
 use log::debug;
 use logicrs::{Lit, LitOrdVec, LitVec};

@@ -1,6 +1,3 @@
-[submodule "deps/giputils"]
-	path = deps/giputils
-	url = https://github.com/gipsyh/giputils.git
 [submodule "deps/cadical"]
 	path = deps/cadical
 	url = https://github.com/arminbiere/cadical.git

@@ -2,7 +2,7 @@ use super::{
     DagCnfSolver,
     cdb::{CREF_NONE, CRef, Clause},
 };
-use giputils::nckvec::NckVec;
+use logicrs::nckvec::NckVec;
 use logicrs::{Lbool, Lit, LitMap, Var};
 
 #[derive(Clone, Copy, Debug, Default)]

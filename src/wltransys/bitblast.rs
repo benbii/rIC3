@@ -7,7 +7,7 @@ use crate::{
     wltransys::certify::{WlProof, WlWitness},
 };
 use ahash::HashMap;
-use giputils::bitvec::BitVec;
+use logicrs::bitvec::BitVec;
 use logicrs::{
     DagCnf, Lbool, LboolVec, Lit, LitVec, Var,
     fol::{

@@ -14,7 +14,7 @@ pub use ffi::Bitwuzla;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use giputils::bitvec::BitVec;
+    use logicrs::bitvec::BitVec;
     use logicrs::fol::{
         Sort, Term,
         op::{self},

@@ -1,7 +1,7 @@
 use std::ffi::{CString, c_void};
 
 use ahash::HashMap;
-use giputils::bitvec::BitVec;
+use logicrs::bitvec::BitVec;
 use logicrs::fol::{OpTerm, Sort, Term, TermType, op};
 
 use super::{ops, option};

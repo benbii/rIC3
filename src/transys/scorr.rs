@@ -4,7 +4,7 @@ use crate::{
     transys::{Transys, TransysIf, certify::Restore},
 };
 use ahash::HashMap;
-use giputils::bitvec::BitVec;
+use logicrs::bitvec::BitVec;
 use log::{debug, info};
 use logicrs::{Lit, LitVec, Var, VarLMap, satif::Satif};
 use std::time::Instant;

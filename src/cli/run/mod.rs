@@ -3,7 +3,7 @@ mod tui;
 use super::{Ric3Config, cache::Ric3Proj, yosys::Yosys};
 use crate::cli::{VcdConfig, run::tui::RunTask};
 use anyhow::Ok;
-use giputils::file::recreate_dir;
+use logicrs::file::recreate_dir;
 use rIC3::{
     McResult,
     btor::Btor,

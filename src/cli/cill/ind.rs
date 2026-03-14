@@ -4,7 +4,7 @@ use crate::cli::{
 };
 use chrono::TimeDelta;
 use ahash::HashMap;
-use giputils::logger::with_log_level;
+use logicrs::logger::with_log_level;
 use log::{LevelFilter, info};
 use logicrs::{LitVvec, fol::{self, BvTermValue, TermValue}};
 use rIC3::{

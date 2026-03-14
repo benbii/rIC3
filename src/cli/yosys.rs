@@ -1,6 +1,6 @@
 use super::Ric3Config;
 use crate::cli::{Parse, VcdConfig};
-use giputils::file::recreate_dir;
+use logicrs::file::recreate_dir;
 use ahash::HashMap;
 use log::info;
 use std::{

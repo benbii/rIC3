@@ -2,7 +2,7 @@ use super::{
     DagCnfSolver,
     cdb::{CREF_NONE, CRef},
 };
-use giputils::nckvec::NckVec;
+use logicrs::nckvec::NckVec;
 use log::{debug, trace};
 use logicrs::{Lbool, LitOrdVec, LitVec, VarMap};
 use std::{mem::take, time::Instant};

@@ -1,4 +1,4 @@
-use giputils::StopCtrl;
+use logicrs::StopCtrl;
 use logicrs::{Lit, LitVec, Var, satif::Satif};
 use std::ffi::{c_int, c_void};
 

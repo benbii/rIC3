@@ -1,4 +1,4 @@
-use giputils::bitvec::BitVec;
+use logicrs::bitvec::BitVec;
 use logicrs::fol::Term;
 
 pub struct Bitwuzla;
