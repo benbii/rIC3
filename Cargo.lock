@@ -1437,6 +1437,7 @@ checksum = "69cdb34c158ceb288df11e18b4bd39de994f6657d83847bdffdbd7f346754b0f"
 name = "rIC3"
 version = "1.5.2"
 dependencies = [
+ "ahash",
  "anyhow",
  "bincode",
  "bitfield-struct",

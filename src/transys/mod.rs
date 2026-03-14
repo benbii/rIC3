@@ -14,7 +14,7 @@ mod simulate;
 pub mod unroll;
 
 pub use ctx::*;
-use giputils::hash::{GHashMap, GHashSet};
+use ahash::{HashMap, HashSet};
 use logicrs::{DagCnf, Lit, LitVec, LitVvec, Var, VarVMap, satif::Satif};
 use std::{
     fmt::{self, Display},
@@ -120,8 +120,8 @@ pub trait TransysIf {
 pub struct Transys {
     pub input: Vec<Var>,
     pub latch: Vec<Var>,
-    pub next: GHashMap<Var, Lit>,
-    pub init: GHashMap<Var, Lit>,
+    pub next: HashMap<Var, Lit>,
+    pub init: HashMap<Var, Lit>,
     /// multiple bads, not single cube
     pub bad: LitVec,
     pub constraint: LitVec,
@@ -200,7 +200,7 @@ impl Transys {
     }
 
     pub fn unique_prime(&mut self, rst: &mut VarVMap) {
-        let mut unique = GHashSet::new();
+        let mut unique = HashSet::default();
         unique.insert(Var::CONST);
         for l in self.latch.clone() {
             let mut n = self.next[&l];

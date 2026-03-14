@@ -1,6 +1,6 @@
 use super::{Transys, TransysIf};
 use crate::transys::certify::BlWitness;
-use giputils::hash::GHashMap;
+use ahash::HashMap;
 use logicrs::{Lit, LitMap, LitVec, LitVvec, Var, VarRange, satif::Satif};
 use std::ops::Deref;
 
@@ -11,7 +11,7 @@ pub struct TransysUnroll<T: TransysIf> {
     pub max_var: Var,
     next_map: LitMap<Vec<Lit>>,
     simple_path: Option<Vec<Vec<LitVec>>>,
-    pub opt: GHashMap<Var, Var>,
+    pub opt: HashMap<Var, Var>,
     pub connect: Option<Vec<LitVvec>>,
     pub optcst: Option<Vec<LitVvec>>,
 }
@@ -43,7 +43,7 @@ impl<T: TransysIf> TransysUnroll<T> {
             max_var: ts.max_var(),
             next_map,
             simple_path: None,
-            opt: GHashMap::new(),
+            opt: HashMap::default(),
             connect: None,
             optcst: None,
         }
@@ -314,7 +314,7 @@ impl TransysUnroll<Transys> {
             rel.add_rel(v, &cls);
         }
         let mut latch = Vec::new();
-        let mut next = GHashMap::new();
+        let mut next = HashMap::default();
         for v in VarRange::new_inclusive(Var::new(1), self.ts.max_var()) {
             if !keep.contains(&v) {
                 latch.push(v);
@@ -357,7 +357,7 @@ impl TransysUnroll<Transys> {
         }
 
         let mut latch = Vec::new();
-        let mut next = GHashMap::new();
+        let mut next = HashMap::default();
         for v in VarRange::new_inclusive(Var::new(1), self.ts.max_var()) {
             if !keep.contains(&v) {
                 latch.push(v);

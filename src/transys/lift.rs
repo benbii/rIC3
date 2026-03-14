@@ -2,7 +2,7 @@ use crate::{
     gipsat::DagCnfSolver,
     transys::{Transys, TransysIf, unroll::TransysUnroll},
 };
-use giputils::hash::GHashSet;
+use ahash::HashSet;
 use logicrs::{Lit, LitVec, Var, satif::Satif};
 
 pub struct TsLift {
@@ -38,7 +38,7 @@ impl TsLift {
             return (LitVec::new(), vec![]);
         }
         cls = !cls;
-        let in_cls: GHashSet<Var> = GHashSet::from_iter(cls.iter().map(|l| l.var()));
+        let in_cls: HashSet<Var> = HashSet::from_iter(cls.iter().map(|l| l.var()));
         let mut inputs = Vec::new();
         let mut inputs_flatten = LitVec::new();
         for k in 0..=self.ts.num_unroll {

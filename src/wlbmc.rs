@@ -6,7 +6,7 @@ use crate::{
     wltransys::{WlTransys, unroll::WlTransysUnroll},
 };
 use clap::Args;
-use giputils::hash::GHashMap;
+use ahash::HashMap;
 use log::info;
 use serde::{Deserialize, Serialize};
 
@@ -73,8 +73,8 @@ impl Engine for WlBMC {
 
     fn witness(&mut self) -> McWitness {
         let mut witness = self.uts.witness(&mut self.solver);
-        let mut cache = GHashMap::new();
-        let mut ilmap = GHashMap::new();
+        let mut cache = HashMap::default();
+        let mut ilmap = HashMap::default();
         for i in self.owts.input.iter().chain(self.owts.latch.iter()) {
             ilmap.insert(i, self.uts.next(i, self.uts.num_unroll));
         }

@@ -1,5 +1,5 @@
 use crate::wltransys::WlTransys;
-use giputils::hash::{GHashMap, GHashSet};
+use ahash::{HashMap, HashSet};
 use logicrs::fol::{self, BvTermValue, Term, TermValue};
 use std::ops::{Deref, DerefMut};
 
@@ -27,10 +27,10 @@ impl WlWitness {
         self.state.resize(size, Vec::new());
     }
 
-    pub fn enrich(&mut self, observe: &GHashSet<Term>) {
+    pub fn enrich(&mut self, observe: &HashSet<Term>) {
         for k in (0..self.len()).rev() {
-            let mut val = GHashMap::new();
-            let mut has = GHashSet::new();
+            let mut val = HashMap::default();
+            let mut has = HashSet::default();
             for v in self.input[k].iter() {
                 val.insert(v.t().clone(), fol::Value::Bv(v.v().clone()));
                 has.insert(v.t().clone());

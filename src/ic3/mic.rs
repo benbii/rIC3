@@ -1,6 +1,6 @@
 use super::IC3;
 use crate::{ic3::IC3Config, transys::TransysIf};
-use giputils::hash::GHashSet;
+use ahash::HashSet;
 use log::trace;
 use logicrs::{Lit, LitOrdVec, LitVec, satif::Satif};
 use rand::{Rng, seq::SliceRandom};
@@ -55,7 +55,7 @@ impl IC3 {
         &mut self,
         frame: usize,
         cube: &LitVec,
-        keep: &GHashSet<Lit>,
+        keep: &HashSet<Lit>,
         full: &LitVec,
         constraint: &[LitVec],
         cex: &mut Vec<(LitOrdVec, LitOrdVec)>,
@@ -123,7 +123,7 @@ impl IC3 {
         &mut self,
         frame: usize,
         cube: &LitVec,
-        keep: &GHashSet<Lit>,
+        keep: &HashSet<Lit>,
         full: &LitVec,
         parameter: DropVarParameter,
     ) -> Option<LitVec> {
@@ -145,7 +145,7 @@ impl IC3 {
                 }
             }
             let (model, _) = self.get_pred(frame, false);
-            let cex_set: GHashSet<Lit> = GHashSet::from_iter(model.iter().cloned());
+            let cex_set: HashSet<Lit> = HashSet::from_iter(model.iter().cloned());
             // for lit in cube.iter() {
             //     if keep.contains(lit) && !cex_set.contains(lit) {
             //         return None;
@@ -227,10 +227,10 @@ impl IC3 {
         if self.cfg.parent_lemma
             && let Some(parent) = self.frame.parent_lemma(&cube, frame)
         {
-            let parent = GHashSet::from_iter(parent);
+            let parent = HashSet::from_iter(parent);
             cube.sort_by_key(|x| parent.contains(x));
         }
-        let mut keep = GHashSet::new();
+        let mut keep = HashSet::default();
         let mut i = 0;
         while i < cube.len() {
             if keep.contains(&cube[i]) {

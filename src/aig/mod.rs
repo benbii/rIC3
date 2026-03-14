@@ -4,7 +4,7 @@ mod others;
 mod strash;
 mod ternary;
 
-use giputils::hash::GHashMap;
+use ahash::HashMap;
 use logicrs::Lit;
 use std::{
     mem::swap,
@@ -254,7 +254,7 @@ pub struct Aig {
     pub constraints: Vec<AigEdge>,
     pub justice: Vec<Vec<AigEdge>>,
     pub fairness: Vec<AigEdge>,
-    pub symbols: GHashMap<usize, String>,
+    pub symbols: HashMap<usize, String>,
 }
 
 impl Aig {

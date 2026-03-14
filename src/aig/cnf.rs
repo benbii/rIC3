@@ -1,11 +1,11 @@
 use super::{Aig, AigEdge};
-use giputils::hash::GHashSet;
+use ahash::HashSet;
 use logicrs::{DagCnf, LitVvec, Var};
 
 impl Aig {
     #[inline]
-    fn get_root_refs(&self) -> GHashSet<usize> {
-        let mut refs = GHashSet::new();
+    fn get_root_refs(&self) -> HashSet<usize> {
+        let mut refs = HashSet::default();
         for l in self.latchs.iter() {
             refs.insert(l.next.node_id());
             if let Some(init) = &l.init {

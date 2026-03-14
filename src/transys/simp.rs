@@ -3,13 +3,13 @@ use crate::{
     config::PreprocConfig,
     transys::{certify::Restore, frts::FrTs, scorr::Scorr},
 };
-use giputils::hash::GHashSet;
+use ahash::HashSet;
 use log::{debug, info};
 use logicrs::{Lit, Var, VarRange};
 
 impl Transys {
     pub fn coi_refine(&mut self, rst: &mut Restore) {
-        let mut mark = GHashSet::new();
+        let mut mark = HashSet::default();
         let mut queue = Vec::new();
         for v in self
             .constraint

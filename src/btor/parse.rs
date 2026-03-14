@@ -1,5 +1,6 @@
 use super::Btor;
-use giputils::{bitvec::BitVec, hash::GHashMap};
+use ahash::HashMap;
+use giputils::bitvec::BitVec;
 use logicrs::fol::{
     Sort, Term,
     op::{self, DynOp},
@@ -9,16 +10,16 @@ use num_traits::Num;
 
 #[derive(Default)]
 pub struct Parser {
-    sorts: GHashMap<usize, Sort>,
-    nodes: GHashMap<usize, Term>,
+    sorts: HashMap<usize, Sort>,
+    nodes: HashMap<usize, Term>,
     input: Vec<Term>,
     latch: Vec<Term>,
-    init: GHashMap<Term, Term>,
-    next: GHashMap<Term, Term>,
+    init: HashMap<Term, Term>,
+    next: HashMap<Term, Term>,
     output: Vec<Term>,
     bad: Vec<Term>,
     constraint: Vec<Term>,
-    symbols: GHashMap<Term, Vec<String>>,
+    symbols: HashMap<Term, Vec<String>>,
     prop_labels: Vec<String>,
 }
 
@@ -162,7 +163,7 @@ impl Parser {
                             *i = ni;
                         }
                     }
-                    let v = Term::bv_const(BitVec::from(&c));
+                    let v = Term::bv_const(BitVec::from(c.as_slice()));
                     self.parse_symbol(&v, split);
                     assert!(self.nodes.insert(id, v).is_none());
                 }

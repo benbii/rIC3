@@ -1,11 +1,11 @@
 use crate::transys::{Transys, TransysIf};
-use giputils::hash::{GHashMap, GHashSet};
+use ahash::{HashMap, HashSet};
 use logicrs::{DagCnf, Var, VarRange};
 
 impl Transys {
-    pub fn add_aux(&mut self, rel: &DagCnf, auxs: &GHashSet<Var>) {
+    pub fn add_aux(&mut self, rel: &DagCnf, auxs: &HashSet<Var>) {
         let vars = VarRange::new_inclusive(self.max_var() + 1, rel.max_var());
-        let mut next = GHashMap::new();
+        let mut next = HashMap::default();
         for v in vars.clone() {
             self.rel.add_rel(v, &rel[v]);
         }

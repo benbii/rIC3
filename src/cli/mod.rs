@@ -14,7 +14,7 @@ use crate::cli::{
 };
 use anyhow::Context;
 use clap::{Parser, Subcommand};
-use giputils::hash::GHashSet;
+use ahash::HashSet;
 use rIC3::config::EngineConfig;
 use serde::Deserialize;
 use std::{
@@ -146,7 +146,7 @@ impl Dut {
         if self.files.is_empty() {
             anyhow::bail!("dut files cannot be empty");
         }
-        let mut seen_names = GHashSet::new();
+        let mut seen_names = HashSet::default();
         let files = self.src();
         for file in files.iter() {
             if !file.exists() {

@@ -1,7 +1,7 @@
 use super::Ric3Config;
 use crate::cli::{Parse, VcdConfig};
 use giputils::file::recreate_dir;
-use giputils::hash::GHashMap;
+use ahash::HashMap;
 use log::info;
 use std::{
     fs,
@@ -169,7 +169,7 @@ impl Yosys {
         item: &vcd::ScopeItem,
         writer: &mut vcd::Writer<impl std::io::Write>,
         target_path: &[&str],
-        kept_ids: &mut GHashMap<IdCode, IdCode>,
+        kept_ids: &mut HashMap<IdCode, IdCode>,
     ) -> anyhow::Result<()> {
         if target_path.is_empty() {
             match item {
@@ -220,7 +220,7 @@ impl Yosys {
         let mut parser = vcd::Parser::new(BufReader::new(vcd));
         let mut writer = vcd::Writer::new(BufWriter::new(out));
 
-        let mut kept_ids = GHashMap::new();
+        let mut kept_ids = HashMap::default();
 
         let header = parser.parse_header()?;
 

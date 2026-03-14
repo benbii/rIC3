@@ -1,15 +1,15 @@
 use super::{Aig, AigEdge, AigNodeType};
-use giputils::hash::{GHashMap, GHashSet};
+use ahash::{HashMap, HashSet};
 use logicrs::{Var, VarVMap};
 use std::mem::take;
 
 impl Aig {
-    pub fn coi(&self, root: &[usize]) -> GHashSet<usize> {
-        let mut latchs = GHashMap::new();
+    pub fn coi(&self, root: &[usize]) -> HashSet<usize> {
+        let mut latchs = HashMap::default();
         for l in self.latchs.iter() {
             latchs.insert(l.input, *l);
         }
-        let mut refine = GHashSet::new();
+        let mut refine = HashSet::default();
         refine.insert(AigEdge::constant(true).node_id());
         let mut queue = Vec::new();
         for r in root {
@@ -62,7 +62,7 @@ impl Aig {
         let refine = self.coi(&refine_root);
         let mut refine = Vec::from_iter(refine);
         refine.sort();
-        let mut refine_map = GHashMap::new();
+        let mut refine_map = HashMap::default();
         for (i, r) in refine.iter().enumerate() {
             refine_map.insert(*r, i);
         }
@@ -107,7 +107,7 @@ impl Aig {
             .map(|j| j.iter().map(|n| edge_map(*n)).collect())
             .collect();
         let fairness: Vec<AigEdge> = self.fairness.iter().map(|n| edge_map(*n)).collect();
-        let mut symbols = GHashMap::new();
+        let mut symbols = HashMap::default();
         for (k, s) in self.symbols.iter() {
             if let Some(r) = refine_map.get(k) {
                 symbols.insert(*r, s.clone());
@@ -130,7 +130,7 @@ impl Aig {
     }
 
     pub fn unroll(&mut self, from: &Aig) {
-        let mut next_map = GHashMap::new();
+        let mut next_map = HashMap::default();
         let false_edge = AigEdge::constant(false);
         next_map.insert(false_edge.node_id(), false_edge);
         for l in self.latchs.iter() {
@@ -220,7 +220,7 @@ impl Aig {
 
     pub fn reencode(&self) -> Self {
         let mut res = Self::new();
-        let mut encode_map = GHashMap::new();
+        let mut encode_map = HashMap::default();
         encode_map.insert(0, 0);
         let mut max_id = 0;
         for l in self.inputs.iter() {

@@ -1,8 +1,6 @@
 use crate::cli::run::PropMcInfo;
-use giputils::{
-    file::{create_dir_if_not_exists, remove_if_exists},
-    hash::GHashMap,
-};
+use ahash::HashMap;
+use giputils::file::{create_dir_if_not_exists, remove_if_exists};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use sha2::{Digest, Sha256};
 use std::{
@@ -18,7 +16,7 @@ struct FileEntry {
 
 #[derive(Clone, Serialize, Deserialize, Debug, Default, PartialEq, Eq)]
 pub struct DutHash {
-    files: GHashMap<PathBuf, FileEntry>,
+    files: HashMap<PathBuf, FileEntry>,
 }
 
 fn calculate_hash(path: &Path) -> anyhow::Result<String> {

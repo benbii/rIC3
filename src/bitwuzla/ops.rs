@@ -1,4 +1,4 @@
-use giputils::hash::GHashMap;
+use ahash::HashMap;
 use logicrs::fol::op::{self, DynOp};
 
 #[repr(u32)]
@@ -77,8 +77,8 @@ pub(crate) enum BitwuzlaOp {
 }
 
 lazy_static::lazy_static! {
-    pub(crate) static ref OP_MAP: GHashMap<DynOp, BitwuzlaOp> = {
-        let mut m = GHashMap::new();
+    pub(crate) static ref OP_MAP: HashMap<DynOp, BitwuzlaOp> = {
+        let mut m = HashMap::default();
         m.insert(DynOp::from(op::Add), BitwuzlaOp::BvAdd);
         m.insert(DynOp::from(op::Sub), BitwuzlaOp::BvSub);
         m.insert(DynOp::from(op::Mul), BitwuzlaOp::BvMul);

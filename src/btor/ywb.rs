@@ -1,5 +1,5 @@
 use super::Btor;
-use giputils::hash::GHashMap;
+use ahash::HashMap;
 use logicrs::fol::Term;
 use serde::{Deserialize, Serialize};
 
@@ -38,11 +38,11 @@ impl Btor {
         ywb
     }
 
-    pub fn witness_map(&self, s: &str) -> GHashMap<Term, Vec<SignalPart>> {
+    pub fn witness_map(&self, s: &str) -> HashMap<Term, Vec<SignalPart>> {
         let ywb: YosysWitnessBTOR = serde_json::from_str(s).unwrap();
         assert!(self.input.len() == ywb.inputs.len());
         assert!(self.latch.len() == ywb.states.len());
-        let mut map: GHashMap<Term, Vec<SignalPart>> = GHashMap::new();
+        let mut map: HashMap<Term, Vec<SignalPart>> = HashMap::default();
         for (i, s) in self.input.iter().zip(ywb.inputs.iter()) {
             map.insert(i.clone(), s.clone());
         }

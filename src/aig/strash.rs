@@ -1,11 +1,11 @@
 use super::{Aig, AigEdge};
-use giputils::hash::GHashMap;
+use ahash::HashMap;
 use std::mem::swap;
 
 impl Aig {
     pub fn strash(&self) -> Self {
-        let mut map = GHashMap::new();
-        let mut strash_map = GHashMap::new();
+        let mut map = HashMap::default();
+        let mut strash_map = HashMap::default();
         for node in self.nodes.iter() {
             if node.is_and() {
                 let mut fanin0 = node.fanin0();

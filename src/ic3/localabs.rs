@@ -4,24 +4,24 @@ use crate::{
     ic3::IC3Config,
     transys::{Transys, TransysIf, unroll::TransysUnroll},
 };
-use giputils::hash::{GHashMap, GHashSet};
+use ahash::{HashMap, HashSet};
 use log::{debug, info};
 use logicrs::{LitVec, Var, satif::Satif};
 use rand::seq::SliceRandom;
 
 pub struct LocalAbs {
-    refine: GHashSet<Var>,
+    refine: HashSet<Var>,
     uts: TransysUnroll<Transys>,
     solver: Box<dyn Satif>,
     kslv: usize,
-    opt: GHashMap<Var, Var>,
-    opt_rev: GHashMap<Var, Var>,
+    opt: HashMap<Var, Var>,
+    opt_rev: HashMap<Var, Var>,
     foundcex: bool,
 }
 
 impl LocalAbs {
     pub fn new(ts: &Transys, cfg: &IC3Config) -> Self {
-        let mut refine = GHashSet::new();
+        let mut refine = HashSet::default();
         refine.insert(Var::CONST);
         refine.extend(ts.bad.iter().map(|l| l.var()));
         if !cfg.abs_cst {
@@ -41,7 +41,7 @@ impl LocalAbs {
         uts.load_trans(solver.as_mut(), 0, !cfg.abs_cst);
         uts.ts.load_init(solver.as_mut());
         let opt = uts.opt.clone();
-        let opt_rev: GHashMap<Var, Var> = opt.iter().map(|(k, v)| (*v, *k)).collect();
+        let opt_rev: HashMap<Var, Var> = opt.iter().map(|(k, v)| (*v, *k)).collect();
         for r in refine.iter() {
             if let Some(o) = opt.get(r) {
                 solver.add_clause(&[o.lit()]);

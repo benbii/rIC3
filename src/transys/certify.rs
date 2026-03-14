@@ -2,7 +2,7 @@ use crate::{
     gipsat::DagCnfSolver,
     transys::{Transys, TransysIf, unroll::TransysUnroll},
 };
-use giputils::hash::GHashMap;
+use ahash::HashMap;
 use logicrs::{Lit, LitVec, LitVvec, Var, VarVMap, satif::Satif};
 use std::ops::{Deref, DerefMut};
 
@@ -187,7 +187,7 @@ impl BlProof {
 pub struct Restore {
     pub(crate) bvmap: VarVMap,
     pub(crate) fvmap: VarVMap,
-    eqmap: GHashMap<Var, LitVec>,
+    eqmap: HashMap<Var, LitVec>,
     init_var: Option<Var>,
 }
 
@@ -196,7 +196,7 @@ impl Restore {
         Self {
             bvmap: VarVMap::new_self_map(ts.max_var()),
             fvmap: VarVMap::new_self_map(ts.max_var()),
-            eqmap: GHashMap::default(),
+            eqmap: HashMap::default(),
             init_var: None,
         }
     }

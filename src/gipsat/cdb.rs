@@ -1,7 +1,7 @@
 use super::DagCnfSolver;
 use bitfield_struct::bitfield;
 use giputils::nckvec::NckVec;
-use giputils::hash::GHashMap;
+use ahash::HashMap;
 use log::debug;
 use logicrs::{Lit, LitOrdVec, LitVec};
 use std::{
@@ -411,7 +411,7 @@ impl DagCnfSolver {
         if self.simplify.lazy_remove.len() * 10 <= self.cdb.num_lemma() {
             return;
         }
-        let mut lazy_remove_map: GHashMap<LitOrdVec, u32> = GHashMap::new();
+        let mut lazy_remove_map: HashMap<LitOrdVec, u32> = HashMap::default();
         for mut lr in take(&mut self.simplify.lazy_remove) {
             if lr.iter().any(|l| self.value.v(*l).is_false()) {
                 continue;

@@ -1,6 +1,6 @@
 use crate::wltransys::{WlTransys, certify::WlWitness};
 use crate::bitwuzla::Bitwuzla;
-use giputils::hash::GHashMap;
+use ahash::HashMap;
 use logicrs::{
     LboolVec,
     fol::{self, BvTermValue, Term, TermValue},
@@ -10,14 +10,14 @@ use logicrs::{
 pub struct WlTransysUnroll {
     pub ts: WlTransys,
     pub num_unroll: usize,
-    next_map: GHashMap<Term, Vec<Term>>,
+    next_map: HashMap<Term, Vec<Term>>,
     /// create new var for next state of latch
     new_next_latch: Option<Vec<Term>>,
 }
 
 impl WlTransysUnroll {
     pub fn new(ts: WlTransys) -> Self {
-        let mut next_map = GHashMap::new();
+        let mut next_map = HashMap::default();
         for t in ts
             .input
             .iter()
@@ -44,7 +44,7 @@ impl WlTransysUnroll {
     }
 
     pub fn unroll(&mut self) {
-        let mut ilmap = GHashMap::new();
+        let mut ilmap = HashMap::default();
         for i in self.ts.input.iter() {
             let ni = Term::new_var(i.sort());
             self.next_map.get_mut(i).unwrap().push(ni.clone());
@@ -65,7 +65,7 @@ impl WlTransysUnroll {
         if let Some(c) = &mut self.new_next_latch {
             c.push(connect);
         }
-        let mut cache = GHashMap::new();
+        let mut cache = HashMap::default();
         for (_, n) in self.next_map.iter_mut() {
             if n.len() == self.num_unroll + 2 {
                 continue;

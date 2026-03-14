@@ -6,7 +6,8 @@ use crate::{
     },
     wltransys::certify::{WlProof, WlWitness},
 };
-use giputils::{bitvec::BitVec, hash::GHashMap};
+use ahash::HashMap;
+use giputils::bitvec::BitVec;
 use logicrs::{
     DagCnf, Lbool, LboolVec, Lit, LitVec, Var,
     fol::{
@@ -17,9 +18,9 @@ use logicrs::{
 };
 
 impl WlTransys {
-    fn bitblast(&self) -> (Self, GHashMap<Term, TermVec>, GHashMap<Term, (Term, usize)>) {
-        let mut rst = GHashMap::new();
-        let mut map = GHashMap::new();
+    fn bitblast(&self) -> (Self, HashMap<Term, TermVec>, HashMap<Term, (Term, usize)>) {
+        let mut rst = HashMap::default();
+        let mut map = HashMap::default();
         let mut input = Vec::new();
         for x in self.input.iter() {
             let bb = x.bitblast(&mut map);
@@ -36,8 +37,8 @@ impl WlTransys {
                 latch.push(b);
             }
         }
-        let mut init = GHashMap::new();
-        let mut next = GHashMap::new();
+        let mut init = HashMap::default();
+        let mut next = HashMap::default();
         for l in self.latch.iter() {
             if let Some(n) = self.next.get(l) {
                 let l = l.bitblast(&mut map);
@@ -72,7 +73,7 @@ impl WlTransys {
         let justice: Vec<Term> = bitblast_terms(self.justice.iter(), &mut map)
             .flatten()
             .collect();
-        let mut nmap = GHashMap::new();
+        let mut nmap = HashMap::default();
         for v in self.input.iter().chain(self.latch.iter()) {
             nmap.insert(v.clone(), map[v].clone());
         }
@@ -91,10 +92,10 @@ impl WlTransys {
         )
     }
 
-    fn lower_to_ts(&self) -> (Transys, GHashMap<Var, Term>) {
-        let mut rst = GHashMap::new();
+    fn lower_to_ts(&self) -> (Transys, HashMap<Var, Term>) {
+        let mut rst = HashMap::default();
         let mut dc = DagCnf::new();
-        let mut map = GHashMap::new();
+        let mut map = HashMap::default();
         let mut input = Vec::new();
         for x in self.input.iter() {
             let v = x.cnf_encode(&mut dc, &mut map).var();
@@ -107,7 +108,7 @@ impl WlTransys {
             rst.insert(v, x.clone());
             latch.push(v);
         }
-        let mut next = GHashMap::new();
+        let mut next = HashMap::default();
         for l in self.latch.iter() {
             if let Some(n) = self.next.get(l) {
                 let l = l.cnf_encode(&mut dc, &mut map).var();
@@ -118,7 +119,7 @@ impl WlTransys {
         let constraint: LitVec =
             cnf_encode_terms(self.constraint.iter(), &mut dc, &mut map).collect();
         let justice: LitVec = cnf_encode_terms(self.justice.iter(), &mut dc, &mut map).collect();
-        let mut init = GHashMap::new();
+        let mut init = HashMap::default();
         for l in self.latch.iter() {
             if let Some(i) = self.init.get(l) {
                 let l = l.cnf_encode(&mut dc, &mut map).var();
@@ -145,15 +146,15 @@ impl WlTransys {
     pub fn bitblast_to_ts(&self) -> (Transys, BitblastMap) {
         let (bitblast, bb_map, bb_rst) = self.bitblast();
         let (ts, v2t) = bitblast.lower_to_ts();
-        let t2v: GHashMap<Term, Var> = v2t.iter().map(|(&x, y)| (y.clone(), x)).collect();
-        let w2b: GHashMap<Term, Vec<Var>> = bb_map
+        let t2v: HashMap<Term, Var> = v2t.iter().map(|(&x, y)| (y.clone(), x)).collect();
+        let w2b: HashMap<Term, Vec<Var>> = bb_map
             .iter()
             .map(|(t, tv)| {
                 let tv: Vec<Var> = tv.iter().map(|t| t2v[t]).collect();
                 (t.clone(), tv)
             })
             .collect();
-        let mut b2w = GHashMap::new();
+        let mut b2w = HashMap::default();
         for (k, v) in v2t {
             b2w.insert(k, bb_rst[&v].clone());
         }
@@ -163,8 +164,8 @@ impl WlTransys {
 
 #[derive(Debug, Default, Clone)]
 pub struct BitblastMap {
-    b2w: GHashMap<Var, (Term, usize)>,
-    w2b: GHashMap<Term, Vec<Var>>,
+    b2w: HashMap<Var, (Term, usize)>,
+    w2b: HashMap<Term, Vec<Var>>,
 }
 
 impl BitblastMap {
@@ -189,7 +190,7 @@ impl BitblastMap {
 
 impl BitblastMap {
     pub fn restore_lits(&self, state: &[Lit]) -> Vec<TermValue> {
-        let mut map = GHashMap::new();
+        let mut map = HashMap::default();
         for l in state.iter() {
             let (w, b) = &self.restore(l.var());
             let sort = w.sort();
@@ -273,7 +274,7 @@ impl BitblastMap {
         res.bad.clear();
         let mut new_latch = Vec::new();
         let ts = &proof.proof;
-        let mut map: GHashMap<Var, Term> = GHashMap::new();
+        let mut map: HashMap<Var, Term> = HashMap::default();
         map.insert(Var::CONST, Term::bool_const(false));
         for i in ts.input() {
             map.insert(i, self.restore_var(i));

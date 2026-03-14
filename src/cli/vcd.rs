@@ -1,5 +1,5 @@
 use enum_as_inner::EnumAsInner;
-use giputils::hash::{GHashMap, GHashSet};
+use ahash::{HashMap, HashSet};
 use logicrs::fol::{Sort, Term};
 use rIC3::wltransys::certify::WlWitness;
 use std::io::{self, Write};
@@ -7,7 +7,7 @@ use vcd::{TimescaleUnit, Value, VarType};
 
 #[derive(EnumAsInner, Debug)]
 enum Scope {
-    Node(GHashMap<String, Scope>),
+    Node(HashMap<String, Scope>),
     Var(Term),
 }
 
@@ -32,7 +32,7 @@ impl Scope {
     fn define_scope_rec(
         &self,
         writer: &mut vcd::Writer<impl Write>,
-        term_ids: &mut GHashMap<Term, Vec<vcd::IdCode>>,
+        term_ids: &mut HashMap<Term, Vec<vcd::IdCode>>,
     ) -> io::Result<()> {
         match self {
             Scope::Node(node) => {
@@ -59,7 +59,7 @@ impl Scope {
     fn define_scope(
         &self,
         writer: &mut vcd::Writer<impl Write>,
-        term_ids: &mut GHashMap<Term, Vec<vcd::IdCode>>,
+        term_ids: &mut HashMap<Term, Vec<vcd::IdCode>>,
     ) -> io::Result<()> {
         let node = self.as_node().unwrap();
         if node.values().any(|s| s.is_var()) {
@@ -75,14 +75,14 @@ impl Scope {
 
 pub fn wlwitness_vcd(
     wit: &WlWitness,
-    sym: &GHashMap<Term, Vec<String>>,
+    sym: &HashMap<Term, Vec<String>>,
     out: impl Write,
     filter: &str,
 ) -> io::Result<()> {
     let mut writer = vcd::Writer::new(out);
     writer.timescale(1, TimescaleUnit::NS)?;
 
-    let mut present_terms = GHashSet::default();
+    let mut present_terms = HashSet::default();
     for frame in &wit.input {
         for tv in frame {
             present_terms.insert(tv.t().clone());
@@ -122,14 +122,14 @@ pub fn wlwitness_vcd(
             }
         }
     }
-    let mut term_ids = GHashMap::default();
+    let mut term_ids = HashMap::default();
     root.define_scope(&mut writer, &mut term_ids)?;
     writer.enddefinitions()?;
 
     for t in 0..wit.len() {
         writer.timestamp(t as u64)?;
 
-        let mut frame_values = GHashMap::default();
+        let mut frame_values = HashMap::default();
 
         for tv in &wit.input[t] {
             frame_values.insert(tv.t().clone(), tv.v().clone());

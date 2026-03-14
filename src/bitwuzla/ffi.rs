@@ -1,6 +1,7 @@
 use std::ffi::{CString, c_void};
 
-use giputils::{bitvec::BitVec, hash::GHashMap};
+use ahash::HashMap;
+use giputils::bitvec::BitVec;
 use logicrs::fol::{OpTerm, Sort, Term, TermType, op};
 
 use super::{ops, option};
@@ -59,11 +60,11 @@ pub struct Bitwuzla {
     tm: *mut c_void,
     op: *mut c_void,
     bitwuzla: *mut c_void,
-    term_map: GHashMap<Term, *mut c_void>,
+    term_map: HashMap<Term, *mut c_void>,
     bv1_one: *mut c_void,
     bv1_zero: *mut c_void,
-    bv2bool: GHashMap<*mut c_void, *mut c_void>,
-    bool2bv: GHashMap<*mut c_void, *mut c_void>,
+    bv2bool: HashMap<*mut c_void, *mut c_void>,
+    bool2bv: HashMap<*mut c_void, *mut c_void>,
 }
 
 impl Bitwuzla {
@@ -203,11 +204,11 @@ impl Bitwuzla {
             tm,
             op,
             bitwuzla,
-            term_map: GHashMap::new(),
+            term_map: HashMap::default(),
             bv1_one,
             bv1_zero,
-            bv2bool: GHashMap::new(),
-            bool2bv: GHashMap::new(),
+            bv2bool: HashMap::default(),
+            bool2bv: HashMap::default(),
         }
     }
 
@@ -251,7 +252,7 @@ impl Bitwuzla {
         let s_ptr = unsafe { bitwuzla_term_value_get_str(val) };
         let s = unsafe { std::ffi::CStr::from_ptr(s_ptr).to_string_lossy() };
         let bits: Vec<bool> = s.chars().rev().map(|c| c == '1').collect();
-        Some(BitVec::from(&bits))
+        Some(BitVec::from(bits.as_slice()))
     }
 }
 

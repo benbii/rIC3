@@ -3,7 +3,7 @@ mod parse;
 pub mod ywb;
 
 use deparse::Deparser;
-use giputils::hash::GHashMap;
+use ahash::HashMap;
 use logicrs::fol::Term;
 use parse::Parser;
 use std::{fmt::Display, path::Path};
@@ -12,11 +12,11 @@ use std::{fmt::Display, path::Path};
 pub struct Btor {
     pub input: Vec<Term>,
     pub latch: Vec<Term>,
-    pub init: GHashMap<Term, Term>,
-    pub next: GHashMap<Term, Term>,
+    pub init: HashMap<Term, Term>,
+    pub next: HashMap<Term, Term>,
     pub bad: Vec<Term>,
     pub constraint: Vec<Term>,
-    pub symbols: GHashMap<Term, Vec<String>>,
+    pub symbols: HashMap<Term, Vec<String>>,
     pub prop_label: Vec<String>,
 }
 

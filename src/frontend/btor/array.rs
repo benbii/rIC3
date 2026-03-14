@@ -1,10 +1,10 @@
 use crate::wltransys::WlTransys;
-use giputils::hash::GHashMap;
+use ahash::HashMap;
 use logicrs::fol::{Sort, Term, TermType, op};
 use std::ops::Deref;
 
 impl WlTransys {
-    fn _term_abs_array(&mut self, term: &Term, map: &mut GHashMap<Term, Term>) -> Term {
+    fn _term_abs_array(&mut self, term: &Term, map: &mut HashMap<Term, Term>) -> Term {
         if let Some(t) = map.get(term) {
             return t.clone();
         }
@@ -32,7 +32,7 @@ impl WlTransys {
 
     pub fn abs_array(&self) -> Self {
         todo!()
-        // let mut map = GHashMap::new();
+        // let mut map = HashMap::default();
         // let mut res = self.clone();
         // let mut init = take(&mut res.init);
         // let mut next = take(&mut res.next);

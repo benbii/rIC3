@@ -1,6 +1,5 @@
 use super::{IC3, proofoblig::ProofObligation};
 use crate::{gipsat::TransysSolver, transys::TransysCtx};
-use giputils::hash::GHashSet;
 use logicrs::{Lit, LitOrdVec, LitSet, LitVec, Var, satif::Satif};
 use std::{
     fmt::Write,
@@ -133,45 +132,6 @@ impl Frames {
         None
     }
 
-    pub fn _parent_lemmas(&self, lemma: &LitOrdVec, frame: usize) -> Vec<LitOrdVec> {
-        let mut res = Vec::new();
-        if frame == 1 {
-            return res;
-        }
-        for c in self.frames[frame - 1].iter() {
-            if c.subsume(lemma) {
-                res.push(c.lemma.clone());
-            }
-        }
-        res
-    }
-
-    #[allow(unused)]
-    pub fn similar(&self, cube: &[Lit], frame: usize) -> Vec<LitVec> {
-        let cube_set: GHashSet<Lit> = GHashSet::from_iter(cube.iter().copied());
-        let mut res = GHashSet::new();
-        for frame in self.frames[frame..].iter() {
-            for lemma in frame.iter() {
-                let sec: LitVec = lemma
-                    .iter()
-                    .filter(|l| cube_set.contains(l))
-                    .copied()
-                    .collect();
-                if sec.len() != cube.len() && sec.len() * 2 >= cube.len() {
-                    res.insert(sec);
-                }
-            }
-        }
-        let mut res = Vec::from_iter(res);
-        res.sort_by_key(|x| x.len());
-        res.reverse();
-        if res.len() > 3 {
-            res.truncate(3);
-        }
-        res
-    }
-
-    #[inline]
     pub fn statistic(&self, compact: bool) -> String {
         let mut s = String::new();
         let total = self.frames.len() + 1;
@@ -353,7 +313,7 @@ impl IC3 {
     }
 
     // pub fn remove_lemma(&mut self, frame: usize, lemmas: Vec<LitVec>) {
-    //     let lemmas: GHashSet<LitOrdVec> = GHashSet::from_iter(lemmas.into_iter().map(LitOrdVec::new));
+    //     let lemmas: HashSet<LitOrdVec> = HashSet::from_iter(lemmas.into_iter().map(LitOrdVec::new));
     //     for i in (1..=frame).rev() {
     //         let mut j = 0;
     //         while j < self.frame[i].len() {

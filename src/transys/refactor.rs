@@ -1,5 +1,5 @@
 use crate::transys::Transys;
-use giputils::hash::GHashSet;
+use ahash::HashSet;
 use log::info;
 use logicrs::{LitOrdVec, LitVec, LitVvec, Var, VarMap, VarRange, VarVMap};
 
@@ -8,9 +8,9 @@ impl Transys {
         let (mut rel, m) = self.rel.topsort();
         let o = rel.num_clause();
         *rst = m.product(rst);
-        let mut dep: VarMap<GHashSet<Var>> = VarMap::new_with(rel.max_var());
+        let mut dep: VarMap<HashSet<Var>> = VarMap::new_with(rel.max_var());
         for v in rel.var_iter_woc() {
-            dep[v] = GHashSet::from_iter(rel.dep(v).iter().copied());
+            dep[v] = HashSet::from_iter(rel.dep(v).iter().copied());
         }
         for x in rel.var_iter_woc() {
             if rel.is_leaf(x) {
@@ -47,7 +47,7 @@ impl Transys {
                 refactor.subsume_simplify();
                 refactor.retain(|c| c.last().var() == y);
                 rel.set_rel(y, &refactor);
-                dep[y] = GHashSet::from_iter(rel.dep(y).iter().copied());
+                dep[y] = HashSet::from_iter(rel.dep(y).iter().copied());
             }
         }
         info!("refactor ts from {o} to {} clauses", rel.num_clause());

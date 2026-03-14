@@ -3,7 +3,7 @@ use crate::{
     gipsat::DagCnfSolver,
     transys::{Transys, TransysIf, certify::Restore},
 };
-use giputils::hash::GHashMap;
+use ahash::HashMap;
 use log::{debug, info, trace};
 use logicrs::{Lit, LitVec, Var, VarLMap, VarMap, VarVMap, simplify::DagCnfSimplify};
 use rand::{SeedableRng, rngs::StdRng};
@@ -28,7 +28,7 @@ impl FrTs {
         let solver = DagCnfSolver::new(&ts.rel);
         let mut map = VarLMap::new();
         let mut eqc = VarVMap::new();
-        let mut simval: GHashMap<_, Vec<_>> = GHashMap::new();
+        let mut simval: HashMap<_, Vec<_>> = HashMap::default();
         let mut candidate: VarMap<Vec<Lit>> = VarMap::new_with(ts.max_var());
         for v in ts.rel.var_iter() {
             let lv = v.lit();

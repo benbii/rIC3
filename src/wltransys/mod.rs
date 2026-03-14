@@ -6,7 +6,7 @@ pub mod symbol;
 pub mod unroll;
 
 use crate::wltransys::certify::Restore;
-use giputils::hash::{GHashMap, GHashSet};
+use ahash::{HashMap, HashSet};
 use logicrs::fol::{Sort, Term, op};
 use std::mem::take;
 
@@ -14,8 +14,8 @@ use std::mem::take;
 pub struct WlTransys {
     pub input: Vec<Term>,
     pub latch: Vec<Term>,
-    pub init: GHashMap<Term, Term>,
-    pub next: GHashMap<Term, Term>,
+    pub init: HashMap<Term, Term>,
+    pub next: HashMap<Term, Term>,
     pub bad: Vec<Term>,
     pub constraint: Vec<Term>,
     pub justice: Vec<Term>,
@@ -54,8 +54,8 @@ impl WlTransys {
         self.next.insert(latch, next);
     }
 
-    pub fn remove_no_next_latch(&mut self, rst: &mut Restore) -> GHashSet<Term> {
-        let mut no_next = GHashSet::new();
+    pub fn remove_no_next_latch(&mut self, rst: &mut Restore) -> HashSet<Term> {
+        let mut no_next = HashSet::default();
         for l in take(&mut self.latch) {
             if self.next.contains_key(&l) {
                 self.latch.push(l.clone());

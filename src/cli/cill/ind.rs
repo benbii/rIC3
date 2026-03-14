@@ -3,7 +3,8 @@ use crate::cli::{
     cill::{CIll, CIllState, kind::CIllKind, utils::CIllStat},
 };
 use chrono::TimeDelta;
-use giputils::{hash::GHashMap, logger::with_log_level};
+use ahash::HashMap;
+use giputils::logger::with_log_level;
 use log::{LevelFilter, info};
 use logicrs::{LitVvec, fol::{self, BvTermValue, TermValue}};
 use rIC3::{
@@ -178,7 +179,7 @@ impl Ric3Proj {
         let ywbc_old = fs::read_to_string(dut_old.join("dut.ywb"))?;
         let ywb_old = btor_old.ywb(&ywbc_old);
         let wb_old = btor_old.witness_map(&ywbc_old);
-        let wb_old: GHashMap<_, _> = wb_old
+        let wb_old: HashMap<_, _> = wb_old
             .into_iter()
             .filter(|(_, v)| v[0].path[0] != "\\_witness_")
             .map(|(k, v)| (v, k))
@@ -202,7 +203,7 @@ impl Ric3Proj {
         };
         cti.bad_id = bad_id;
 
-        let mut term_map = GHashMap::new();
+        let mut term_map = HashMap::default();
         for (n, s) in wb_new {
             if let Some(o) = wb_old.get(&s) {
                 term_map.insert(o, n);

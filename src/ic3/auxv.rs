@@ -1,9 +1,9 @@
 use crate::{ic3::IC3, transys::TransysIf};
-use giputils::hash::GHashSet;
+use ahash::HashSet;
 use logicrs::{DagCnf, Var};
 
 impl IC3 {
-    pub fn add_aux(&mut self, rel: &DagCnf, auxs: &GHashSet<Var>) {
+    pub fn add_aux(&mut self, rel: &DagCnf, auxs: &HashSet<Var>) {
         self.ts.add_aux(rel, auxs);
         self.activity.reserve(self.ts.max_var());
         self.tsctx = Box::new(self.ts.ctx());

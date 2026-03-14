@@ -1,6 +1,6 @@
 use super::{Transys, TransysIf};
 use crate::transys::certify::Restore;
-use giputils::hash::GHashMap;
+use ahash::HashMap;
 use logicrs::{Lit, LitVec, Var, VarLMap, VarRange};
 use std::mem::take;
 
@@ -29,7 +29,7 @@ impl Transys {
 
     pub fn merge(&mut self, other: &Self, mapf: impl Fn(Var) -> Option<Var>) {
         let begin = self.max_var();
-        let mut vmap = GHashMap::new();
+        let mut vmap = HashMap::default();
         assert!(mapf(Var::CONST) == Some(Var::CONST));
         for v in VarRange::new_inclusive(Var::CONST, other.max_var()) {
             let m = if let Some(m) = mapf(v) {
@@ -100,7 +100,7 @@ impl Transys {
     }
 
     pub fn remove_gate_init(&mut self, rst: &mut Restore) {
-        let mut init = GHashMap::new();
+        let mut init = HashMap::default();
         let mut eq = Vec::new();
         for l in self.input().chain(self.latch()) {
             if let Some(i) = self.init.get(&l).copied() {

@@ -2,7 +2,7 @@ use crate::cli::{
     run::{McStatus, PropMcState, Run},
     yosys::Yosys,
 };
-use giputils::hash::GHashMap;
+use ahash::HashMap;
 use rIC3::{
     McResult, McWitness,
     btor::Btor,
@@ -68,7 +68,7 @@ impl PropMcState {
 
 pub(super) struct RunTask {
     join: JoinHandle<McResult>,
-    bad_id_map: GHashMap<usize, usize>,
+    bad_id_map: HashMap<usize, usize>,
     cfg: EngineConfig,
     stop: Arc<AtomicBool>,
 }
@@ -172,7 +172,7 @@ impl Run {
     fn launch_task(&mut self) {
         let mut btor = self.btor.clone();
         btor.bad.clear();
-        let mut bad_id_map = GHashMap::new();
+        let mut bad_id_map = HashMap::default();
         for m in self.mc.iter_mut() {
             if let McResult::Unknown(_) = m.prop.res
                 && let McStatus::Wait = m.state

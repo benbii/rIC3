@@ -4,7 +4,7 @@ use crate::{
     aig::{Aig, AigEdge},
     transys::{Transys, TransysIf},
 };
-use giputils::hash::GHashMap;
+use ahash::HashMap;
 use log::{debug, error, warn};
 use logicrs::{Lbool, Lit, LitVec, Var, VarVMap};
 use std::{fmt::Display, path::Path, process::Command};
@@ -12,7 +12,7 @@ use std::{fmt::Display, path::Path, process::Command};
 impl From<&Transys> for Aig {
     fn from(ts: &Transys) -> Self {
         let mut aig = Aig::new();
-        let mut map = GHashMap::new();
+        let mut map = HashMap::default();
         map.insert(Var::CONST, AigEdge::from_lit(Var::CONST.lit()));
         for i in ts.input.iter() {
             let t = aig.new_input();
@@ -64,8 +64,8 @@ impl Transys {
     pub fn from_aig(aig: &Aig, compact: bool) -> Transys {
         let input: Vec<Var> = aig.inputs.iter().map(|x| Var::new(*x)).collect();
         let mut latch = Vec::new();
-        let mut next = GHashMap::new();
-        let mut init = GHashMap::new();
+        let mut next = HashMap::default();
+        let mut init = HashMap::default();
         for l in aig.latchs.iter() {
             let lv = Var::from(l.input);
             latch.push(lv);
@@ -209,8 +209,8 @@ impl Frontend for AigFrontend {
         }
         res.push(line);
         for c in wit.input[1..].iter() {
-            let map: GHashMap<Var, bool> =
-                GHashMap::from_iter(c.iter().map(|l| (l.var(), l.polarity())));
+            let map: HashMap<Var, bool> =
+                HashMap::from_iter(c.iter().map(|l| (l.var(), l.polarity())));
             let mut line = String::new();
             let mut input = Vec::new();
             for l in self.oaig.inputs.iter() {

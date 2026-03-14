@@ -1,11 +1,11 @@
 use super::Btor;
-use giputils::hash::GHashMap;
+use ahash::HashMap;
 use logicrs::fol::{Sort, Term, TermType, op};
 use std::ops::Deref;
 
 pub struct Deparser {
-    sorts: GHashMap<Sort, usize>,
-    terms: GHashMap<Term, usize>,
+    sorts: HashMap<Sort, usize>,
+    terms: HashMap<Term, usize>,
     content: Vec<String>,
 }
 

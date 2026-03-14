@@ -1,5 +1,5 @@
 use super::WlTransys;
-use giputils::hash::{GHashMap, GHashSet};
+use ahash::{HashMap, HashSet};
 use logicrs::fol::{Term, TermType};
 use std::{mem::take, ops::Deref};
 
@@ -20,7 +20,7 @@ impl WlTransys {
                 queue.push(l.clone());
             }
         }
-        let mut touch: GHashSet<Term> = GHashSet::from_iter(queue.iter().cloned());
+        let mut touch: HashSet<Term> = HashSet::from_iter(queue.iter().cloned());
         while let Some(t) = queue.pop() {
             match &t.deref() {
                 TermType::Const(_) => (),
@@ -56,7 +56,7 @@ impl WlTransys {
 
     pub fn simplify(&mut self) {
         self.coi_refine();
-        let mut map = GHashMap::new();
+        let mut map = HashMap::default();
         for (_, i) in self.init.iter_mut() {
             *i = i.simplify(&mut map);
         }

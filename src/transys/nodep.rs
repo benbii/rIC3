@@ -1,14 +1,14 @@
 use super::{Transys, TransysIf};
 use crate::transys::certify::Restore;
-use giputils::hash::GHashMap;
+use ahash::HashMap;
 use logicrs::{Cnf, Lit, LitVec, Var, satif::Satif};
 
 #[derive(Default, Debug, Clone)]
 pub struct NoDepTransys {
     pub input: Vec<Var>,
     pub latch: Vec<Var>,
-    pub next: GHashMap<Var, Lit>,
-    pub init: GHashMap<Var, Lit>,
+    pub next: HashMap<Var, Lit>,
+    pub init: HashMap<Var, Lit>,
     pub bad: LitVec,
     pub constraint: LitVec,
     pub rel: Cnf,

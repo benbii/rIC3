@@ -3,7 +3,8 @@ use crate::{
     gipsat::DagCnfSolver,
     transys::{Transys, TransysIf, certify::Restore},
 };
-use giputils::{bitvec::BitVec, hash::GHashMap};
+use ahash::HashMap;
+use giputils::bitvec::BitVec;
 use log::{debug, info};
 use logicrs::{Lit, LitVec, Var, VarLMap, satif::Satif};
 use std::time::Instant;
@@ -84,7 +85,7 @@ impl Scorr {
                 rt[l].push(init[l].get(i));
             }
         }
-        let mut cand: GHashMap<BitVec, LitVec> = GHashMap::new();
+        let mut cand: HashMap<BitVec, LitVec> = HashMap::default();
         cand.insert(rt[Var::CONST].clone(), LitVec::from([Lit::constant(false)]));
         for &v in latch.iter() {
             let l = v.lit();

@@ -12,7 +12,7 @@ use crate::{
         symbol::WlTsSymbol,
     },
 };
-use giputils::hash::{GHashMap, GHashSet};
+use ahash::{HashMap, HashSet};
 use log::{debug, error, warn};
 use logicrs::{LboolVec, fol::{self, BvTermValue, Term, TermValue}};
 use std::{fmt::Display, mem::take, path::Path, process::Command};
@@ -62,8 +62,8 @@ pub struct BtorFrontend {
     owts: WlTransys,
     wts: WlTransys,
     symbols: WlTsSymbol,
-    idmap: GHashMap<Term, usize>,
-    no_next: GHashSet<Term>,
+    idmap: HashMap<Term, usize>,
+    no_next: HashSet<Term>,
     rst: Restore,
     bb_rst: Option<BitblastMap>,
 }
@@ -75,7 +75,7 @@ impl BtorFrontend {
             warn!("empty property in btor");
             owts.bad.push(Term::bool_const(false));
         }
-        let mut idmap = GHashMap::new();
+        let mut idmap = HashMap::default();
         for (id, i) in owts.input.iter().enumerate() {
             idmap.insert(i.clone(), id);
         }
