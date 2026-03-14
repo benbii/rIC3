@@ -45,10 +45,6 @@ ahash = "0.8.11"
 
 [build-dependencies]
 cmake = "0.1.50"
-pkg-config = "0.3.32"
-
-[features]
-vendor = []
 
 [profile.dev]
 opt-level = 3

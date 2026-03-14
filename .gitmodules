@@ -10,3 +10,6 @@
 [submodule "deps/bitwuzla"]
 	path = deps/bitwuzla
 	url = https://github.com/bitwuzla/bitwuzla.git
+[submodule "deps/symfpu"]
+	path = deps/symfpu
+	url = https://github.com/martin-cs/symfpu
