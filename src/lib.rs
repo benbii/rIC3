@@ -2,6 +2,8 @@
 
 pub mod aig;
 pub mod bmc;
+pub mod bitwuzla;
+pub mod btor;
 pub mod cadical;
 pub mod config;
 pub mod frontend;
@@ -16,6 +18,8 @@ pub mod transys;
 pub mod wlbmc;
 pub mod wlkind;
 pub mod wltransys;
+
+pub use btor::Btor;
 
 use crate::{
     config::EngineConfig,

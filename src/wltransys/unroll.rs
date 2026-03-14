@@ -1,5 +1,5 @@
 use crate::wltransys::{WlTransys, certify::WlWitness};
-use bitwuzla::Bitwuzla;
+use crate::bitwuzla::Bitwuzla;
 use giputils::hash::GHashMap;
 use logicrs::{
     LboolVec,

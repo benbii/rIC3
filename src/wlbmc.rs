@@ -1,5 +1,6 @@
 use crate::{
     Engine, McResult, McWitness,
+    bitwuzla::Bitwuzla,
     config::EngineConfigBase,
     impl_config_deref,
     wltransys::{WlTransys, unroll::WlTransysUnroll},
@@ -22,7 +23,7 @@ pub struct WlBMC {
     #[allow(unused)]
     owts: WlTransys,
     uts: WlTransysUnroll,
-    solver: bitwuzla::Bitwuzla,
+    solver: Bitwuzla,
     solver_k: usize,
 }
 
@@ -31,7 +32,7 @@ impl WlBMC {
         let owts = wts.clone();
         wts.compress_bads();
         let uts = WlTransysUnroll::new(wts);
-        let mut solver = bitwuzla::Bitwuzla::new();
+        let mut solver = Bitwuzla::new();
         for (l, i) in uts.ts.init.iter() {
             solver.assert(&l.teq(i));
         }

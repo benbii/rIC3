@@ -5,7 +5,6 @@ mod utils;
 use super::{Ric3Config, cache::Ric3Proj, yosys::Yosys};
 use crate::{cli::cache::DutHash, logger_init};
 use anyhow::Ok;
-use btor::Btor;
 use chrono::TimeDelta;
 use clap::Subcommand;
 use giputils::{
@@ -16,6 +15,7 @@ use log::{LevelFilter, info};
 use rIC3::{
     Engine, McResult,
     bmc::{BMC, BMCConfig},
+    btor::Btor,
     frontend::{Frontend, btor::BtorFrontend},
     transys::{Transys, certify::Restore},
     wltransys::{WlTransys, bitblast::BitblastMap, symbol::WlTsSymbol},

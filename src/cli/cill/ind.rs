@@ -2,13 +2,13 @@ use crate::cli::{
     cache::Ric3Proj,
     cill::{CIll, CIllState, kind::CIllKind, utils::CIllStat},
 };
-use btor::Btor;
 use chrono::TimeDelta;
 use giputils::{hash::GHashMap, logger::with_log_level};
 use log::{LevelFilter, info};
 use logicrs::{LitVvec, fol::{self, BvTermValue, TermValue}};
 use rIC3::{
     Engine, McResult, McWitness,
+    btor::Btor,
     frontend::{Frontend, btor::BtorFrontend},
     ic3::{IC3, IC3Config},
     transys::{certify::BlWitness, unroll::TransysUnroll},

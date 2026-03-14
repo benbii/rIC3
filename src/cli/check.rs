@@ -1,10 +1,10 @@
 use crate::logger_init;
-use btor::Btor;
 use clap::Parser;
 use log::{error, info};
 use rIC3::{
     Engine, McResult,
     aig::Aig,
+    btor::Btor,
     config::EngineConfig,
     create_bl_engine, create_wl_engine,
     frontend::{Frontend, aig::AigFrontend, btor::BtorFrontend, certificate_check},

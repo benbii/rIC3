@@ -2,10 +2,10 @@ use crate::cli::{
     run::{McStatus, PropMcState, Run},
     yosys::Yosys,
 };
-use btor::Btor;
 use giputils::hash::GHashMap;
 use rIC3::{
     McResult, McWitness,
+    btor::Btor,
     config::EngineConfig,
     frontend::{Frontend, btor::BtorFrontend},
     portfolio::{Portfolio, PortfolioConfig},

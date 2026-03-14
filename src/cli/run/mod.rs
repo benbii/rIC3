@@ -3,10 +3,10 @@ mod tui;
 use super::{Ric3Config, cache::Ric3Proj, yosys::Yosys};
 use crate::cli::{VcdConfig, run::tui::RunTask};
 use anyhow::Ok;
-use btor::Btor;
 use giputils::file::recreate_dir;
 use rIC3::{
     McResult,
+    btor::Btor,
     config::EngineConfig,
     frontend::{Frontend, btor::BtorFrontend},
     wltransys::{WlTransys, symbol::WlTsSymbol},

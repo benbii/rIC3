@@ -216,19 +216,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "btor"
-version = "0.2.2"
-dependencies = [
- "giputils",
- "logicrs",
- "num-bigint",
- "num-traits",
- "serde",
- "serde_json",
- "strum",
-]
-
-[[package]]
 name = "bumpalo"
 version = "3.19.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1453,7 +1440,6 @@ dependencies = [
  "anyhow",
  "bincode",
  "bitfield-struct",
- "btor",
  "chrono",
  "clap",
  "cmake",
@@ -1461,17 +1447,21 @@ dependencies = [
  "enum-as-inner 0.7.0",
  "env_logger",
  "giputils",
+ "lazy_static",
  "log",
  "logicrs",
  "nix 0.31.1",
+ "num-bigint",
+ "num-traits",
+ "pkg-config",
  "process_control",
  "rand 0.9.2",
  "ratatui",
  "rayon",
  "ron",
  "serde",
+ "serde_json",
  "sha2",
- "smtif-bitwuzla",
  "strum",
  "tabled",
  "tempfile",
@@ -1838,16 +1828,6 @@ name = "smallvec"
 version = "1.15.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "67b1b7a3b5fe4f1376887184045fcf45c69e92af734b7aaddc05fb777b6fbd03"
-
-[[package]]
-name = "smtif-bitwuzla"
-version = "0.1.0"
-dependencies = [
- "giputils",
- "lazy_static",
- "logicrs",
- "pkg-config",
-]
 
 [[package]]
 name = "static_assertions"

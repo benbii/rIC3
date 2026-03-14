@@ -3,6 +3,7 @@ mod array;
 use super::Frontend;
 use crate::{
     McProof, McWitness,
+    btor::Btor,
     transys::{self as bl},
     wltransys::{
         WlTransys,
@@ -11,7 +12,6 @@ use crate::{
         symbol::WlTsSymbol,
     },
 };
-use btor::Btor;
 use giputils::hash::{GHashMap, GHashSet};
 use log::{debug, error, warn};
 use logicrs::{LboolVec, fol::{self, BvTermValue, Term, TermValue}};

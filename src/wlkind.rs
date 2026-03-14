@@ -1,5 +1,6 @@
 use crate::{
     Engine, McProof, McResult, McWitness,
+    bitwuzla::Bitwuzla,
     config::EngineConfigBase,
     impl_config_deref,
     wltransys::{WlTransys, certify::WlProof, unroll::WlTransysUnroll},
@@ -21,7 +22,7 @@ impl_config_deref!(WlKindConfig);
 pub struct WlKind {
     uts: WlTransysUnroll,
     cfg: WlKindConfig,
-    solver: bitwuzla::Bitwuzla,
+    solver: Bitwuzla,
     solver_trans_k: usize,
     solver_bad_k: usize,
     owts: WlTransys,
@@ -32,7 +33,7 @@ impl WlKind {
         let owts = wts.clone();
         wts.compress_bads();
         let uts = WlTransysUnroll::new(wts);
-        let solver = bitwuzla::Bitwuzla::new();
+        let solver = Bitwuzla::new();
         Self {
             uts,
             cfg,

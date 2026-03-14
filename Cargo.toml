@@ -13,10 +13,8 @@ name = "ric3"
 path = "src/main.rs"
 
 [dependencies]
-bitwuzla = { package = "smtif-bitwuzla", path = "./deps/bitwuzla-rs", version = "0.1.0" }
 logicrs = { path = "./deps/logicrs", version = "0.6.1" }
 giputils = { path = "./deps/giputils", version = "0.3.6" }
-btor = { path = "./deps/btor-rs", version = "0.2.2" }
 clap = { version = "4.5.56", features = ["derive"] }
 chrono = { version = "0.4", features = ["serde"] }
 rand = "0.9.0"
@@ -40,9 +38,18 @@ tabled = { version = "0.20.0", features = ["ansi"] }
 vcd = "0.7.0"
 enum-as-inner = "0.7.0"
 rayon = "1.10.0"
+num-bigint = "0.4.5"
+num-traits = "0.2.19"
+serde_json = "1.0.145"
+lazy_static = "1.5.0"
 
 [build-dependencies]
 cmake = "0.1.50"
+giputils = { path = "./deps/giputils", version = "0.3.6" }
+pkg-config = "0.3.32"
+
+[features]
+vendor = []
 
 [profile.dev]
 opt-level = 3
