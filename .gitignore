@@ -2,3 +2,5 @@
 build/
 ric3proj/
 .local/
+
+/deps/logicrs/

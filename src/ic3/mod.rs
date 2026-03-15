@@ -23,7 +23,7 @@ use std::{
     sync::{Arc, atomic::AtomicBool},
     time::Instant,
 };
-use utils::Statistic;
+use stat::Statistic;
 
 mod activity;
 mod auxv;
@@ -35,7 +35,7 @@ mod predprop;
 mod proofoblig;
 mod propagate;
 mod solver;
-mod utils;
+mod stat;
 
 #[derive(Args, Clone, Debug, Serialize, Deserialize)]
 pub struct IC3Config {

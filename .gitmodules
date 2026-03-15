@@ -4,9 +4,6 @@
 [submodule "deps/kissat"]
 	path = deps/kissat
 	url = https://github.com/arminbiere/kissat.git
-[submodule "deps/logicrs"]
-	path = deps/logicrs
-	url = https://github.com/gipsyh/logicrs
 [submodule "deps/bitwuzla"]
 	path = deps/bitwuzla
 	url = https://github.com/bitwuzla/bitwuzla.git
