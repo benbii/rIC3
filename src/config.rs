@@ -1,6 +1,6 @@
 use crate::{
-    bmc::BMCConfig, ic3::IC3Config, kind::KindConfig, mp::MultiPropConfig,
-    portfolio::PortfolioConfig, rlive::RliveConfig, wlbmc::WlBMCConfig, wlkind::WlKindConfig,
+    bmc::BMCConfig, ic3::IC3Config, kind::KindConfig, rlive::RliveConfig, wlbmc::WlBMCConfig,
+    wlkind::WlKindConfig,
 };
 use clap::{ArgAction, Args, Parser};
 use enum_as_inner::EnumAsInner;
@@ -82,10 +82,6 @@ pub enum EngineConfig {
     WlKind(WlKindConfig),
     /// rlive (CAV'24 https://doi.org/10.1007/978-3-031-65627-9_12)
     Rlive(RliveConfig),
-    /// Multi-Property (DATE'18 https://doi.org/10.23919/DATE.2018.8341977)
-    MultiProp(MultiPropConfig),
-    /// portfolio
-    Portfolio(PortfolioConfig),
 }
 
 impl EngineConfig {
@@ -116,10 +112,6 @@ pub struct PreprocConfig {
     #[arg(long = "scorr-tl", default_value_t = 200)]
     pub scorr_tl: u64,
 
-    /// export preprocessed model to file (runs preprocessing only, then exits)
-    #[arg(long = "export-preproc")]
-    pub export_preproc: Option<PathBuf>,
-
     /// load preprocessed model from file (skips preprocessing)
     #[arg(long = "load-preproc")]
     pub load_preproc: Option<PathBuf>,
@@ -137,7 +129,6 @@ impl Default for PreprocConfig {
             frts_tl: 1000,
             scorr: true,
             scorr_tl: 200,
-            export_preproc: None,
             load_preproc: None,
             fake_preproc_wait: false,
         }

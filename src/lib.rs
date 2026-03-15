@@ -11,8 +11,6 @@ pub mod gipsat;
 pub mod ic3;
 pub mod kind;
 pub mod kissat;
-pub mod mp;
-pub mod portfolio;
 pub mod rlive;
 pub mod transys;
 pub mod wlbmc;
@@ -114,7 +112,6 @@ pub fn create_bl_engine(
         EngineConfig::IC3(cfg) => Box::new(ic3::IC3::new(cfg, ts)),
         EngineConfig::Kind(cfg) => Box::new(kind::Kind::new(cfg, ts)),
         EngineConfig::BMC(cfg) => Box::new(bmc::BMC::new(cfg, ts)),
-        EngineConfig::MultiProp(cfg) => Box::new(mp::MultiProp::new(cfg, ts)),
         EngineConfig::Rlive(cfg) => Box::new(rlive::Rlive::new(cfg, ts)),
         _ => unreachable!(),
     }

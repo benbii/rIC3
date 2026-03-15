@@ -8,8 +8,7 @@ use rIC3::{
     config::EngineConfig,
     create_bl_engine, create_wl_engine,
     frontend::{Frontend, aig::AigFrontend, btor::BtorFrontend, certificate_check},
-    portfolio::{Portfolio, PortfolioConfig},
-    transys::{TransysIf, preproc_serde::PreprocModel},
+    transys::TransysIf,
 };
 use std::{env, fs, mem::transmute, path::PathBuf, process::exit};
 
@@ -61,7 +60,15 @@ fn report_res(chk: &CheckConfig, res: McResult) {
     }
 }
 
-pub fn check(mut chk: CheckConfig, cfg: EngineConfig) -> anyhow::Result<()> {
+fn res_code(res: McResult) -> i32 {
+    match res {
+        McResult::Unsafe(_) => 10,
+        McResult::Safe => 20,
+        McResult::Unknown(_) => 30,
+    }
+}
+
+pub(crate) fn check(mut chk: CheckConfig, cfg: EngineConfig) -> anyhow::Result<i32> {
     if env::var("RUST_LOG").is_err() {
         unsafe { env::set_var("RUST_LOG", "info") };
     }
@@ -73,11 +80,6 @@ pub fn check(mut chk: CheckConfig, cfg: EngineConfig) -> anyhow::Result<()> {
         let tmp_cert_file = tempfile::NamedTempFile::new().unwrap();
         chk.cert = Some(PathBuf::from(tmp_cert_file.path()));
         tmp_cert = Some(tmp_cert_file);
-    }
-    if let EngineConfig::Portfolio(cfg) = cfg {
-        let res = portfolio_main(chk, cfg);
-        drop(tmp_cert);
-        return res;
     }
     let mut frontend: Box<dyn Frontend> = match chk.model.extension() {
         Some(ext) if (ext == "aig") | (ext == "aag") => {
@@ -93,29 +95,6 @@ pub fn check(mut chk: CheckConfig, cfg: EngineConfig) -> anyhow::Result<()> {
             exit(1);
         }
     };
-    if let Some(pcfg) = preproc_cfg(&cfg) {
-        if pcfg.export_preproc.is_some() && pcfg.load_preproc.is_some() {
-            error!("cannot use both --export-preproc and --load-preproc");
-            exit(1);
-        }
-        if let Some(export_path) = &pcfg.export_preproc {
-            if cfg.is_wl() {
-                error!("export-preproc is only supported for bit-level engines");
-                exit(1);
-            }
-            let ts = frontend.ts();
-            info!("origin ts has {}", ts.statistic());
-            let model = PreprocModel::run(ts, pcfg);
-            model
-                .save(export_path)
-                .expect("Failed to export preprocessed model");
-            info!(
-                "Exported preprocessed model to {:?} (preproc took {}s)",
-                export_path, model.preproc_time_secs
-            );
-            return Ok(());
-        }
-    }
 
     let mut engine: Box<dyn Engine> = if cfg.is_wl() {
         let (wts, _symbols) = frontend.wts();
@@ -136,25 +115,14 @@ pub fn check(mut chk: CheckConfig, cfg: EngineConfig) -> anyhow::Result<()> {
         McResult::Unsafe(_) => {
             certificate(&chk, frontend.as_mut(), engine.as_mut(), false);
         }
-        McResult::Unknown(_) => todo!(),
+        McResult::Unknown(_) => (),
     }
     report_res(&chk, res);
-    if chk.certify {
+    if chk.certify && !matches!(res, McResult::Unknown(_)) {
         assert!(certificate_check(&chk.model, chk.cert.as_ref().unwrap()));
     }
     drop(tmp_cert);
-    Ok(())
-}
-
-fn preproc_cfg(cfg: &EngineConfig) -> Option<&rIC3::config::PreprocConfig> {
-    match cfg {
-        EngineConfig::IC3(cfg) => Some(&cfg.preproc),
-        EngineConfig::Kind(cfg) => Some(&cfg.preproc),
-        EngineConfig::BMC(cfg) => Some(&cfg.preproc),
-        EngineConfig::MultiProp(cfg) => Some(&cfg.preproc),
-        EngineConfig::Rlive(cfg) => Some(&cfg.preproc),
-        _ => None,
-    }
+    Ok(res_code(res))
 }
 
 fn interrupt_statistic(chk: &CheckConfig, engine: &mut dyn Engine) {
@@ -185,14 +153,4 @@ pub fn certificate(
         frontend.unsafe_certificate(witness)
     };
     fs::write(chk.cert.as_ref().unwrap(), format!("{cert}")).unwrap();
-}
-
-pub fn portfolio_main(chk: CheckConfig, cfg: PortfolioConfig) -> anyhow::Result<()> {
-    let mut engine = Portfolio::new(chk.model.clone(), chk.cert.clone(), cfg);
-    let res = engine.check();
-    report_res(&chk, res);
-    if chk.certify {
-        assert!(certificate_check(&chk.model, chk.cert.as_ref().unwrap()));
-    }
-    Ok(())
 }

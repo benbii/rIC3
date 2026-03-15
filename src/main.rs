@@ -3,11 +3,20 @@ mod cli;
 use env_logger::Target;
 
 use crate::cli::cli_main;
-use std::{fs, io::Write};
+use std::{fs, io::Write, process::exit};
 
-fn main() -> anyhow::Result<()> {
-    fs::create_dir_all("/tmp/rIC3")?;
-    cli_main()
+fn main() {
+    if let Err(err) = fs::create_dir_all("/tmp/rIC3") {
+        eprintln!("{err:?}");
+        exit(1);
+    }
+    match cli_main() {
+        Ok(code) => exit(code),
+        Err(err) => {
+            eprintln!("{err:?}");
+            exit(1);
+        }
+    }
 }
 
 fn logger_init() {
