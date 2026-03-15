@@ -10,11 +10,11 @@ use std::hash;
 use std::iter::once;
 use std::ops::Index;
 use std::{hash::Hash, ops::Deref};
-use std::sync::Arc;
+use std::rc::Rc;
 
 #[derive(Clone)]
 pub struct Term {
-    pub(crate) inner: Arc<TermInner>,
+    pub(crate) inner: Rc<TermInner>,
 }
 
 impl Term {
@@ -272,7 +272,7 @@ impl Deref for Term {
 impl Hash for Term {
     #[inline]
     fn hash<H: hash::Hasher>(&self, state: &mut H) {
-        Arc::as_ptr(&self.inner).hash(state);
+        Rc::as_ptr(&self.inner).hash(state);
     }
 }
 
@@ -287,14 +287,14 @@ impl<T: AsRef<Term>> PartialEq<T> for Term {
     #[inline]
     fn eq(&self, other: &T) -> bool {
         let other = other.as_ref();
-        Arc::ptr_eq(&self.inner, &other.inner)
+        Rc::ptr_eq(&self.inner, &other.inner)
     }
 }
 
 impl PartialEq<Term> for &Term {
     #[inline]
     fn eq(&self, other: &Term) -> bool {
-        Arc::ptr_eq(&self.inner, &other.inner)
+        Rc::ptr_eq(&self.inner, &other.inner)
     }
 }
 
@@ -477,7 +477,7 @@ impl TermManager {
             Some(term) => term.clone(),
             None => {
                 let term = Term {
-                    inner: Arc::new(TermInner {
+                    inner: Rc::new(TermInner {
                         sort,
                         ty: ty.clone(),
                     }),

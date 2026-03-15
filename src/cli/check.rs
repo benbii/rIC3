@@ -10,7 +10,7 @@ use rIC3::{
     frontend::{Frontend, aig::AigFrontend, btor::BtorFrontend, certificate_check},
     transys::TransysIf,
 };
-use std::{env, fs, mem::transmute, path::PathBuf, process::exit};
+use std::{env, fs, path::PathBuf, process::exit};
 
 #[derive(Parser, Debug, Clone)]
 pub struct CheckConfig {
@@ -31,9 +31,6 @@ pub struct CheckConfig {
     #[arg(long, default_value_t = false)]
     pub witness: bool,
 
-    /// interrupt statistic
-    #[arg(long, default_value_t = false)]
-    pub interrupt_statistic: bool,
 }
 
 fn report_res(chk: &CheckConfig, res: McResult) {
@@ -105,7 +102,6 @@ pub(crate) fn check(mut chk: CheckConfig, cfg: EngineConfig) -> anyhow::Result<i
         info!("origin ts has {}", ts.statistic());
         create_bl_engine(cfg.clone(), ts)
     };
-    interrupt_statistic(&chk, engine.as_mut());
     let res = engine.check();
     engine.statistic();
     match res {
@@ -123,18 +119,6 @@ pub(crate) fn check(mut chk: CheckConfig, cfg: EngineConfig) -> anyhow::Result<i
     }
     drop(tmp_cert);
     Ok(res_code(res))
-}
-
-fn interrupt_statistic(chk: &CheckConfig, engine: &mut dyn Engine) {
-    if chk.interrupt_statistic {
-        let e: [usize; 2] = unsafe { transmute(engine as *mut dyn Engine) };
-        let _ = ctrlc::set_handler(move || {
-            let e: *mut dyn Engine = unsafe { transmute(e) };
-            let e = unsafe { &mut *e };
-            e.statistic();
-            exit(124);
-        });
-    }
 }
 
 pub fn certificate(

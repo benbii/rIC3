@@ -11,9 +11,6 @@ pub struct TransysSolver {
 
     relind: LitVec,
 }
-
-unsafe impl Send for TransysSolver {}
-
 impl TransysSolver {
     pub fn new(ts: &TransysCtx) -> Self {
         let mut dcs = DagCnfSolver::new(&ts.rel);

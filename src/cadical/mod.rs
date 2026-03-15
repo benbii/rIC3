@@ -1,4 +1,3 @@
-use logicrs::StopCtrl;
 use logicrs::{Lit, LitVec, Var, satif::Satif};
 use std::ffi::{c_int, c_void};
 
@@ -16,7 +15,6 @@ unsafe extern "C" {
     fn cadical_solver_conflict_has(s: *mut c_void, lit: c_int) -> bool;
     fn cadical_solver_clauses(s: *mut c_void, len: *mut c_int) -> *mut c_void;
     fn cadical_set_seed(s: *mut c_void, seed: c_int);
-    fn cadical_terminate(s: *mut c_void);
 }
 
 fn lit_to_cadical_lit(lit: &Lit) -> i32 {
@@ -155,12 +153,6 @@ impl Satif for CaDiCaL {
     fn set_seed(&mut self, seed: u64) {
         unsafe { cadical_set_seed(self.solver, seed as _) }
     }
-
-    fn get_stop_ctrl(&mut self) -> Box<dyn StopCtrl> {
-        Box::new(CaDiCaLStopCtrl {
-            solver: self.solver,
-        })
-    }
 }
 
 impl CaDiCaL {
@@ -184,20 +176,6 @@ impl Drop for CaDiCaL {
 impl Default for CaDiCaL {
     fn default() -> Self {
         Self::new()
-    }
-}
-
-unsafe impl Sync for CaDiCaL {}
-
-unsafe impl Send for CaDiCaL {}
-
-struct CaDiCaLStopCtrl {
-    solver: *mut c_void,
-}
-
-impl StopCtrl for CaDiCaLStopCtrl {
-    fn stop(&mut self) {
-        unsafe { cadical_terminate(self.solver) }
     }
 }
 

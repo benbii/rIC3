@@ -379,10 +379,7 @@ use crate::{
     },
 };
 use enum_as_inner::EnumAsInner;
-use std::{
-    ops::BitOr,
-    sync::{Arc, atomic::AtomicBool},
-};
+use std::ops::BitOr;
 
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, EnumAsInner)]
 pub enum McResult {
@@ -433,7 +430,7 @@ pub enum McWitness {
     Wl(WlWitness),
 }
 
-pub trait Engine: Send {
+pub trait Engine {
     fn check(&mut self) -> McResult;
 
     fn statistic(&mut self) {}
@@ -444,10 +441,6 @@ pub trait Engine: Send {
 
     fn witness(&mut self) -> McWitness {
         panic!("unsupport witness");
-    }
-
-    fn get_stop_ctrl(&self) -> Arc<AtomicBool> {
-        panic!("unsupport getting stop ctrl");
     }
 }
 

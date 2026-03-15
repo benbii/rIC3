@@ -1,4 +1,3 @@
-use logicrs::StopCtrl;
 use logicrs::{Lit, LitVec, Var, satif::Satif};
 use std::ffi::{CString, c_char, c_int, c_void};
 
@@ -107,12 +106,6 @@ impl Satif for Kissat {
             )
         };
     }
-
-    fn get_stop_ctrl(&mut self) -> Box<dyn StopCtrl> {
-        Box::new(KissatStopCtrl {
-            solver: self.solver,
-        })
-    }
 }
 
 impl Kissat {
@@ -132,23 +125,6 @@ impl Default for Kissat {
         Self::new()
     }
 }
-
-unsafe impl Sync for Kissat {}
-
-unsafe impl Send for Kissat {}
-
-struct KissatStopCtrl {
-    solver: *mut c_void,
-}
-
-impl StopCtrl for KissatStopCtrl {
-    fn stop(&mut self) {
-        unsafe {
-            kissat_terminate(self.solver);
-        }
-    }
-}
-
 #[test]
 fn test() {
     use logicrs::LitVec;

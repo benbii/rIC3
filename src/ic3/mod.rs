@@ -18,11 +18,7 @@ use logicrs::{Lit, LitOrdVec, LitVec, LitVvec, Var, satif::Satif};
 use proofoblig::{ProofObligation, ProofObligationQueue};
 use rand::{SeedableRng, rngs::StdRng};
 use serde::{Deserialize, Serialize};
-use std::{
-    path::PathBuf,
-    sync::{Arc, atomic::AtomicBool},
-    time::Instant,
-};
+use std::{path::PathBuf, time::Instant};
 use stat::Statistic;
 
 mod activity;
@@ -113,7 +109,6 @@ pub struct IC3 {
 
     rng: StdRng,
     filog: IntervalLogger,
-    stop_ctrl: Arc<AtomicBool>,
 }
 
 impl IC3 {
@@ -225,7 +220,6 @@ impl IC3 {
             predprop,
             rng,
             filog: Default::default(),
-            stop_ctrl: Arc::new(AtomicBool::new(false)),
         }
     }
 
@@ -367,9 +361,5 @@ impl Engine for IC3 {
         }
         info!("{statistic:#?}");
         info!("{:#?}", self.statistic);
-    }
-
-    fn get_stop_ctrl(&self) -> Arc<AtomicBool> {
-        self.stop_ctrl.clone()
     }
 }

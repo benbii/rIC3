@@ -5,7 +5,7 @@ use std::cmp::Ordering;
 use std::collections::{BTreeSet, btree_set};
 use std::fmt::{self, Debug};
 use std::ops::{Deref, DerefMut};
-use std::sync::Arc;
+use std::rc::Rc;
 
 #[derive(Default)]
 pub struct ProofObligationInner {
@@ -66,7 +66,7 @@ impl Debug for ProofObligationInner {
 
 #[derive(Clone, Default)]
 pub struct ProofObligation {
-    inner: Arc<ProofObligationInner>,
+    inner: Rc<ProofObligationInner>,
 }
 
 impl ProofObligation {
@@ -78,7 +78,7 @@ impl ProofObligation {
         next: Option<Self>,
     ) -> Self {
         Self {
-            inner: Arc::new(ProofObligationInner {
+            inner: Rc::new(ProofObligationInner {
                 frame,
                 input,
                 state: lemma,
@@ -110,14 +110,14 @@ impl Deref for ProofObligation {
 impl DerefMut for ProofObligation {
     #[inline]
     fn deref_mut(&mut self) -> &mut Self::Target {
-        unsafe { &mut *(Arc::as_ptr(&self.inner) as *mut ProofObligationInner) }
+        unsafe { &mut *(Rc::as_ptr(&self.inner) as *mut ProofObligationInner) }
     }
 }
 
 impl PartialEq for ProofObligation {
     #[inline]
     fn eq(&self, other: &Self) -> bool {
-        Arc::ptr_eq(&self.inner, &other.inner)
+        Rc::ptr_eq(&self.inner, &other.inner)
     }
 }
 

@@ -36,6 +36,3 @@ impl Default for Bitwuzla {
         Self::new()
     }
 }
-
-unsafe impl Sync for Bitwuzla {}
-unsafe impl Send for Bitwuzla {}
