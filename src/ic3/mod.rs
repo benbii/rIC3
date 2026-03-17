@@ -185,7 +185,7 @@ impl IC3 {
         }
         ts.remove_gate_init(&mut rst);
         let mut uts = TransysUnroll::new(&ts);
-        uts.unroll();
+        uts.unroll(true);
         if cfg.inn {
             ts = uts.internal_signals();
         }

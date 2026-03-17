@@ -1,5 +1,6 @@
 use crate::{
     BlProof, Engine, McProof, McResult, McWitness,
+    cadical::CaDiCaL,
     config::{EngineConfig, EngineConfigBase, PreprocConfig},
     impl_config_deref,
     transys::{
@@ -9,7 +10,7 @@ use crate::{
 };
 use clap::{Args, Parser};
 use log::{error, info};
-use logicrs::{Lit, LitVec, Var, VarRange, satif::Satif};
+use logicrs::{Lit, LitVec, LitVvec, Var, VarRange, satif::Satif};
 use serde::{Deserialize, Serialize};
 
 #[derive(Args, Clone, Debug, Serialize, Deserialize)]
@@ -24,8 +25,9 @@ pub struct KindConfig {
     #[arg(long = "simple-path", default_value_t = false)]
     pub simple_path: bool,
 
-    /// Skip BMC
-    #[arg(long = "skip-bmc", default_value_t = false)]
+    /// Skip BMC. It is adviced to run a BMC concurrently with K-Ind;
+    /// BMC finds SAT and K-Ind finds UNSAT.
+    #[arg(long = "skip-bmc", default_value_t = true)]
     pub skip_bmc: bool,
 
     /// Local proof (internal parameter)
@@ -42,133 +44,149 @@ impl Default for KindConfig {
     }
 }
 
-impl KindConfig {
-    fn validate(&self) {
-        if self.step != 1 {
-            error!("k-induction step should be 1, got {}", self.step);
-            panic!();
-        }
-        if self.start != 0 {
-            error!("k-induction start should be 0, got {}", self.start);
-            panic!();
-        }
-        if self.local_proof && self.prop.is_none() {
-            error!("A property ID must be specified for local proof.");
-            panic!();
-        }
-    }
-}
-
 pub struct Kind {
     uts: TransysUnroll<NoDepTransys>,
-    cfg: KindConfig,
-    solver: Box<dyn Satif>,
-    slv_trans_k: usize,
-    slv_bad_k: usize,
+    solver: CaDiCaL,
+    simple_path: Vec<LitVvec>,
     ots: Transys,
     rst: Restore,
+    bad_prop_id: usize,
+    pub skip_bmc: bool,
+    pub use_simple_path: bool,
+    pub end: usize,
 }
 
 impl Kind {
     pub fn new(cfg: KindConfig, mut ts: Transys) -> Self {
-        cfg.validate();
+        // TARGET FOR LATER: each engine should have its dedicated config, not the current
+        // ill-defined EngineConfigBase
+        if cfg.step != 1 {
+            panic!("k-induction step should be 1, got {}", cfg.step);
+        }
+        if cfg.start != 0 {
+            panic!("k-induction start should be 0, got {}", cfg.start);
+        }
+        if cfg.local_proof {
+            panic!("local proof KInd not supported");
+        }
+
         let ots = ts.clone();
-        if let Some(prop) = cfg.prop
-            && !cfg.local_proof
-        {
+        if let Some(prop) = cfg.prop {
             ts.bad = LitVec::from(ts.bad[prop]);
         }
         let (model, loaded) = PreprocModel::load_or_preproc(ts, &cfg.preproc);
         let (mut ts, mut rst) = (model.ts, model.rst);
-        if loaded {
-            if let Some(prop) = cfg.prop
-                && !cfg.local_proof
-            {
-                ts.bad = LitVec::from(ts.bad[prop]);
-            }
+        // dumb to test twice, but needed so bad prop set correctly
+        // on both load success and load failure
+        if loaded && let Some(prop) = cfg.prop {
+            ts.bad = LitVec::from(ts.bad[prop]);
         }
+
+        // K-Ind specific additional preprocessing after general load_or_preproc
         ts.remove_gate_init(&mut rst);
         let mut ts = ts.remove_dep();
+        // assume constraints
+        // TODO: support local_proof by assuming other bad props
         for c in std::mem::take(&mut ts.constraint) {
             ts.rel.add_clause(&[c]);
         }
-        if cfg.prop.is_none() {
-            // keep bad literals
-            ts.compress_bads();
+        if cfg.preproc.preproc {
+            ts.simplify(&mut rst); // restored from master branch
         }
-        let mut uts = TransysUnroll::new(&ts);
-        if cfg.simple_path {
-            uts.enable_simple_path();
+        // compress bads
+        if cfg.prop.is_none() && ts.bad.len() > 1 {
+            let bad = std::mem::take(&mut ts.bad);
+            ts.bad = LitVec::from(ts.rel.new_or(bad));
         }
-        let solver: Box<dyn Satif> = Box::new(crate::cadical::CaDiCaL::new());
+        let uts = TransysUnroll::new(&ts);
         Self {
+            bad_prop_id: cfg.prop.unwrap_or(0),
             uts,
-            cfg,
-            solver,
-            slv_trans_k: 0,
-            slv_bad_k: 0,
+            skip_bmc: cfg.skip_bmc,
+            end: cfg.end,
+            use_simple_path: cfg.simple_path,
+            solver: CaDiCaL::new(),
+            simple_path: Vec::new(),
             ots,
             rst,
         }
-    }
-
-    fn load_trans_to(&mut self, k: usize) {
-        while self.slv_trans_k < k + 1 {
-            self.uts
-                .load_trans(self.solver.as_mut(), self.slv_trans_k, true);
-            self.slv_trans_k += 1;
-        }
-    }
-
-    fn load_bad_to(&mut self, k: usize) {
-        while self.slv_bad_k < k + 1 {
-            for b in self.uts.lits_next(&self.uts.ts.bad, self.slv_bad_k) {
-                self.solver.add_clause(&[!b]);
-            }
-            self.slv_bad_k += 1;
-        }
-    }
-
-    pub fn get_bad(&self, k: usize) -> Lit {
-        let bad = if self.cfg.local_proof {
-            self.uts.ts.bad[self.cfg.prop.unwrap()]
-        } else {
-            self.uts.ts.bad[0]
-        };
-        self.uts.lit_next(bad, k)
     }
 }
 
 impl Engine for Kind {
     fn check(&mut self) -> McResult {
-        for k in self.cfg.start..=self.cfg.end {
-            self.uts.unroll_to(k);
-            self.load_trans_to(k);
-            if k > 0 {
-                self.load_bad_to(k - 1);
-                let bad = self.get_bad(k);
-                let res = self.solver.solve(&[bad]);
-                if !res {
-                    info!("kind proved the property");
-                    return McResult::Safe;
-                }
-            }
-            if !self.cfg.skip_bmc {
-                let mut assump: LitVec = self.uts.ts.inits().iter().flatten().copied().collect();
-                assump.push(self.get_bad(k));
-                if self.solver.solve(&assump) {
-                    info!("kind found a counterexample at depth {k}");
-                    return McResult::Unsafe(k);
-                }
-            }
-            info!("kind found no counterexample at exact depth {k}");
+        // feels odd: extracting from a new TransysUnroll?
+        let bad0 = self.uts.ts.bad[self.bad_prop_id];
+        // load the 0th TransysUnroll, if not already (i.e. first call to `check`)
+        let mut k = self.uts.num_unroll + 1;
+        if k == 1 {
+            self.uts.load_trans(&mut self.solver, 0, true);
         }
-        info!("kind reached bound {}, stopping search", self.cfg.end);
-        McResult::Unknown(Some(self.cfg.end))
+        // K-Ind requires a) init satisfied; b) if safe at n, model is safe at n+k also.
+        // Therefore *unconditionally* check frame 0!
+        let mut assump: LitVec = self.uts.ts.inits().iter().flatten().copied().collect();
+        assump.push(self.uts.lit_next(bad0, 0));
+        if self.solver.solve(&assump) {
+            info!("K-Ind init not satisfied");
+            return McResult::Unsafe(0);
+        }
+
+        while k <= self.end {
+            self.uts.unroll(true);
+            debug_assert_eq!(self.uts.num_unroll, k);
+            if self.use_simple_path {
+                let mut sp = LitVvec::new();
+                for i in 0..k {
+                    let mut ors = LitVec::new();
+                    for l in self.uts.ts.latch() {
+                        let l = l.lit();
+                        let li = self.uts.lit_next(l, i);
+                        let lj = self.uts.lit_next(l, k);
+                        self.uts.max_var += 1;
+                        let n = self.uts.max_var.lit();
+                        sp.extend(LitVvec::cnf_xor(n, li, lj));
+                        ors.push(n);
+                    }
+                    sp.push(ors);
+                }
+                self.simple_path.push(sp);
+            }
+
+            // old slv_trans_k == k
+            self.uts.load_trans(&mut self.solver, k, true);
+            if self.use_simple_path {
+                for cls in self.simple_path[k - 1].iter() {
+                    self.solver.add_clause(cls);
+                }
+            }
+
+            // old slv_bad_k == k-1
+            for b in self.uts.lits_next(&self.uts.ts.bad, k - 1) {
+                self.solver.add_clause(&[!b]);
+            }
+            let bad = self.uts.lit_next(bad0, k);
+            let res = self.solver.solve(&[bad]);
+            if !res {
+                info!("kind proved the property");
+                return McResult::Safe;
+            }
+
+            info!("not {k}-inductive");
+            if self.skip_bmc { k += 1; continue; }
+            assump = self.uts.ts.inits().iter().flatten().copied().collect();
+            assump.push(self.uts.lit_next(bad0, k));
+            if self.solver.solve(&assump) {
+                info!("bmc found a counterexample at depth {k}");
+                return McResult::Unsafe(k);
+            }
+            k += 1;
+        }
+        info!("kind reached bound {}, stopping search", self.end);
+        McResult::Unknown(Some(self.end))
     }
 
     fn proof(&mut self) -> McProof {
-        if self.cfg.simple_path {
+        if self.use_simple_path {
             //TODO: support certifaiger with simple path constraint
             error!("k-induction with simple path constraint not support certifaiger");
             panic!();
@@ -289,12 +307,10 @@ impl Engine for Kind {
     }
 
     fn witness(&mut self) -> McWitness {
-        let mut wit = self.uts.witness(self.solver.as_ref());
+        let mut wit = self.uts.witness(&self.solver);
         wit = self.rst.restore_witness(&wit);
         wit.exact_state(&self.ots, true);
-        if let Some(prop) = self.cfg.prop {
-            wit.bad_id = prop;
-        }
+        wit.bad_id = self.bad_prop_id; // wit.bad_id defaults to 0
         McWitness::Bl(wit)
     }
 }
