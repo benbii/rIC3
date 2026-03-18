@@ -15,22 +15,15 @@ pub struct Block {
 #[derive(Debug, Default)]
 pub struct Statistic {
     pub time: RunningTime,
-
     pub num_mic: usize,
     pub avg_mic_cube_len: Average,
     pub avg_po_cube_len: Average,
     pub mic_drop: SuccessRate,
     pub num_down: usize,
     pub num_down_sat: usize,
-
     pub ctp: SuccessRate,
-
     pub block: Block,
-
     pub overall_propagate_time: Duration,
-
     pub xor_gen: SuccessRate,
-    pub num_auxiliary_var: usize,
-
     pub test: SuccessRate,
 }

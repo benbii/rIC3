@@ -5,7 +5,6 @@ extern crate self as logicrs;
 mod logic;
 pub use logic::bitvec;
 pub use logic::fol;
-pub use logic::logger;
 pub use logic::nckvec;
 pub use logic::satif;
 pub use logic::statistic;

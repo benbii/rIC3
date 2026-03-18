@@ -61,7 +61,10 @@ impl BMC {
         let mut rng = StdRng::seed_from_u64(cfg.rseed);
         let (model, _loaded) = PreprocModel::load_or_preproc(ts, &cfg.preproc);
         let (mut ts, mut rst) = (model.ts, model.rst);
-        ts.compress_bads();
+        if ts.bad.len() > 1 {
+            let bad = std::mem::take(&mut ts.bad);
+            ts.bad = LitVec::from(ts.rel.new_or(bad));
+        }
         let mut ts = ts.remove_dep();
         for c in std::mem::take(&mut ts.constraint) {
             ts.rel.add_clause(&[c]);

@@ -12,13 +12,12 @@ use crate::{
 use activity::Activity;
 use clap::{ArgAction, Args, Parser};
 use frame::{Frame, Frames};
-use logicrs::{logger::IntervalLogger};
-use log::{Level, debug, info, trace};
-use logicrs::{Lit, LitOrdVec, LitVec, LitVvec, Var, satif::Satif};
+use log::{debug, info, trace};
+use logicrs::{Lit, LitOrdVec, LitVec, LitVvec, satif::Satif};
 use proofoblig::{ProofObligation, ProofObligationQueue};
 use rand::{SeedableRng, rngs::StdRng};
 use serde::{Deserialize, Serialize};
-use std::{path::PathBuf, time::Instant};
+use std::time::Instant;
 use stat::Statistic;
 
 mod activity;
@@ -75,12 +74,13 @@ pub struct IC3Config {
     /// predicate property
     #[arg(long = "pred-prop", default_value_t = false)]
     pub pred_prop: bool,
-    /// stream infinity-frame lemmas to this file as DIMACS-like clauses (append mode)
-    #[arg(long = "inv-dump")]
-    pub inv_dump: Option<PathBuf>,
     /// Local proof (internal parameter)
     #[arg(skip)]
     pub local_proof: bool,
+
+    // stream infinity-frame lemmas as DIMACS-like clauses (append mode)
+    // #[arg(long = "inv-dump")]
+    // pub inv_dump: Option<PathBuf>,
 }
 impl_config_deref!(IC3Config);
 impl Default for IC3Config {
@@ -104,11 +104,8 @@ pub struct IC3 {
     localabs: LocalAbs,
     ots: Transys,
     rst: Restore,
-    auxiliary_var: Vec<Var>,
     predprop: Option<PredProp>,
-
     rng: StdRng,
-    filog: IntervalLogger,
 }
 
 impl IC3 {
@@ -164,24 +161,19 @@ impl IC3 {
         }
 
         let ots = ts.clone();
-        if let Some(prop) = cfg.prop {
-            if !cfg.local_proof {
-                ts.bad = LitVec::from(ts.bad[prop]);
-            }
+        if let Some(prop) = cfg.prop && !cfg.local_proof {
+            ts.bad = LitVec::from(ts.bad[prop]);
         }
         let rng = StdRng::seed_from_u64(cfg.rseed);
         let statistic = Statistic::default();
         let (model, loaded) = PreprocModel::load_or_preproc(ts, &cfg.preproc);
         let (mut ts, mut rst) = (model.ts, model.rst);
-        if loaded {
-            if let Some(prop) = cfg.prop
-                && !cfg.local_proof
-            {
-                ts.bad = LitVec::from(ts.bad[prop]);
-            }
+        if loaded && let Some(prop) = cfg.prop && !cfg.local_proof {
+            ts.bad = LitVec::from(ts.bad[prop]);
         }
-        if cfg.prop.is_none() {
-            ts.compress_bads();
+        if cfg.prop.is_none() && ts.bad.len() > 1 {
+            let bad = std::mem::take(&mut ts.bad);
+            ts.bad = LitVec::from(ts.rel.new_or(bad));
         }
         ts.remove_gate_init(&mut rst);
         let mut uts = TransysUnroll::new(&ts);
@@ -214,12 +206,10 @@ impl IC3 {
             obligations: ProofObligationQueue::new(),
             frame,
             localabs,
-            auxiliary_var: Vec::new(),
             ots,
             rst,
             predprop,
             rng,
-            filog: Default::default(),
         }
     }
 
@@ -238,11 +228,21 @@ impl Engine for IC3 {
             return McResult::Unsafe(0);
         }
         self.extend();
+        let mut last_sec = 0;
         loop {
+            let now_sec = self.statistic.time.time().as_secs();
+            if let Some(limit) = self.cfg.time_limit && now_sec > limit {
+                return McResult::Unknown(Some(self.level()));
+            }
+            if now_sec - last_sec >= 10 {
+                info!("{}", self.frame.statistic(true));
+                last_sec = now_sec;
+            }
             let start = Instant::now();
             debug!("blocking phase begin");
+
             loop {
-                match self.block(None) {
+                match self.block() {
                     BlockResult::Failure(depth) => {
                         self.statistic.block.overall_time += start.elapsed();
                         info!("ic3 found a counterexample at depth {depth}");
@@ -252,10 +252,6 @@ impl Engine for IC3 {
                         self.statistic.block.overall_time += start.elapsed();
                         info!("ic3 proved the property");
                         return McResult::Safe;
-                    }
-                    BlockResult::OverallTimeLimitExceeded => {
-                        self.statistic.block.overall_time += start.elapsed();
-                        return McResult::Unknown(Some(self.level()));
                     }
                     _ => (),
                 }
@@ -275,9 +271,8 @@ impl Engine for IC3 {
                     break;
                 }
             }
-            debug!("blocking phase end");
+
             self.statistic.block.overall_time += start.elapsed();
-            self.filog.log(Level::Info, self.frame.statistic(true));
             info!("ic3 found no counterexample up to depth {}", self.level());
             self.extend();
             let start = Instant::now();
@@ -352,7 +347,6 @@ impl Engine for IC3 {
     }
 
     fn statistic(&mut self) {
-        self.statistic.num_auxiliary_var = self.auxiliary_var.len();
         info!("obligations: {}", self.obligations.statistic());
         info!("{}", self.frame.statistic(false));
         let mut statistic = SolverStatistic::default();

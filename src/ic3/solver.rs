@@ -54,7 +54,7 @@ impl IC3 {
         cls.retain(|l| self.localabs.refine_has(l.var()));
         cst.retain(|l| self.localabs.refine_has(l.var()));
         let order = |mut i: usize, cube: &mut [Lit]| -> bool {
-            if self.cfg.inn || !self.auxiliary_var.is_empty() {
+            if self.cfg.inn {
                 if i == 0 {
                     cube.sort_by(|a, b| b.cmp(a));
                     return true;

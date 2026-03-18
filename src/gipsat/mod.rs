@@ -51,7 +51,6 @@ pub struct DagCnfSolver {
     constrain_act: Var,
     dc: DagCnf,
     trivial_unsat: bool,
-    mark: LitSet,
     rng: StdRng,
     pub cfg: Config,
 
@@ -101,7 +100,6 @@ impl DagCnfSolver {
             trivial_unsat: false,
             rng: StdRng::seed_from_u64(0),
             cfg: Default::default(),
-            mark: Default::default(),
         };
         while solver.num_var() < solver.dc.num_var() {
             solver.new_var();
@@ -378,7 +376,6 @@ impl Satif for DagCnfSolver {
         self.analyze.reserve(var);
         self.unsat_core.reserve(var);
         self.domain.reserve(var);
-        self.mark.reserve(var);
         self.constrain_act = var;
         v
     }

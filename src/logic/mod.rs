@@ -4,7 +4,6 @@ mod cnf;
 mod dagcnf;
 pub mod fol;
 mod lbool;
-pub mod logger;
 mod litordvec;
 mod litvec;
 mod litvvec;

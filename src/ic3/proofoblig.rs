@@ -14,14 +14,13 @@ pub struct ProofObligationInner {
     pub state: LitOrdVec,
     pub depth: usize,
     pub next: Option<ProofObligation>,
-    pub removed: bool,
     pub act: f64,
 }
 
 impl PartialEq for ProofObligationInner {
     #[inline]
     fn eq(&self, other: &Self) -> bool {
-        self.state == other.state && self.removed == other.removed
+        self.state == other.state
     }
 }
 
@@ -40,11 +39,8 @@ impl Ord for ProofObligationInner {
         match other.frame.cmp(&self.frame) {
             Ordering::Equal => match self.depth.cmp(&other.depth) {
                 Ordering::Equal => match other.state.len().cmp(&self.state.len()) {
-                    Ordering::Equal => match other.state.cmp(&self.state) {
-                        Ordering::Equal => self.removed.cmp(&other.removed),
-                        ord => ord,
-                    },
-                    ord => ord,
+                    Ordering::Equal => other.state.cmp(&self.state),
+                    ord => ord
                 },
                 ord => ord,
             },
@@ -84,7 +80,6 @@ impl ProofObligation {
                 state: lemma,
                 depth,
                 next,
-                removed: false,
                 act: 0.0,
             }),
         }
@@ -190,10 +185,6 @@ impl ProofObligationQueue {
         for n in self.num.iter_mut() {
             *n = 0;
         }
-    }
-
-    pub fn clear_to(&mut self, frame: usize) {
-        while self.pop(frame).is_some() {}
     }
 
     #[allow(unused)]

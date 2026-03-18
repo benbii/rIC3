@@ -16,10 +16,7 @@ pub mod unroll;
 pub use ctx::*;
 use ahash::{HashMap, HashSet};
 use logicrs::{DagCnf, Lit, LitVec, LitVvec, Var, VarVMap, satif::Satif};
-use std::{
-    fmt::{self, Display},
-    mem::take,
-};
+use std::fmt::{self, Display};
 
 #[derive(Default, Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Transys {
@@ -187,14 +184,6 @@ impl Transys {
         let iv = self.new_var();
         self.add_latch(iv, Some(Lit::constant(true)), Lit::constant(false));
         iv
-    }
-
-    pub fn compress_bads(&mut self) {
-        if self.bad.len() <= 1 {
-            return;
-        }
-        let bad = take(&mut self.bad);
-        self.bad = LitVec::from(self.rel.new_or(bad));
     }
 }
 

@@ -3,7 +3,7 @@ use crate::ic3::{
     mic::{DropVarParameter, MicType},
     proofoblig::ProofObligation,
 };
-use log::{debug, info};
+use log::debug;
 use logicrs::{LitOrdVec, LitVec, satif::Satif};
 use std::time::Instant;
 
@@ -11,8 +11,6 @@ pub enum BlockResult {
     Success,
     Failure(usize),
     Proved,
-    BlockLimitExceeded,
-    OverallTimeLimitExceeded,
 }
 
 impl IC3 {
@@ -46,45 +44,13 @@ impl IC3 {
         false
     }
 
-    #[allow(unused)]
-    fn block_with_restart(&mut self) -> BlockResult {
-        let mut restart = 0;
-        loop {
-            let rest_base = luby(2.0, restart);
-            match self.block(Some(rest_base * 100.0)) {
-                BlockResult::BlockLimitExceeded => {
-                    let bt = if let Some(a) = self.obligations.peak() {
-                        (a.frame + 2).min(self.level() - 1)
-                    } else {
-                        self.level() - 1
-                    };
-                    self.obligations.clear_to(bt);
-                    restart += 1;
-                    if restart % 10 == 0 {
-                        info!("rIC3 restarted {restart} times");
-                    }
-                }
-                r => return r,
-            }
-        }
-    }
-
-    pub fn block(&mut self, limit: Option<f64>) -> BlockResult {
-        let mut noc = 0;
+    pub fn block(&mut self) -> BlockResult {
         while let Some(mut po) = self.obligations.pop(self.level()) {
-            if po.removed {
-                continue;
-            }
-            if let Some(limit) = limit
-                && noc as f64 > limit
-            {
-                return BlockResult::BlockLimitExceeded;
-            }
-            if let Some(limit) = self.cfg.time_limit
-                && self.statistic.time.time().as_secs() > limit
-            {
-                return BlockResult::OverallTimeLimitExceeded;
-            }
+            const CTG_THRESHOLD: f64 = 10.0;
+            const EXCTG_THRESHOLD: f64 = 40.0;
+            const MAX_ACT_BEFORE_DROP: f64 = 20.0;
+
+            // intersects with init; failed if on frame 0
             if self.tsctx.cube_subsume_init(&po.state) {
                 if self.cfg.abs_cst || self.cfg.abs_trans {
                     self.add_obligation(po.clone());
@@ -98,14 +64,13 @@ impl IC3 {
                         }
                     }
                     continue;
-                } else if po.frame > 0 {
-                    let lemma = po.state.as_litvec();
-                    debug_assert!(!self.solvers[0].solve(lemma));
-                } else {
+                } else if po.frame == 0 {
                     self.add_obligation(po.clone());
                     return BlockResult::Failure(po.depth);
                 }
+                debug_assert!(!self.solvers[0].solve(po.state.as_litvec()));
             }
+
             if let Some((bf, _)) = self.frame.trivial_contained(Some(po.frame), &po.state) {
                 if let Some(bf) = bf {
                     po.push_to(bf + 1);
@@ -114,53 +79,14 @@ impl IC3 {
                 continue;
             }
             po.act += 1.0;
-            if self.cfg.drop_po && po.act > 20.0 {
+            if self.cfg.drop_po && po.act > MAX_ACT_BEFORE_DROP {
                 continue;
             }
+
             let blocked_start = Instant::now();
             let blocked = self.blocked_with_ordered(po.frame, &po.state, false);
             self.statistic.block.blocked_time += blocked_start.elapsed();
-            if blocked {
-                noc += 1;
-                let mic_type = if self.cfg.dynamic {
-                    if let Some(mut n) = po.next.as_mut() {
-                        let mut act = n.act;
-                        for _ in 0..2 {
-                            if let Some(nn) = n.next.as_mut() {
-                                n = nn;
-                                act = act.max(n.act);
-                            } else {
-                                break;
-                            }
-                        }
-                        const CTG_THRESHOLD: f64 = 10.0;
-                        const EXCTG_THRESHOLD: f64 = 40.0;
-                        let (limit, max, level) = match act {
-                            EXCTG_THRESHOLD.. => {
-                                let limit = ((act - EXCTG_THRESHOLD).powf(0.45) * 2.0 + 5.0).round()
-                                    as usize;
-                                (limit, 5, 1)
-                            }
-                            CTG_THRESHOLD..EXCTG_THRESHOLD => {
-                                let max = (act - CTG_THRESHOLD) as usize / 10 + 2;
-                                (1, max, 1)
-                            }
-                            ..CTG_THRESHOLD => (0, 0, 0),
-                            _ => panic!(),
-                        };
-                        let p = DropVarParameter::new(limit, max, level);
-                        MicType::DropVar(p)
-                    } else {
-                        MicType::DropVar(Default::default())
-                    }
-                } else {
-                    MicType::from_config(&self.cfg)
-                };
-                if self.generalize(po, mic_type) {
-                    return BlockResult::Proved;
-                }
-                debug!("{}", self.frame.statistic(false));
-            } else {
+            if !blocked {
                 let (model, inputs) = self.get_pred(po.frame, true);
                 self.add_obligation(ProofObligation::new(
                     po.frame - 1,
@@ -170,7 +96,35 @@ impl IC3 {
                     Some(po.clone()),
                 ));
                 self.add_obligation(po);
+                continue;
             }
+
+            let mic_type = if self.cfg.dynamic && po.next.is_none() {
+                MicType::DropVar(Default::default())
+            } else if self.cfg.dynamic {
+                let n = po.next.as_mut().unwrap();
+                let mut act = n.act;
+                if let Some(nn) = n.next.as_mut() {
+                    act = act.max(nn.act);
+                    if let Some(nnn) = nn.next.as_mut() {
+                        act = act.max(nnn.act);
+                    }
+                }
+                let (limit, max, level) = match act {
+                    EXCTG_THRESHOLD.. => {
+                        (((act - EXCTG_THRESHOLD).powf(0.45) * 2.0 + 5.0).round() as usize, 5, 1)
+                    }
+                    ..CTG_THRESHOLD => (0, 0, 0),
+                    _ => (1, (act - CTG_THRESHOLD) as usize / 10 + 2, 1)
+                };
+                MicType::DropVar(DropVarParameter::new(limit, max, level))
+            } else { // not dynamic
+                MicType::from_config(&self.cfg)
+            };
+            if self.generalize(po, mic_type) {
+                return BlockResult::Proved;
+            }
+            debug!("{}", self.frame.statistic(false));
         }
         BlockResult::Success
     }
@@ -228,19 +182,4 @@ impl IC3 {
         let mut limit = parameter.limit;
         self.trivial_block_rec(frame, lemma, constraint, &mut limit, parameter)
     }
-}
-
-fn luby(y: f64, mut x: usize) -> f64 {
-    let mut size = 1;
-    let mut seq = 0;
-    while size < x + 1 {
-        seq += 1;
-        size = 2 * size + 1
-    }
-    while size - 1 != x {
-        size = (size - 1) >> 1;
-        seq -= 1;
-        x %= size;
-    }
-    y.powi(seq)
 }
