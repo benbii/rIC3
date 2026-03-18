@@ -1,7 +1,6 @@
 use crate::{
     Engine, McResult, McWitness,
-    config::{EngineConfig, EngineConfigBase, PreprocConfig},
-    impl_config_deref,
+    config::{EngineConfig, PreprocConfig},
     transys::{
         Transys, certify::Restore,
         nodep::NoDepTransysUnroll,
@@ -19,13 +18,19 @@ use serde::{Deserialize, Serialize};
 #[derive(Args, Clone, Debug, Serialize, Deserialize)]
 pub struct BMCConfig {
     #[command(flatten)]
-    pub base: EngineConfigBase,
-    #[command(flatten)]
     pub preproc: PreprocConfig,
-    /// per-step time limit (applies to each BMC step, not the overall solver run).
-    /// The overall `time_limit` option sets the total time limit for the entire solver run.
-    #[arg(long = "step-time-limit")]
-    pub step_time_limit: Option<u64>,
+    /// Start bound
+    #[arg(long = "start", default_value_t = 0)]
+    pub start: usize,
+    /// Max bound to check
+    #[arg(long = "end", default_value_t = usize::MAX)]
+    pub end: usize,
+    /// Step length
+    #[arg(long, default_value_t = 1, value_parser = clap::value_parser!(u32).range(1..))]
+    pub step: u32,
+    /// Random seed
+    #[arg(long, default_value_t = 0)]
+    pub rseed: u64,
     /// use kissat solver in bmc, otherwise cadical
     #[arg(long = "kissat", default_value_t = false)]
     pub kissat: bool,
@@ -33,7 +38,6 @@ pub struct BMCConfig {
     #[arg(long = "dyn-step", default_value_t = false)]
     pub dyn_step: bool,
 }
-impl_config_deref!(BMCConfig);
 impl Default for BMCConfig {
     fn default() -> Self {
         let cfg = EngineConfig::parse_from(["", "bmc"]);
@@ -48,7 +52,8 @@ enum S {
 pub struct BMC {
     ots: Transys,
     uts: NoDepTransysUnroll,
-    cfg: BMCConfig,
+    start: usize,
+    end: usize,
     solver_k: usize,
     rst: Restore,
     step: usize,
@@ -92,7 +97,8 @@ impl BMC {
         Self {
             ots,
             uts,
-            cfg,
+            start: cfg.start,
+            end: cfg.end,
             solver_k: 0,
             rst,
             step,
@@ -104,7 +110,7 @@ impl BMC {
 impl Engine for BMC {
     fn check(&mut self) -> McResult {
         if let S::C(c) = &mut self.solver {
-            for d in (self.cfg.start..=self.cfg.end).step_by(self.step) {
+            for d in (self.start..=self.end).step_by(self.step) {
                 self.uts.unroll_to(d);
                 while self.solver_k < d + 1 {
                     self.uts.load_trans(c, self.solver_k, true);
@@ -118,7 +124,7 @@ impl Engine for BMC {
                 info!("bmc found no counterexample at exact depth {d}");
             }
         } else if let S::K(k, rng) = &mut self.solver {
-            for d in (self.cfg.start..=self.cfg.end).step_by(self.step) {
+            for d in (self.start..=self.end).step_by(self.step) {
                 self.uts.unroll_to(d);
                 while self.solver_k < d + 1 {
                     self.uts.load_trans(k, self.solver_k, true);
@@ -140,8 +146,8 @@ impl Engine for BMC {
                 }
             }
         }
-        info!("bmc reached bound {}, stopping search", self.cfg.end);
-        McResult::Unknown(Some(self.cfg.end))
+        info!("bmc reached bound {}, stopping search", self.end);
+        McResult::Unknown(Some(self.end))
     }
 
     fn witness(&mut self) -> McWitness {

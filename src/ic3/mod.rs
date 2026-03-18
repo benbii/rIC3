@@ -1,9 +1,8 @@
 use crate::{
     BlProof, BlWitness, Engine, McProof, McResult, McWitness,
-    config::{EngineConfig, EngineConfigBase, PreprocConfig},
+    config::{EngineConfig, PreprocConfig},
     gipsat::{SolverStatistic, TransysSolver},
     ic3::{block::BlockResult, localabs::LocalAbs, predprop::PredProp},
-    impl_config_deref,
     transys::{
         Transys, TransysCtx, certify::Restore, lift::TsLift,
         preproc_serde::PreprocModel, unroll::TransysUnroll,
@@ -17,7 +16,7 @@ use logicrs::{Lit, LitOrdVec, LitVec, LitVvec, satif::Satif};
 use proofoblig::{ProofObligation, ProofObligationQueue};
 use rand::{SeedableRng, rngs::StdRng};
 use serde::{Deserialize, Serialize};
-use std::time::Instant;
+use std::{num::NonZeroU64, time::Instant};
 use stat::Statistic;
 
 mod activity;
@@ -34,8 +33,15 @@ mod stat;
 
 #[derive(Args, Clone, Debug, Serialize, Deserialize)]
 pub struct IC3Config {
-    #[command(flatten)]
-    pub base: EngineConfigBase,
+    /// Property ID. If not specified, all properties are checked.
+    #[arg(long = "prop")]
+    pub prop: Option<usize>,
+    /// Random seed
+    #[arg(long, default_value_t = 0)]
+    pub rseed: u64,
+    /// Time limit in seconds
+    #[arg(long)]
+    pub time_limit: Option<NonZeroU64>,
     #[command(flatten)]
     pub preproc: PreprocConfig,
     /// dynamic generalization
@@ -65,9 +71,6 @@ pub struct IC3Config {
     /// dropping proof-obligation
     #[arg(long = "drop-po", action = ArgAction::Set, default_value_t = true)]
     pub drop_po: bool,
-    /// abstract array
-    #[arg(long = "abs-array", default_value_t = false)]
-    pub abs_array: bool,
     /// finding parent lemma in mic (CAV'23 https://doi.org/10.1007/978-3-031-37703-7_14)
     #[arg(long = "parent-lemma", action = ArgAction::Set, default_value_t = true)]
     pub parent_lemma: bool,
@@ -82,7 +85,6 @@ pub struct IC3Config {
     // #[arg(long = "inv-dump")]
     // pub inv_dump: Option<PathBuf>,
 }
-impl_config_deref!(IC3Config);
 impl Default for IC3Config {
     fn default() -> Self {
         let cfg = EngineConfig::parse_from(["", "ic3"]);
@@ -91,7 +93,6 @@ impl Default for IC3Config {
 }
 
 pub struct IC3 {
-    cfg: IC3Config,
     ts: Transys,
     tsctx: Box<TransysCtx>,
     solvers: Vec<TransysSolver>,
@@ -106,6 +107,16 @@ pub struct IC3 {
     rst: Restore,
     predprop: Option<PredProp>,
     rng: StdRng,
+    time_limit: Option<NonZeroU64>,
+    prop: usize,
+    default_mic: mic::DropVarParameter,
+    inn: bool,
+    abs_cst: bool,
+    abs_trans: bool,
+    drop_po: bool,
+    dynamic: bool,
+    ctp: bool,
+    parent_lemma: bool,
 }
 
 impl IC3 {
@@ -159,16 +170,17 @@ impl IC3 {
                 panic!("A property ID must be specified for local proof.");
             }
         }
+        let prop = cfg.prop.unwrap_or(0);
 
         let ots = ts.clone();
-        if let Some(prop) = cfg.prop && !cfg.local_proof {
+        if cfg.prop.is_some() && !cfg.local_proof {
             ts.bad = LitVec::from(ts.bad[prop]);
         }
         let rng = StdRng::seed_from_u64(cfg.rseed);
         let statistic = Statistic::default();
         let (model, loaded) = PreprocModel::load_or_preproc(ts, &cfg.preproc);
         let (mut ts, mut rst) = (model.ts, model.rst);
-        if loaded && let Some(prop) = cfg.prop && !cfg.local_proof {
+        if loaded && cfg.prop.is_some() && !cfg.local_proof {
             ts.bad = LitVec::from(ts.bad[prop]);
         }
         if cfg.prop.is_none() && ts.bad.len() > 1 {
@@ -184,7 +196,7 @@ impl IC3 {
         let predprop = cfg.pred_prop.then(|| {
             PredProp::new(
                 uts.clone(),
-                cfg.local_proof.then(|| cfg.prop.unwrap()),
+                cfg.local_proof.then_some(prop),
                 cfg.inn,
             )
         });
@@ -193,9 +205,8 @@ impl IC3 {
         let frame = Frames::new(&tsctx);
         let inf_solver = TransysSolver::new(&tsctx);
         let lift = TsLift::new(TransysUnroll::new(&ts));
-        let localabs = LocalAbs::new(&ts, &cfg);
+        let localabs = LocalAbs::new(&ts, cfg.abs_cst, cfg.abs_trans);
         Self {
-            cfg,
             ts,
             tsctx,
             activity,
@@ -210,6 +221,20 @@ impl IC3 {
             rst,
             predprop,
             rng,
+            time_limit: cfg.time_limit,
+            prop,
+            default_mic: if cfg.ctg {
+                mic::DropVarParameter::new(cfg.ctg_limit, cfg.ctg_max, 1)
+            } else {
+                Default::default()
+            },
+            inn: cfg.inn,
+            abs_cst: cfg.abs_cst,
+            abs_trans: cfg.abs_trans,
+            drop_po: cfg.drop_po,
+            dynamic: cfg.dynamic,
+            ctp: cfg.ctp,
+            parent_lemma: cfg.parent_lemma,
         }
     }
 
@@ -231,7 +256,7 @@ impl Engine for IC3 {
         let mut last_sec = 0;
         loop {
             let now_sec = self.statistic.time.time().as_secs();
-            if let Some(limit) = self.cfg.time_limit && now_sec > limit {
+            if let Some(limit) = self.time_limit && now_sec > limit.get() {
                 return McResult::Unknown(Some(self.level()));
             }
             if now_sec - last_sec >= 10 {

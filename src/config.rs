@@ -8,66 +8,6 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use strum::AsRefStr;
 
-/// Macro to implement Deref and DerefMut for config structs that wrap EngineConfigBase
-#[macro_export]
-macro_rules! impl_config_deref {
-    ($config_type:ty) => {
-        impl std::ops::Deref for $config_type {
-            type Target = $crate::config::EngineConfigBase;
-
-            fn deref(&self) -> &Self::Target {
-                &self.base
-            }
-        }
-
-        impl std::ops::DerefMut for $config_type {
-            fn deref_mut(&mut self) -> &mut Self::Target {
-                &mut self.base
-            }
-        }
-    };
-}
-
-#[derive(Parser, Debug, Clone, Serialize, Deserialize)]
-pub struct EngineConfigBase {
-    /// Property ID. If not specified, all properties are checked.
-    #[arg(long = "prop")]
-    pub prop: Option<usize>,
-
-    /// Start bound
-    #[arg(long = "start", default_value_t = 0)]
-    pub start: usize,
-
-    /// Max bound to check
-    #[arg(long = "end", default_value_t = usize::MAX)]
-    pub end: usize,
-
-    /// Step length
-    #[arg(long, default_value_t = 1, value_parser = clap::value_parser!(u32).range(1..))]
-    pub step: u32,
-
-    /// Random seed
-    #[arg(long, default_value_t = 0)]
-    pub rseed: u64,
-
-    /// Time limit in seconds
-    #[arg(long)]
-    pub time_limit: Option<u64>,
-}
-
-impl Default for EngineConfigBase {
-    fn default() -> Self {
-        Self {
-            prop: None,
-            start: 0,
-            end: usize::MAX,
-            step: 1,
-            rseed: 0,
-            time_limit: None,
-        }
-    }
-}
-
 #[derive(Parser, Clone, Debug, Serialize, Deserialize, AsRefStr, EnumAsInner)]
 pub enum EngineConfig {
     /// ic3

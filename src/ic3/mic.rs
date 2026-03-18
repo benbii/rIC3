@@ -1,5 +1,4 @@
 use super::IC3;
-use crate::ic3::IC3Config;
 use ahash::HashSet;
 use log::trace;
 use logicrs::{Lit, LitOrdVec, LitVec, satif::Satif};
@@ -25,28 +24,6 @@ impl DropVarParameter {
             max: self.max,
             level: self.level - 1,
         }
-    }
-}
-
-#[derive(Clone, Copy, Debug)]
-pub enum MicType {
-    #[allow(unused)]
-    NoMic,
-    DropVar(DropVarParameter),
-}
-
-impl MicType {
-    pub fn from_config(cfg: &IC3Config) -> Self {
-        let p = if cfg.ctg {
-            DropVarParameter {
-                limit: cfg.ctg_limit,
-                max: cfg.ctg_max,
-                level: 1,
-            }
-        } else {
-            DropVarParameter::default()
-        };
-        MicType::DropVar(p)
     }
 }
 
@@ -224,7 +201,7 @@ impl IC3 {
         } else {
             self.activity.sort_by_activity(&mut cube, true);
         }
-        if self.cfg.parent_lemma
+        if self.parent_lemma
             && let Some(parent) = self.frame.parent_lemma(&cube, frame)
         {
             let parent = HashSet::from_iter(parent);
@@ -276,13 +253,10 @@ impl IC3 {
         frame: usize,
         cube: LitVec,
         constraint: &[LitVec],
-        mic_type: MicType,
+        parameter: DropVarParameter,
     ) -> LitVec {
         let mic_olen = cube.len();
-        let r = match mic_type {
-            MicType::NoMic => cube,
-            MicType::DropVar(parameter) => self.mic_by_drop_var(frame, cube, constraint, parameter),
-        };
+        let r = self.mic_by_drop_var(frame, cube, constraint, parameter);
         trace!("mic from {} to {} len", mic_olen, r.len());
         r
     }

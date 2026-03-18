@@ -1,8 +1,6 @@
 use crate::{
     Engine, McResult, McWitness,
     bitwuzla::Bitwuzla,
-    config::EngineConfigBase,
-    impl_config_deref,
     wltransys::{WlTransys, unroll::WlTransysUnroll},
 };
 use clap::Args;
@@ -12,19 +10,26 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Args, Clone, Debug, Serialize, Deserialize)]
 pub struct WlBMCConfig {
-    #[command(flatten)]
-    pub base: EngineConfigBase,
+    /// Start bound
+    #[arg(long = "start", default_value_t = 0)]
+    pub start: usize,
+    /// Max bound to check
+    #[arg(long = "end", default_value_t = usize::MAX)]
+    pub end: usize,
+    /// Step length
+    #[arg(long, default_value_t = 1, value_parser = clap::value_parser!(u32).range(1..))]
+    pub step: u32,
 }
 
-impl_config_deref!(WlBMCConfig);
-
 pub struct WlBMC {
-    cfg: WlBMCConfig,
     #[allow(unused)]
     owts: WlTransys,
     uts: WlTransysUnroll,
     solver: Bitwuzla,
     solver_k: usize,
+    start: usize,
+    end: usize,
+    step: usize,
 }
 
 impl WlBMC {
@@ -37,11 +42,13 @@ impl WlBMC {
             solver.assert(&l.teq(i));
         }
         Self {
-            cfg,
             owts,
             uts,
             solver,
             solver_k: 0,
+            start: cfg.start,
+            end: cfg.end,
+            step: cfg.step as usize,
         }
     }
 
@@ -57,7 +64,7 @@ impl WlBMC {
 
 impl Engine for WlBMC {
     fn check(&mut self) -> McResult {
-        for k in (self.cfg.start..=self.cfg.end).step_by(self.cfg.step as usize) {
+        for k in (self.start..=self.end).step_by(self.step) {
             self.uts.unroll_to(k);
             self.load_trans_to(k);
             let assump = self.uts.next(&self.uts.ts.bad[0], k);
@@ -67,8 +74,8 @@ impl Engine for WlBMC {
             }
             info!("wl-bmc found no counterexample at exact depth {k}");
         }
-        info!("bmc reached bound {}, stopping search", self.cfg.end);
-        McResult::Unknown(Some(self.cfg.end))
+        info!("bmc reached bound {}, stopping search", self.end);
+        McResult::Unknown(Some(self.end))
     }
 
     fn witness(&mut self) -> McWitness {

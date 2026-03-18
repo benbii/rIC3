@@ -2,7 +2,6 @@ use super::IC3;
 use crate::{
     BlWitness,
     cadical::CaDiCaL,
-    ic3::IC3Config,
     transys::{Transys, unroll::TransysUnroll},
 };
 use ahash::{HashMap, HashSet};
@@ -23,20 +22,20 @@ pub struct LocalAbs {
 }
 
 impl LocalAbs {
-    pub fn new(ts: &Transys, cfg: &IC3Config) -> Self {
+    pub fn new(ts: &Transys, abs_cst: bool, abs_trans: bool) -> Self {
         let mut refine = HashSet::default();
         refine.insert(Var::CONST);
         refine.extend(ts.bad.iter().map(|l| l.var()));
-        if !cfg.abs_cst {
+        if !abs_cst {
             refine.extend(ts.constraint.iter().map(|l| l.var()))
         }
-        if !cfg.abs_trans {
+        if !abs_trans {
             refine.extend(ts.next.values().map(|l| l.var()));
         }
         let mut uts = TransysUnroll::new(ts);
         let mut opt = HashMap::default();
         let mut connect = None;
-        if cfg.abs_trans {
+        if abs_trans {
             for v in uts.ts.latch() {
                 let n = uts.ts.next(v.lit());
                 if let std::collections::hash_map::Entry::Vacant(e) = opt.entry(n.var()) {
@@ -47,7 +46,7 @@ impl LocalAbs {
             connect = Some(vec![LitVvec::new()]);
         }
         let mut optcst = None;
-        if cfg.abs_cst {
+        if abs_cst {
             let mut rel = LitVvec::new();
             for c in uts.ts.constraint() {
                 let cc = *opt.entry(c.var()).or_insert_with(|| {
@@ -59,7 +58,7 @@ impl LocalAbs {
             optcst = Some(vec![rel]);
         }
         let mut solver = CaDiCaL::new();
-        uts.load_trans(&mut solver, 0, !cfg.abs_cst);
+        uts.load_trans(&mut solver, 0, !abs_cst);
         if let Some(crel) = connect.as_ref() {
             for cls in crel[0].iter() {
                 solver.add_clause(cls);
@@ -152,7 +151,7 @@ impl IC3 {
         debug!("localabs: checking witness by bmc with depth {depth}");
         self.localabs.unroll_to_abst(depth);
         for k in self.localabs.kslv + 1..=depth {
-            self.localabs.uts.load_trans(&mut self.localabs.solver, k, !self.cfg.abs_cst);
+            self.localabs.uts.load_trans(&mut self.localabs.solver, k, !self.abs_cst);
             if let Some(crel) = self.localabs.connect.as_ref() {
                 for cls in crel[k].iter() {
                     self.localabs.solver.add_clause(cls);

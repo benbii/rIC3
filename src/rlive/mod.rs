@@ -1,8 +1,7 @@
 use crate::{
     BlWitness, Engine, McResult, McWitness,
-    config::{EngineConfig, EngineConfigBase, PreprocConfig},
+    config::{EngineConfig, PreprocConfig},
     ic3::{IC3, IC3Config},
-    impl_config_deref,
     transys::{Transys, certify::Restore, preproc_serde::PreprocModel},
 };
 use clap::{Args, Parser};
@@ -12,8 +11,6 @@ use serde::{Deserialize, Serialize};
 use std::mem::take;
 
 pub struct Rlive {
-    #[allow(unused)]
-    cfg: RliveConfig,
     ts: Transys,
     rcfg: IC3Config, // reach check config
     rts: Transys,    // reach check ts
@@ -27,13 +24,8 @@ pub struct Rlive {
 #[derive(Args, Clone, Debug, Serialize, Deserialize)]
 pub struct RliveConfig {
     #[command(flatten)]
-    pub base: EngineConfigBase,
-
-    #[command(flatten)]
     pub preproc: PreprocConfig,
 }
-
-impl_config_deref!(RliveConfig);
 
 impl Rlive {
     #[inline]
@@ -168,7 +160,6 @@ impl Rlive {
             EngineConfig::parse_from("ic3 --no-pred-prop --full-bad --no-preproc".split(' '));
         let rcfg = rcfg.into_ic3().unwrap();
         Self {
-            cfg,
             ts,
             rcfg: rcfg.clone(),
             rts,

@@ -1,8 +1,7 @@
 use crate::{
     BlProof, Engine, McProof, McResult, McWitness,
     cadical::CaDiCaL,
-    config::{EngineConfig, EngineConfigBase, PreprocConfig},
-    impl_config_deref,
+    config::{EngineConfig, PreprocConfig},
     transys::{
         Transys, certify::Restore,
         nodep::NoDepTransysUnroll,
@@ -16,9 +15,12 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Args, Clone, Debug, Serialize, Deserialize)]
 pub struct KindConfig {
-    #[command(flatten)]
-    pub base: EngineConfigBase,
-
+    /// Property ID. If not specified, all properties are checked.
+    #[arg(long = "prop")]
+    pub prop: Option<usize>,
+    /// Max bound to check
+    #[arg(long = "end", default_value_t = usize::MAX)]
+    pub end: usize,
     #[command(flatten)]
     pub preproc: PreprocConfig,
 
@@ -35,8 +37,6 @@ pub struct KindConfig {
     #[arg(skip)]
     pub local_proof: bool,
 }
-
-impl_config_deref!(KindConfig);
 
 impl Default for KindConfig {
     fn default() -> Self {
@@ -59,14 +59,6 @@ pub struct Kind {
 
 impl Kind {
     pub fn new(cfg: KindConfig, mut ts: Transys) -> Self {
-        // TARGET FOR LATER: each engine should have its dedicated config, not the current
-        // ill-defined EngineConfigBase
-        if cfg.step != 1 {
-            panic!("k-induction step should be 1, got {}", cfg.step);
-        }
-        if cfg.start != 0 {
-            panic!("k-induction start should be 0, got {}", cfg.start);
-        }
         if cfg.local_proof {
             panic!("local proof KInd not supported");
         }

@@ -59,11 +59,7 @@ impl IC3 {
             return true;
         }
         let bad = self.tsctx.bad.clone();
-        let id = if self.cfg.local_proof {
-            self.cfg.prop.unwrap()
-        } else {
-            0
-        };
+        let id = self.prop;
         let mut slv = TransysSolver::new(&self.tsctx);
         for init in self.tsctx.init.clone() {
             slv.add_clause(&init);

@@ -1,6 +1,4 @@
-use crate::{
-    ic3::{Frame, IC3, mic::MicType},
-};
+use crate::ic3::{Frame, IC3};
 // use log::error;
 use logicrs::{LitOrdVec, LitVec};
 // use nix::libc;
@@ -35,7 +33,7 @@ impl IC3 {
                         self.statistic.ctp.statistic(ctp > 0);
                         break;
                     }
-                    if !self.cfg.ctp {
+                    if !self.ctp {
                         break;
                     }
                     let (ctp, _) = self.get_pred(frame_idx + 1, false);
@@ -43,8 +41,7 @@ impl IC3 {
                         && self.solvers[frame_idx - 1].inductive(&ctp, true)
                     {
                         let core = self.solvers[frame_idx - 1].inductive_core().unwrap();
-                        let mic =
-                            self.mic(frame_idx, core, &[], MicType::DropVar(Default::default()));
+                        let mic = self.mic(frame_idx, core, &[], Default::default());
                         if self.add_lemma(frame_idx, mic, false, None) {
                             return true;
                         }
@@ -116,7 +113,7 @@ impl IC3 {
         let level = self.level();
         self.frame[level].shuffle(&mut self.rng);
         let mut lastf = self.frame[level].clone();
-        // let dump = self.cfg.inv_dump.is_some();
+        // let dump = inv_dump_path.is_some();
         // let mut dump_buf = Vec::new();
         while let Some(mut lemma) = lastf.pop() {
             loop {
@@ -162,7 +159,7 @@ impl IC3 {
         // if dump_buf.is_empty() {
         //     return;
         // }
-        // let path = self.cfg.inv_dump.as_ref().unwrap();
+        // let path = inv_dump_path.as_ref().unwrap();
         // if let Err(err) = (|| -> std::io::Result<()> {
         //     let mut file = OpenOptions::new().create(true).append(true).open(path)?;
         //     let lock_rc = unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX) };

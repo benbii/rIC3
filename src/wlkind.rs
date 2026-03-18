@@ -1,31 +1,28 @@
 use crate::{
     Engine, McProof, McResult, McWitness,
     bitwuzla::Bitwuzla,
-    config::EngineConfigBase,
-    impl_config_deref,
     wltransys::{WlTransys, certify::WlProof, unroll::WlTransysUnroll},
 };
 use clap::Args;
 use ahash::HashMap;
-use log::{error, info};
+use log::info;
 use logicrs::fol::{Sort, Term, op};
 use serde::{Deserialize, Serialize};
 
 #[derive(Args, Clone, Debug, Serialize, Deserialize)]
 pub struct WlKindConfig {
-    #[command(flatten)]
-    pub base: EngineConfigBase,
+    /// Max bound to check
+    #[arg(long = "end", default_value_t = usize::MAX)]
+    pub end: usize,
 }
-
-impl_config_deref!(WlKindConfig);
 
 pub struct WlKind {
     uts: WlTransysUnroll,
-    cfg: WlKindConfig,
     solver: Bitwuzla,
     solver_trans_k: usize,
     solver_bad_k: usize,
     owts: WlTransys,
+    end: usize,
 }
 
 impl WlKind {
@@ -36,11 +33,11 @@ impl WlKind {
         let solver = Bitwuzla::new();
         Self {
             uts,
-            cfg,
             solver,
             solver_trans_k: 0,
             solver_bad_k: 0,
             owts,
+            end: cfg.end,
         }
     }
 
@@ -66,16 +63,7 @@ impl WlKind {
 
 impl Engine for WlKind {
     fn check(&mut self) -> McResult {
-        let step = self.cfg.step as usize;
-        if step != 1 {
-            error!("k-induction step should be 1, got {step}");
-            panic!();
-        }
-        if self.cfg.start != 0 {
-            error!("k-induction start should be 0, got {}", self.cfg.start);
-            panic!();
-        }
-        for k in 0..=self.cfg.end {
+        for k in 0..=self.end {
             self.uts.unroll_to(k);
             self.load_trans_to(k);
             if k > 0 {
@@ -100,8 +88,8 @@ impl Engine for WlKind {
             }
             info!("wl-kind found no counterexample at exact depth {k}");
         }
-        info!("kind reached bound {}, stopping search", self.cfg.end);
-        McResult::Unknown(Some(self.cfg.end))
+        info!("kind reached bound {}, stopping search", self.end);
+        McResult::Unknown(Some(self.end))
     }
 
     fn witness(&mut self) -> McWitness {

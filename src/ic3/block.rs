@@ -1,6 +1,6 @@
 use crate::ic3::{
     IC3,
-    mic::{DropVarParameter, MicType},
+    mic::DropVarParameter,
     proofoblig::ProofObligation,
 };
 use log::debug;
@@ -27,13 +27,13 @@ impl IC3 {
         (self.level() + 1, cube)
     }
 
-    fn generalize(&mut self, mut po: ProofObligation, mic_type: MicType) -> bool {
+    fn generalize(&mut self, mut po: ProofObligation, parameter: DropVarParameter) -> bool {
         let Some(mut mic) = self.solvers[po.frame - 1].inductive_core() else {
             po.frame += 1;
             self.add_obligation(po.clone());
             return self.add_lemma(po.frame - 1, po.state.as_litvec().clone(), false, Some(po));
         };
-        mic = self.mic(po.frame, mic, &[], mic_type);
+        mic = self.mic(po.frame, mic, &[], parameter);
         let (frame, mic) = self.push_lemma(po.frame, mic);
         self.statistic.avg_po_cube_len += po.state.len();
         po.push_to(frame);
@@ -52,7 +52,7 @@ impl IC3 {
 
             // intersects with init; failed if on frame 0
             if self.tsctx.cube_subsume_init(&po.state) {
-                if self.cfg.abs_cst || self.cfg.abs_trans {
+                if self.abs_cst || self.abs_trans {
                     self.add_obligation(po.clone());
                     if self.check_witness_by_bmc(po.depth) {
                         return BlockResult::Failure(po.depth);
@@ -79,7 +79,7 @@ impl IC3 {
                 continue;
             }
             po.act += 1.0;
-            if self.cfg.drop_po && po.act > MAX_ACT_BEFORE_DROP {
+            if self.drop_po && po.act > MAX_ACT_BEFORE_DROP {
                 continue;
             }
 
@@ -99,9 +99,9 @@ impl IC3 {
                 continue;
             }
 
-            let mic_type = if self.cfg.dynamic && po.next.is_none() {
-                MicType::DropVar(Default::default())
-            } else if self.cfg.dynamic {
+            let parameter = if self.dynamic && po.next.is_none() {
+                Default::default()
+            } else if self.dynamic {
                 let n = po.next.as_mut().unwrap();
                 let mut act = n.act;
                 if let Some(nn) = n.next.as_mut() {
@@ -117,11 +117,11 @@ impl IC3 {
                     ..CTG_THRESHOLD => (0, 0, 0),
                     _ => (1, (act - CTG_THRESHOLD) as usize / 10 + 2, 1)
                 };
-                MicType::DropVar(DropVarParameter::new(limit, max, level))
-            } else { // not dynamic
-                MicType::from_config(&self.cfg)
+                DropVarParameter::new(limit, max, level)
+            } else {
+                self.default_mic
             };
-            if self.generalize(po, mic_type) {
+            if self.generalize(po, parameter) {
                 return BlockResult::Proved;
             }
             debug!("{}", self.frame.statistic(false));
@@ -156,7 +156,7 @@ impl IC3 {
                 constraint.to_vec(),
             ) {
                 let mut mic = self.solvers[frame - 1].inductive_core().unwrap();
-                mic = self.mic(frame, mic, constraint, MicType::DropVar(parameter));
+                mic = self.mic(frame, mic, constraint, parameter);
                 let (frame, mic) = self.push_lemma(frame, mic);
                 self.add_lemma(frame - 1, mic, false, None);
                 return true;
