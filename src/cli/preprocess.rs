@@ -6,7 +6,7 @@ use rIC3::{
     btor::Btor,
     config::{EngineConfig, PreprocConfig},
     frontend::{Frontend, aig::AigFrontend, btor::BtorFrontend},
-    transys::{TransysIf, preproc_serde::PreprocModel},
+    transys::preproc_serde::PreprocModel,
 };
 use std::{env, path::PathBuf, process::exit};
 

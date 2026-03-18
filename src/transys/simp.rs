@@ -1,4 +1,4 @@
-use super::{Transys, TransysIf};
+use super::Transys;
 use crate::{
     config::PreprocConfig,
     transys::{certify::Restore, frts::FrTs, scorr::Scorr},

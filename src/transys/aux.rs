@@ -1,4 +1,4 @@
-use crate::transys::{Transys, TransysIf};
+use crate::transys::Transys;
 use ahash::{HashMap, HashSet};
 use logicrs::{DagCnf, Var, VarRange};
 

@@ -3,8 +3,9 @@ use crate::{
     config::{EngineConfig, EngineConfigBase, PreprocConfig},
     impl_config_deref,
     transys::{
-        Transys, TransysIf, certify::Restore, nodep::NoDepTransys, preproc_serde::PreprocModel,
-        unroll::TransysUnroll,
+        Transys, certify::Restore,
+        nodep::NoDepTransysUnroll,
+        preproc_serde::PreprocModel,
     },
 };
 use crate::cadical::CaDiCaL;
@@ -46,7 +47,7 @@ enum S {
 }
 pub struct BMC {
     ots: Transys,
-    uts: TransysUnroll<NoDepTransys>,
+    uts: NoDepTransysUnroll,
     cfg: BMCConfig,
     solver_k: usize,
     rst: Restore,
@@ -68,7 +69,7 @@ impl BMC {
         if cfg.preproc.preproc {
             ts.simplify(&mut rst);
         }
-        let uts = TransysUnroll::new(&ts);
+        let uts = NoDepTransysUnroll::new(&ts);
         let solver = if cfg.kissat {
             let mut s = Kissat::new();
             s.set_seed(rng.random());

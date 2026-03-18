@@ -1,6 +1,6 @@
 use crate::{
     gipsat::DagCnfSolver,
-    transys::{Transys, TransysIf},
+    transys::Transys,
 };
 use logicrs::bitvec::BitVec;
 use logicrs::{LitVec, Var, VarBitVec, satif::Satif};

@@ -1,5 +1,5 @@
 use super::IC3;
-use crate::{ic3::IC3Config, transys::TransysIf};
+use crate::ic3::IC3Config;
 use ahash::HashSet;
 use log::trace;
 use logicrs::{Lit, LitOrdVec, LitVec, satif::Satif};

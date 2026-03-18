@@ -3,7 +3,7 @@ use crate::{
     BlWitness,
     cadical::CaDiCaL,
     ic3::IC3Config,
-    transys::{Transys, TransysIf, unroll::TransysUnroll},
+    transys::{Transys, unroll::TransysUnroll},
 };
 use ahash::{HashMap, HashSet};
 use log::{debug, info};
@@ -12,7 +12,7 @@ use rand::seq::SliceRandom;
 
 pub struct LocalAbs {
     refine: HashSet<Var>,
-    uts: TransysUnroll<Transys>,
+    uts: TransysUnroll,
     solver: CaDiCaL,
     kslv: usize,
     opt: HashMap<Var, Var>,

@@ -1,6 +1,5 @@
 use crate::{
     ic3::{Frame, IC3, mic::MicType},
-    transys::TransysIf,
 };
 // use log::error;
 use logicrs::{LitOrdVec, LitVec};

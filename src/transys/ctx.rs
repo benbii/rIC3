@@ -1,4 +1,4 @@
-use super::{Transys, TransysIf};
+use super::Transys;
 use logicrs::{DagCnf, Lit, LitMap, LitVec, LitVvec, Var, VarMap};
 
 #[derive(Clone, Debug)]
@@ -15,14 +15,14 @@ pub struct TransysCtx {
     pub max_latch: Var,
 }
 
-impl TransysIf for TransysCtx {
+impl TransysCtx {
     #[inline]
-    fn max_var(&self) -> Var {
+    pub fn max_var(&self) -> Var {
         self.rel.max_var()
     }
 
     #[inline]
-    fn new_var(&mut self) -> Var {
+    pub fn new_var(&mut self) -> Var {
         let max_var = self.rel.new_var();
         self.init_map.reserve(max_var);
         self.next_map.reserve(max_var);
@@ -31,41 +31,45 @@ impl TransysIf for TransysCtx {
     }
 
     #[inline]
-    fn input(&self) -> impl Iterator<Item = Var> {
+    pub fn input(&self) -> impl Iterator<Item = Var> + '_ {
         self.input.iter().copied()
     }
 
     #[inline]
-    fn latch(&self) -> impl Iterator<Item = Var> {
+    pub fn latch(&self) -> impl Iterator<Item = Var> + '_ {
         self.latch.iter().copied()
     }
 
     #[inline]
-    fn is_latch(&self, var: Var) -> bool {
+    pub fn is_latch(&self, var: Var) -> bool {
         self.is_latch[var]
     }
 
     #[inline]
-    fn init(&self, latch: Var) -> Option<Lit> {
+    pub fn init(&self, latch: Var) -> Option<Lit> {
         self.init_map[latch]
     }
 
     #[inline]
-    fn next(&self, lit: Lit) -> Lit {
+    pub fn next(&self, lit: Lit) -> Lit {
         self.next_map[lit]
     }
 
     #[inline]
-    fn constraint(&self) -> impl Iterator<Item = Lit> {
+    pub fn constraint(&self) -> impl Iterator<Item = Lit> + '_ {
         self.constraint.iter().copied()
     }
 
     #[inline]
-    fn trans(&self) -> impl Iterator<Item = &LitVec> {
+    pub fn trans(&self) -> impl Iterator<Item = &LitVec> + '_ {
         self.rel.clause()
     }
 
-    fn add_init(&mut self, latch: Var, init: Lit) {
+    pub fn lits_next<'a>(&self, lits: impl IntoIterator<Item = &'a Lit>) -> LitVec {
+        lits.into_iter().map(|l| self.next(*l)).collect()
+    }
+
+    pub fn add_init(&mut self, latch: Var, init: Lit) {
         self.init_map[latch] = Some(init);
         if let Some(i) = init.try_constant() {
             self.init.push(LitVec::from([Lit::new(latch, i)]));
@@ -74,9 +78,6 @@ impl TransysIf for TransysCtx {
             self.init.push(LitVec::from([!latch.lit(), init]));
         }
     }
-}
-
-impl TransysCtx {
     #[inline]
     pub fn num_var(&self) -> usize {
         Into::<usize>::into(self.max_var()) + 1

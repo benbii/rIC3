@@ -1,6 +1,6 @@
 use crate::{
     gipsat::{DagCnfSolver, SolverStatistic},
-    transys::{TransysCtx, TransysIf},
+    transys::TransysCtx,
 };
 use logicrs::{Lit, LitVec, Var, satif::Satif};
 

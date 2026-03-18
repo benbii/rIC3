@@ -1,7 +1,7 @@
 use super::WlTransys;
 use crate::{
     transys::{
-        Transys, TransysIf,
+        Transys,
         certify::{BlProof, BlWitness},
     },
     wltransys::certify::{WlProof, WlWitness},

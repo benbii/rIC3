@@ -3,7 +3,7 @@ use crate::{
     config::{EngineConfig, EngineConfigBase, PreprocConfig},
     ic3::{IC3, IC3Config},
     impl_config_deref,
-    transys::{Transys, TransysIf, certify::Restore, preproc_serde::PreprocModel},
+    transys::{Transys, certify::Restore, preproc_serde::PreprocModel},
 };
 use clap::{Args, Parser};
 use log::{LevelFilter, debug, error, warn};

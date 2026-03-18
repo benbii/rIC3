@@ -1,4 +1,4 @@
-use crate::{ic3::IC3, transys::TransysIf};
+use crate::ic3::IC3;
 use ahash::HashSet;
 use logicrs::{DagCnf, Var};
 

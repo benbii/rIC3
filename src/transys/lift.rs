@@ -1,17 +1,17 @@
 use crate::{
     gipsat::DagCnfSolver,
-    transys::{Transys, TransysIf, unroll::TransysUnroll},
+    transys::unroll::TransysUnroll,
 };
 use ahash::HashSet;
 use logicrs::{Lit, LitVec, Var, satif::Satif};
 
 pub struct TsLift {
-    ts: TransysUnroll<Transys>,
+    ts: TransysUnroll,
     slv: DagCnfSolver,
 }
 
 impl TsLift {
-    pub fn new(ts: TransysUnroll<Transys>) -> Self {
+    pub fn new(ts: TransysUnroll) -> Self {
         let tsc = ts.compile();
         let slv = DagCnfSolver::new(&tsc.rel);
         Self { ts, slv }

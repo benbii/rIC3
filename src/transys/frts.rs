@@ -1,7 +1,7 @@
 use crate::{
     config::PreprocConfig,
     gipsat::DagCnfSolver,
-    transys::{Transys, TransysIf, certify::Restore},
+    transys::{Transys, certify::Restore},
 };
 use ahash::HashMap;
 use log::{debug, info, trace};

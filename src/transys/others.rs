@@ -1,4 +1,4 @@
-use super::{Transys, TransysIf};
+use super::Transys;
 use crate::transys::certify::Restore;
 use ahash::HashMap;
 use logicrs::{Lit, LitVec, Var, VarLMap, VarRange};

@@ -1,6 +1,6 @@
 use crate::{
     gipsat::DagCnfSolver,
-    transys::{Transys, TransysIf, unroll::TransysUnroll},
+    transys::{Transys, unroll::TransysUnroll},
 };
 use ahash::HashMap;
 use logicrs::{Lit, LitVec, LitVvec, Var, VarVMap, satif::Satif};
@@ -74,7 +74,7 @@ impl BlWitness {
         res
     }
 
-    pub fn exact_init_state(&mut self, ts: &impl TransysIf) {
+    pub fn exact_init_state(&mut self, ts: &Transys) {
         let assump: Vec<_> = self.state[0]
             .iter()
             .chain(self.input[0].iter())

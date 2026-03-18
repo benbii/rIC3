@@ -1,5 +1,4 @@
 use super::Transys;
-use crate::transys::TransysIf;
 use log::warn;
 use logicrs::{Lit, LitVec, VarVMap};
 use std::{iter::once, mem::take};

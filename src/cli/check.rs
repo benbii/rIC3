@@ -8,7 +8,6 @@ use rIC3::{
     config::EngineConfig,
     create_bl_engine, create_wl_engine,
     frontend::{Frontend, aig::AigFrontend, btor::BtorFrontend, certificate_check},
-    transys::TransysIf,
 };
 use std::{env, fs, path::PathBuf, process::exit};
 

@@ -4,8 +4,9 @@ use crate::{
     config::{EngineConfig, EngineConfigBase, PreprocConfig},
     impl_config_deref,
     transys::{
-        Transys, TransysIf, certify::Restore, nodep::NoDepTransys, preproc_serde::PreprocModel,
-        unroll::TransysUnroll,
+        Transys, certify::Restore,
+        nodep::NoDepTransysUnroll,
+        preproc_serde::PreprocModel,
     },
 };
 use clap::{Args, Parser};
@@ -45,7 +46,7 @@ impl Default for KindConfig {
 }
 
 pub struct Kind {
-    uts: TransysUnroll<NoDepTransys>,
+    uts: NoDepTransysUnroll,
     solver: CaDiCaL,
     simple_path: Vec<LitVvec>,
     ots: Transys,
@@ -98,7 +99,7 @@ impl Kind {
             let bad = std::mem::take(&mut ts.bad);
             ts.bad = LitVec::from(ts.rel.new_or(bad));
         }
-        let uts = TransysUnroll::new(&ts);
+        let uts = NoDepTransysUnroll::new(&ts);
         Self {
             bad_prop_id: cfg.prop.unwrap_or(0),
             uts,
@@ -132,18 +133,18 @@ impl Engine for Kind {
         }
 
         while k <= self.end {
-            self.uts.unroll(true);
+            self.uts.unroll();
             debug_assert_eq!(self.uts.num_unroll, k);
             if self.use_simple_path {
                 let mut sp = LitVvec::new();
                 for i in 0..k {
                     let mut ors = LitVec::new();
-                    for l in self.uts.ts.latch() {
+                    let latch = self.uts.ts.latch.clone();
+                    for l in latch {
                         let l = l.lit();
                         let li = self.uts.lit_next(l, i);
                         let lj = self.uts.lit_next(l, k);
-                        self.uts.max_var += 1;
-                        let n = self.uts.max_var.lit();
+                        let n = self.uts.new_var().lit();
                         sp.extend(LitVvec::cnf_xor(n, li, lj));
                         ors.push(n);
                     }

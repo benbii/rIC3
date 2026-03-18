@@ -2,7 +2,7 @@ use super::Frontend;
 use crate::{
     McProof, McWitness,
     aig::{Aig, AigEdge},
-    transys::{Transys, TransysIf},
+    transys::Transys,
 };
 use ahash::HashMap;
 use log::{debug, error, warn};

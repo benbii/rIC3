@@ -5,7 +5,7 @@ use crate::{
     ic3::{block::BlockResult, localabs::LocalAbs, predprop::PredProp},
     impl_config_deref,
     transys::{
-        Transys, TransysCtx, TransysIf, certify::Restore, lift::TsLift,
+        Transys, TransysCtx, certify::Restore, lift::TsLift,
         preproc_serde::PreprocModel, unroll::TransysUnroll,
     },
 };
