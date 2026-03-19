@@ -113,31 +113,6 @@ impl DagCnfSimplify {
         }
     }
 
-    #[allow(unused)]
-    fn remove_rel(&mut self, rel: usize) {
-        let o = self.cdb[rel].0.last();
-        let mut i = 0;
-        while i < self.cnf[o].len() {
-            if self.cnf[o][i] == rel {
-                let cls = self.cnf[o].swap_remove(i);
-                if let Some((occur, queue_ver, qbve)) = &mut self.occur {
-                    for &l in self.cdb[cls].0.iter() {
-                        let lv = l.var();
-                        if lv != o.var() {
-                            occur.del(l, cls);
-                            let score = occur.num_occur(lv.lit()) + occur.num_occur(!lv.lit());
-                            queue_ver[lv] += 1;
-                            qbve.push((Reverse(score), Reverse(lv), queue_ver[lv]));
-                        }
-                    }
-                }
-                self.cdb[cls].1 = true;
-            } else {
-                i += 1;
-            }
-        }
-    }
-
     fn remove_rels(&mut self, rels: Vec<usize>) {
         let relset = HashSet::from_iter(rels.iter().copied());
         let outs = HashSet::from_iter(rels.iter().map(|&cls| self.cdb[cls].0.last()));

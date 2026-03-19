@@ -20,7 +20,6 @@ impl Activity {
     }
 
     #[inline]
-    #[allow(unused)]
     pub fn reserve(&mut self, var: Var) {
         self.activity.reserve(var);
     }
@@ -34,12 +33,6 @@ impl Activity {
             self.act_inc *= 1e-100;
             self.max_act *= 1e-100;
         }
-    }
-
-    #[inline]
-    #[allow(unused)]
-    pub fn set_max_act(&mut self, var: Var) {
-        self.activity[var] = self.max_act;
     }
 
     #[inline]
@@ -60,11 +53,5 @@ impl Activity {
         } else {
             cube.sort_by(|a, b| ascending_func(b, a));
         }
-    }
-
-    #[allow(unused)]
-    pub fn cube_average_activity(&self, cube: &LitVec) -> f64 {
-        let sum: f64 = cube.iter().map(|l| self.activity[*l]).sum();
-        sum / cube.len() as f64
     }
 }

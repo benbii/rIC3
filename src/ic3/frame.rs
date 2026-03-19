@@ -28,7 +28,6 @@ impl Frames {
         self.tmp_lit_set.reserve(var);
     }
 
-    #[inline]
     pub fn trivial_contained<'a>(
         &'a mut self,
         frame: Option<usize>,
@@ -109,8 +108,6 @@ impl Frames {
 }
 
 impl IC3 {
-    // HELP: abusing `inline`?
-    #[inline]
     pub(super) fn add_lemma(
         &mut self,
         frame: usize,

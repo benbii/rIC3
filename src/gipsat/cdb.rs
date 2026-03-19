@@ -1,9 +1,8 @@
 use super::DagCnfSolver;
 use bitfield_struct::bitfield;
-use logicrs::nckvec::NckVec;
-use ahash::HashMap;
 use log::debug;
-use logicrs::{Lit, LitOrdVec, LitVec};
+use logicrs::nckvec::NckVec;
+use logicrs::{Lit, LitVec};
 use std::{
     mem::take,
     ops::{AddAssign, Index, MulAssign},
@@ -36,16 +35,10 @@ pub struct Clause {
     data: *mut Data,
 }
 
-#[allow(unused)]
 impl Clause {
     #[inline]
     pub fn len(&self) -> usize {
         unsafe { (*self.data).header.len() }
-    }
-
-    #[inline]
-    pub fn is_trans(&self) -> bool {
-        unsafe { (*self.data).header.trans() }
     }
 
     #[inline]
@@ -61,21 +54,6 @@ impl Clause {
     #[inline]
     pub fn remove(&mut self) {
         unsafe { (*self.data).header.set_removed(true) }
-    }
-
-    #[inline]
-    pub fn is_marked(&self) -> bool {
-        unsafe { (*self.data).header.marked() }
-    }
-
-    #[inline]
-    pub fn mark(&mut self) {
-        unsafe { (*self.data).header.set_marked(true) }
-    }
-
-    #[inline]
-    pub fn unmark(&mut self) {
-        unsafe { (*self.data).header.set_marked(false) }
     }
 
     #[inline]
@@ -174,7 +152,6 @@ impl Allocator {
         }
     }
 
-    #[inline]
     fn alloc(&mut self, clause: &[Lit], trans: bool, learnt: bool) -> CRef {
         debug_assert!(!(trans && learnt));
         let cid = self.data.len();
@@ -264,7 +241,6 @@ impl ClauseDB {
         self.allocator.get(cref)
     }
 
-    #[inline]
     pub fn alloc(&mut self, clause: &[Lit], kind: ClauseKind) -> CRef {
         let cid = self.allocator.alloc(
             clause,
@@ -285,7 +261,6 @@ impl ClauseDB {
         self.allocator.free(cref)
     }
 
-    #[inline]
     pub fn bump(&mut self, cref: CRef) {
         let mut cls = self.get(cref);
         if !cls.is_learnt() {
@@ -309,17 +284,10 @@ impl ClauseDB {
         self.act_inc *= 1.0 / Self::DECAY
     }
 
-    #[inline]
-    #[allow(unused)]
     pub fn num_learnt(&self) -> usize {
         self.learnt.len()
     }
 
-    #[inline]
-    #[allow(unused)]
-    pub fn num_lemma(&self) -> usize {
-        self.lemmas.len()
-    }
 }
 
 impl Default for ClauseDB {
@@ -396,7 +364,6 @@ impl DagCnfSolver {
         }
     }
 
-    #[inline]
     pub fn strengthen_clause(&mut self, cref: CRef, lit: Lit) {
         let mut cls = self.cdb.get(cref);
         debug_assert!(cls.len() > 2);
@@ -404,38 +371,6 @@ impl DagCnfSolver {
         self.watchers.detach(cref, self.cdb.get(cref));
         cls.swap_remove(pos);
         self.watchers.attach(cref, cls);
-    }
-
-    #[allow(unused)]
-    pub fn simplify_lazy_removed(&mut self) {
-        if self.simplify.lazy_remove.len() * 10 <= self.cdb.num_lemma() {
-            return;
-        }
-        let mut lazy_remove_map: HashMap<LitOrdVec, u32> = HashMap::default();
-        for mut lr in take(&mut self.simplify.lazy_remove) {
-            if lr.iter().any(|l| self.value.v(*l).is_false()) {
-                continue;
-            }
-            lr.retain(|l| !self.value.v(*l).is_true());
-            let lr = LitOrdVec::new(lr);
-            let entry = lazy_remove_map.entry(lr).or_default();
-            *entry += 1;
-        }
-        let lemmas = take(&mut self.cdb.lemmas);
-        self.cdb.lemmas = self.simplify_satisfied_clauses(lemmas);
-        for cref in take(&mut self.cdb.lemmas) {
-            let cls = self.cdb.get(cref);
-            let lemma = LitOrdVec::new(!logicrs::LitVec::from(cls.slice()));
-            if let Some(r) = lazy_remove_map.get_mut(&lemma) {
-                *r -= 1;
-                if *r == 0 {
-                    lazy_remove_map.remove(&lemma);
-                }
-                self.detach_clause(cref);
-            } else {
-                self.cdb.lemmas.push(cref);
-            }
-        }
     }
 
     pub fn garbage_collect(&mut self) {
@@ -471,30 +406,4 @@ impl DagCnfSolver {
         }
     }
 
-    #[allow(unused)]
-    pub fn verify(&self, assump: &[Lit]) -> bool {
-        for l in assump.iter() {
-            if !self.value.v(*l).is_true() {
-                return false;
-            }
-        }
-        for cls in self
-            .cdb
-            .lemmas
-            .iter()
-            .chain(self.cdb.trans.iter())
-            .chain(self.cdb.learnt.iter())
-            .chain(self.cdb.temporary.iter())
-        {
-            let cls = self.cdb.get(*cls);
-            if !cls
-                .slice()
-                .iter()
-                .any(|l| self.value.v(*l).is_true() || !self.domain.has(l.var()))
-            {
-                return false;
-            }
-        }
-        true
-    }
 }

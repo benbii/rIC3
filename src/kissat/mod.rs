@@ -19,13 +19,6 @@ fn lit_to_kissat_lit(lit: &Lit) -> i32 {
     res
 }
 
-#[allow(unused)]
-fn kissat_lit_to_lit(lit: i32) -> Lit {
-    let p = lit > 0;
-    let v = Var::new(lit.unsigned_abs() as usize - 1);
-    Lit::new(v, p)
-}
-
 pub struct Kissat {
     solver: *mut c_void,
     num_var: usize,

@@ -55,7 +55,6 @@ impl TransysUnroll {
     }
 
     #[inline]
-    #[allow(unused)]
     pub fn lits_next(
         &self,
         lits: impl IntoIterator<Item = impl AsRef<Lit>>,

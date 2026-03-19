@@ -57,7 +57,6 @@ impl From<&WlTransys> for Btor {
     }
 }
 
-#[allow(unused)]
 pub struct BtorFrontend {
     owts: WlTransys,
     wts: WlTransys,

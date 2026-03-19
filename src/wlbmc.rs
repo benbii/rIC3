@@ -22,7 +22,6 @@ pub struct WlBMCConfig {
 }
 
 pub struct WlBMC {
-    #[allow(unused)]
     owts: WlTransys,
     uts: WlTransysUnroll,
     solver: Bitwuzla,

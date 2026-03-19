@@ -11,7 +11,6 @@ use std::{mem::take, time::Instant};
 pub struct Simplify {
     pub last_num_assign: usize,
     pub last_simplify: usize,
-    pub lazy_remove: Vec<LitVec>,
     pub last_num_lemma: usize,
 }
 
@@ -20,7 +19,6 @@ impl Default for Simplify {
         Self {
             last_num_assign: 0,
             last_simplify: 0,
-            lazy_remove: Default::default(),
             last_num_lemma: 1000,
         }
     }

@@ -29,7 +29,6 @@ impl TransysSolver {
         &self.dcs.assump
     }
 
-    #[allow(unused)]
     pub fn trivial_pred(&mut self) -> (LitVec, LitVec) {
         let ts = unsafe { &*self.ts };
         let mut input = LitVec::new();
@@ -108,12 +107,6 @@ impl TransysSolver {
     #[inline]
     pub fn unset_domain(&mut self) {
         self.dcs.unset_domain();
-    }
-
-    #[inline]
-    #[allow(unused)]
-    pub fn add_domain(&mut self, var: Var, deps: bool) {
-        self.dcs.add_domain(var, deps);
     }
 
     #[inline]

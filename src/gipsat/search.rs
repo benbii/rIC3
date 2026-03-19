@@ -24,7 +24,6 @@ impl DagCnfSolver {
         self.pos_in_trail.push(self.trail.len() as u32)
     }
 
-    #[inline]
     pub fn backtrack(&mut self, level: usize, vsids: bool) {
         if self.highest_level() <= level {
             return;

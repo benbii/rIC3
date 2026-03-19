@@ -11,7 +11,6 @@ pub struct Block {
     pub push_time: Duration,
 }
 
-#[allow(unused)]
 #[derive(Debug, Default)]
 pub struct Statistic {
     pub time: RunningTime,
@@ -24,6 +23,4 @@ pub struct Statistic {
     pub ctp: SuccessRate,
     pub block: Block,
     pub overall_propagate_time: Duration,
-    pub xor_gen: SuccessRate,
-    pub test: SuccessRate,
 }

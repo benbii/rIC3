@@ -6,7 +6,7 @@ use crate::{
 use ahash::HashMap;
 use logicrs::bitvec::BitVec;
 use log::{debug, info};
-use logicrs::{Lit, LitVec, Var, VarBitVec, VarLMap, satif::Satif};
+use logicrs::{Lit, LitVec, Var, VarLMap, VarMap, satif::Satif};
 use std::time::Instant;
 
 pub struct Scorr {
@@ -37,15 +37,15 @@ impl Scorr {
         }
     }
 
-    fn init_simulation(&self, num_word: usize) -> VarBitVec {
+    fn init_simulation(&self, num_word: usize) -> VarMap<BitVec> {
         let mut slv = DagCnfSolver::new(&self.ts.rel);
         for cls in self.ts.constraint() {
             slv.add_clause(&cls.cube());
         }
         self.ts.load_init(&mut slv);
-        let mut sim = VarBitVec::new();
+        let mut sim: VarMap<BitVec> = VarMap::new_with(self.ts.max_var());
         sim.reserve(self.ts.max_var());
-        while sim.bv_len() < num_word * BitVec::WORD_SIZE {
+        while sim[Var::CONST].len() < num_word * BitVec::WORD_SIZE {
             if !slv.solve(&[]) {
                 break;
             }
@@ -67,19 +67,23 @@ impl Scorr {
         sim
     }
 
-    fn rt_simulation(&self, init: &VarBitVec, num_word: usize) -> VarBitVec {
+    fn rt_simulation(&self, init: &VarMap<BitVec>, num_word: usize) -> VarMap<BitVec> {
+        fn assign(sim: &VarMap<BitVec>, idx: usize, vars: &[Var]) -> LitVec {
+            vars.iter().map(|&v| v.lit().not_if(!sim[v].get(idx))).collect()
+        }
+
         fn dfs(
             ts: &Transys,
-            sim: &mut VarBitVec,
+            sim: &mut VarMap<BitVec>,
             slv: &mut DagCnfSolver,
             consider: &[Var],
             domain: &[Var],
             num_word: usize,
             from: usize,
         ) {
-            let assump = sim.assign(from, Some(consider.iter().copied()));
+            let assump = assign(sim, from, consider);
             loop {
-                if sim.bv_len() >= num_word * BitVec::WORD_SIZE {
+                if sim[Var::CONST].len() >= num_word * BitVec::WORD_SIZE {
                     return;
                 }
                 if !slv
@@ -98,29 +102,30 @@ impl Scorr {
                     block.push(!na);
                 }
                 slv.add_clause(&block);
-                dfs(ts, sim, slv, consider, domain, num_word, sim.bv_len() - 1);
+                dfs(ts, sim, slv, consider, domain, num_word, sim[Var::CONST].len() - 1);
             }
         }
 
-        assert!(init.bv_len() > 0);
-        let mut sim = VarBitVec::new();
+        assert!(!init[Var::CONST].is_empty());
+        let mut sim: VarMap<BitVec> = VarMap::new_with(self.ts.max_var());
         let consider: Vec<_> = self.ts.latch().filter(|v| !init[*v].is_empty()).collect();
         sim.reserve(self.ts.max_var());
         let mut slv = DagCnfSolver::new(&self.ts.rel);
         for cls in self.ts.constraint() {
             slv.add_clause(&cls.cube());
         }
-        for i in 0..init.bv_len() {
-            let block = !init.assign(i, Some(consider.iter().copied()));
+        for i in 0..init[Var::CONST].len() {
+            let block = !assign(init, i, &consider);
             let block = self.ts.lits_next(block.iter());
             slv.add_clause(&block);
         }
         slv.cfg.phase_saving = false;
         let domain: Vec<_> = self.ts.next.values().map(|l| l.var()).collect();
-        for from in 0..init.bv_len() {
-            let assump = init.assign(from, Some(consider.iter().copied()));
+
+        for from in 0..init[Var::CONST].len() {
+            let assump = assign(init, from, &consider);
             loop {
-                if sim.bv_len() >= num_word * BitVec::WORD_SIZE {
+                if sim[Var::CONST].len() >= num_word * BitVec::WORD_SIZE {
                     return sim;
                 }
                 if !slv.solve_with_domain(&assump, domain.iter().copied()) {
@@ -136,7 +141,7 @@ impl Scorr {
                     block.push(!na);
                 }
                 slv.add_clause(&block);
-                let from = sim.bv_len() - 1;
+                let from = sim[Var::CONST].len() - 1;
                 dfs(&self.ts, &mut sim, &mut slv, &consider, &domain, num_word, from);
             }
         }
@@ -174,18 +179,18 @@ impl Scorr {
     pub fn scorr(mut self) -> (Transys, Restore) {
         let start = Instant::now();
         let init = self.init_simulation(1);
-        if init.bv_len() == 0 {
+        if init[Var::CONST].is_empty() {
             return (self.ts, self.rst);
         }
         let mut rt = self.rt_simulation(&init, 10);
         debug!(
             "scorr: init simulation size: {}, rt simulation size: {}",
-            init.bv_len(),
-            rt.bv_len()
+            init[Var::CONST].len(),
+            rt[Var::CONST].len()
         );
         let mut latch: Vec<_> = self.ts.latch().filter(|v| !init[*v].is_empty()).collect();
         latch.sort();
-        for i in 0..init.bv_len() {
+        for i in 0..init[Var::CONST].len() {
             rt[Var::CONST].push(false);
             for &l in latch.iter() {
                 rt[l].push(init[l].get(i));
@@ -197,7 +202,7 @@ impl Scorr {
             let l = v.lit();
             if let Some(c) = cand.get_mut(&rt[v]) {
                 c.push(l);
-            } else if let Some(c) = cand.get_mut(&rt.val(!l)) {
+            } else if let Some(c) = cand.get_mut(&!&rt[v]) {
                 c.push(!l);
             } else {
                 cand.insert(rt[v].clone(), LitVec::from([l]));
@@ -212,7 +217,7 @@ impl Scorr {
             }
             let (eqc, xl) = if let Some(eqc) = cand.get_mut(&rt[x]) {
                 (eqc, x.lit())
-            } else if let Some(eqc) = cand.get_mut(&rt.val(!x.lit())) {
+            } else if let Some(eqc) = cand.get_mut(&!&rt[x]) {
                 (eqc, !x.lit())
             } else {
                 panic!();

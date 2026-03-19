@@ -19,7 +19,6 @@ impl Domain {
         self.domain.reserve(var);
     }
 
-    #[inline]
     pub fn reset(&mut self) {
         while self.domain.len() > self.fixed {
             let v = self.domain.set.pop().unwrap();
@@ -79,7 +78,6 @@ impl DerefMut for Domain {
 }
 
 impl DagCnfSolver {
-    #[inline]
     pub fn add_domain(&mut self, var: Var, deps: bool) {
         assert!(self.highest_level() == 0);
         if !self.value.v(var.lit()).is_none() {
@@ -123,7 +121,6 @@ impl DagCnfSolver {
         self.temporary_domain = false;
     }
 
-    #[inline]
     pub fn push_to_vsids(&mut self) {
         assert!(self.highest_level() == 0);
         let mut now = 0;
@@ -144,7 +141,6 @@ impl DagCnfSolver {
         }
     }
 
-    #[inline]
     pub fn prepare_vsids(&mut self) {
         if !self.prepared_vsids && !self.temporary_domain {
             self.prepared_vsids = true;

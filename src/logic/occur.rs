@@ -15,25 +15,11 @@ impl Occur {
     }
 
     #[inline]
-    #[allow(unused)]
-    fn is_empty(&self) -> bool {
-        self.len() == 0
-    }
-
-    #[inline]
     fn clean<T>(&mut self, cdb: &NckVec<(T, bool)>) {
         if self.dirty {
             self.occur.retain(|&i| !cdb[i].1);
             self.dirty = false;
         }
-    }
-
-    #[inline]
-    #[allow(unused)]
-    fn clear(&mut self) {
-        self.occur.clear();
-        self.dirty = false;
-        self.size = 0;
     }
 
     #[inline]

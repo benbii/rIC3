@@ -29,13 +29,11 @@ impl Watchers {
         self.wtrs.reserve(var)
     }
 
-    #[inline]
     pub fn attach(&mut self, cref: CRef, cls: Clause) {
         self.wtrs[!cls[0]].push(Watcher::new(cref, cls[1]));
         self.wtrs[!cls[1]].push(Watcher::new(cref, cls[0]));
     }
 
-    #[inline]
     pub fn detach(&mut self, cref: CRef, cls: Clause) {
         for l in 0..2 {
             let l = cls[l];
@@ -50,7 +48,6 @@ impl Watchers {
 }
 
 impl DagCnfSolver {
-    #[inline]
     fn propagate_full(&mut self) -> CRef {
         while self.propagated < self.trail.len() as u32 {
             let p = self.trail[self.propagated];
@@ -110,7 +107,6 @@ impl DagCnfSolver {
         CREF_NONE
     }
 
-    #[inline]
     fn propagate_domain(&mut self) -> CRef {
         while self.propagated < self.trail.len() as u32 {
             let p = self.trail[self.propagated];

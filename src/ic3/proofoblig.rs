@@ -2,7 +2,7 @@ use super::IC3;
 use log::trace;
 use logicrs::{LitOrdVec, LitVec};
 use std::cmp::Ordering;
-use std::collections::{BTreeSet, btree_set};
+use std::collections::BTreeSet;
 use std::fmt::{self, Debug};
 use std::ops::{Deref, DerefMut};
 use std::rc::Rc;
@@ -185,11 +185,6 @@ impl ProofObligationQueue {
         for n in self.num.iter_mut() {
             *n = 0;
         }
-    }
-
-    #[allow(unused)]
-    pub fn iter(&self) -> btree_set::Iter<'_, ProofObligation> {
-        self.obligations.iter()
     }
 
     pub fn statistic(&self) -> String {

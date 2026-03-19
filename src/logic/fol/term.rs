@@ -496,9 +496,6 @@ impl TermManager {
         self.new_term(term, sort)
     }
 
-    #[inline]
-    #[allow(unused)]
-    fn garbage_collect(&mut self) {}
 }
 
 thread_local! {

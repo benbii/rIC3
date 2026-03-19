@@ -1,6 +1,6 @@
 use super::{DagCnfSolver, cdb::CREF_NONE};
 use logicrs::{OptionU32, nckvec::NckVec};
-use logicrs::{Lbool, Lit, LitVec, Var, VarMap};
+use logicrs::{Lbool, Lit, Var, VarMap};
 use rand::Rng;
 use std::ops::{Index, MulAssign};
 
@@ -162,14 +162,6 @@ impl Activity {
         self.act_inc *= 1.0 / Self::DECAY
     }
 
-    #[allow(unused)]
-    pub fn sort_by_activity(&self, cube: &mut LitVec, ascending: bool) {
-        if ascending {
-            cube.sort_by(|a, b| self.activity[*a].partial_cmp(&self.activity[*b]).unwrap());
-        } else {
-            cube.sort_by(|a, b| self.activity[*b].partial_cmp(&self.activity[*a]).unwrap());
-        }
-    }
 }
 
 impl Default for Activity {

@@ -14,13 +14,11 @@ use analyze::Analyze;
 pub use cdb::ClauseKind;
 use cdb::{CREF_NONE, CRef, ClauseDB};
 use domain::Domain;
-use logicrs::bitvec::BitVec;
 use logicrs::nckvec::NckVec;
 use logicrs::satif::Satif;
-use logicrs::{DagCnf, Lbool, VarAssign, VarRange};
+use logicrs::{DagCnf, Lbool, VarAssign};
 use logicrs::{Lit, LitSet, LitVec, Var, VarMap};
 use propagate::Watchers;
-use rand::Rng;
 use rand::{SeedableRng, rngs::StdRng};
 use simplify::Simplify;
 pub use statistic::SolverStatistic;
@@ -109,12 +107,6 @@ impl DagCnfSolver {
         }
         assert!(solver.propagate() == CREF_NONE);
         solver
-    }
-
-    #[inline]
-    #[allow(unused)]
-    pub fn set_rseed(&mut self, rseed: u64) {
-        self.rng = StdRng::seed_from_u64(rseed);
     }
 
     fn simplify_clause(&mut self, clause: &[Lit]) -> Option<LitVec> {
@@ -291,53 +283,9 @@ impl DagCnfSolver {
             .unwrap()
     }
 
-    #[allow(unused)]
-    pub fn imply<'a>(
-        &mut self,
-        domain: impl Iterator<Item = Var>,
-        assump: impl Iterator<Item = &'a Lit>,
-    ) {
-        self.reset();
-        self.domain.enable_local(domain, &self.dc, &self.value);
-        self.new_level();
-        for a in assump {
-            if let Lbool::FALSE = self.value.v(*a) {
-                panic!();
-            }
-            self.assign(*a, CREF_NONE);
-        }
-        assert!(self.propagate() == CREF_NONE);
-    }
-
-    #[inline]
-    #[allow(unused)]
-    pub fn assert_value(&mut self, lit: Lit) -> Option<bool> {
-        self.reset();
-        self.value.v(lit).into()
-    }
-
     #[inline]
     pub fn statistic(&self) -> &SolverStatistic {
         &self.statistic
-    }
-
-    #[allow(unused)]
-    pub fn sat_value_bitvet(&mut self) -> BitVec {
-        let mut res = BitVec::new();
-        for v in VarRange::new_inclusive(Var::CONST, self.max_var()) {
-            if let Some(v) = self.sat_value(v.lit()) {
-                res.push(v);
-            } else {
-                res.push(self.rng.random_bool(0.5));
-            }
-        }
-        res
-    }
-
-    #[allow(unused)]
-    pub fn sat_value_iter(&self) -> impl Iterator<Item = &'_ Lit> {
-        let constrain_act = self.constrain_act;
-        self.trail.iter().filter(move |l| l.var() != constrain_act)
     }
 
     pub fn minimal_premise(
