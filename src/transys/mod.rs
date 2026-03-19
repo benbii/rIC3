@@ -10,7 +10,6 @@ pub mod preproc_serde;
 mod refactor;
 pub mod scorr;
 mod simp;
-mod simulate;
 pub mod unroll;
 
 pub use ctx::*;

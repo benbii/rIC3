@@ -1,5 +1,4 @@
 pub mod simplify;
-pub mod simulate;
 mod top;
 
 use crate::{Lit, LitVec, LitVvec, Var, VarLMap, VarMap, VarRange, VarVMap};

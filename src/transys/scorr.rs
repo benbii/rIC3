@@ -6,7 +6,7 @@ use crate::{
 use ahash::HashMap;
 use logicrs::bitvec::BitVec;
 use log::{debug, info};
-use logicrs::{Lit, LitVec, Var, VarLMap, satif::Satif};
+use logicrs::{Lit, LitVec, Var, VarBitVec, VarLMap, satif::Satif};
 use std::time::Instant;
 
 pub struct Scorr {
@@ -35,6 +35,112 @@ impl Scorr {
             init_slv,
             cfg: cfg.clone(),
         }
+    }
+
+    fn init_simulation(&self, num_word: usize) -> VarBitVec {
+        let mut slv = DagCnfSolver::new(&self.ts.rel);
+        for cls in self.ts.constraint() {
+            slv.add_clause(&cls.cube());
+        }
+        self.ts.load_init(&mut slv);
+        let mut sim = VarBitVec::new();
+        sim.reserve(self.ts.max_var());
+        while sim.bv_len() < num_word * BitVec::WORD_SIZE {
+            if !slv.solve(&[]) {
+                break;
+            }
+            let mut block = LitVec::new();
+            for &v in self.ts.latch.iter() {
+                if let Some(a) = slv.sat_value(v.lit()) {
+                    block.push(!slv.sat_value_lit(v).unwrap());
+                    sim[v].push(a);
+                } else {
+                    sim[v].clear();
+                }
+            }
+            if block.is_empty() {
+                break;
+            }
+            sim[Var::CONST].push(false);
+            slv.add_clause(&block);
+        }
+        sim
+    }
+
+    fn rt_simulation(&self, init: &VarBitVec, num_word: usize) -> VarBitVec {
+        fn dfs(
+            ts: &Transys,
+            sim: &mut VarBitVec,
+            slv: &mut DagCnfSolver,
+            consider: &[Var],
+            domain: &[Var],
+            num_word: usize,
+            from: usize,
+        ) {
+            let assump = sim.assign(from, Some(consider.iter().copied()));
+            loop {
+                if sim.bv_len() >= num_word * BitVec::WORD_SIZE {
+                    return;
+                }
+                if !slv
+                    .solve_with_param(&assump, vec![], domain.iter().copied(), Some(5))
+                    .is_some_and(|r| r)
+                {
+                    return;
+                }
+                sim[Var::CONST].push(false);
+                let mut block = LitVec::new();
+                for &v in consider {
+                    let n = ts.next(v.lit());
+                    let va = slv.sat_value(n).unwrap();
+                    let na = slv.sat_value_lit(n.var()).unwrap();
+                    sim[v].push(va);
+                    block.push(!na);
+                }
+                slv.add_clause(&block);
+                dfs(ts, sim, slv, consider, domain, num_word, sim.bv_len() - 1);
+            }
+        }
+
+        assert!(init.bv_len() > 0);
+        let mut sim = VarBitVec::new();
+        let consider: Vec<_> = self.ts.latch().filter(|v| !init[*v].is_empty()).collect();
+        sim.reserve(self.ts.max_var());
+        let mut slv = DagCnfSolver::new(&self.ts.rel);
+        for cls in self.ts.constraint() {
+            slv.add_clause(&cls.cube());
+        }
+        for i in 0..init.bv_len() {
+            let block = !init.assign(i, Some(consider.iter().copied()));
+            let block = self.ts.lits_next(block.iter());
+            slv.add_clause(&block);
+        }
+        slv.cfg.phase_saving = false;
+        let domain: Vec<_> = self.ts.next.values().map(|l| l.var()).collect();
+        for from in 0..init.bv_len() {
+            let assump = init.assign(from, Some(consider.iter().copied()));
+            loop {
+                if sim.bv_len() >= num_word * BitVec::WORD_SIZE {
+                    return sim;
+                }
+                if !slv.solve_with_domain(&assump, domain.iter().copied()) {
+                    break;
+                }
+                sim[Var::CONST].push(false);
+                let mut block = LitVec::new();
+                for &v in &consider {
+                    let n = self.ts.next(v.lit());
+                    let va = slv.sat_value(n).unwrap();
+                    let na = slv.sat_value_lit(n.var()).unwrap();
+                    sim[v].push(va);
+                    block.push(!na);
+                }
+                slv.add_clause(&block);
+                let from = sim.bv_len() - 1;
+                dfs(&self.ts, &mut sim, &mut slv, &consider, &domain, num_word, from);
+            }
+        }
+        sim
     }
 
     fn check_scorr(&mut self, x: Lit, y: Lit) -> bool {
@@ -67,11 +173,11 @@ impl Scorr {
 
     pub fn scorr(mut self) -> (Transys, Restore) {
         let start = Instant::now();
-        let init = self.ts.init_simulation(1);
+        let init = self.init_simulation(1);
         if init.bv_len() == 0 {
             return (self.ts, self.rst);
         }
-        let mut rt = self.ts.rt_simulation(&init, 10);
+        let mut rt = self.rt_simulation(&init, 10);
         debug!(
             "scorr: init simulation size: {}, rt simulation size: {}",
             init.bv_len(),
@@ -98,11 +204,6 @@ impl Scorr {
             }
         }
         let mut scorr = VarLMap::new();
-        // for eqc in cand.values() {
-        //     if eqc.len() > 200 {
-        //         dbg!(eqc.len());
-        //     }
-        // }
         'm: for x in latch {
             if let Some(n) = self.ts.init.get(&x)
                 && !n.var().is_constant()
@@ -142,32 +243,6 @@ impl Scorr {
             self.ts.latch.len(),
             start.elapsed().as_secs_f32()
         );
-        // for (x, r) in scorr.clone().iter() {
-        //     let mut xn = self.ts.next(x.lit());
-        //     let mut rn = if r.var().is_constant() {
-        //         *r
-        //     } else {
-        //         self.ts.next(*r)
-        //     };
-        //     if xn.var() == rn.var() {
-        //         continue;
-        //     }
-        //     if xn.var() < rn.var() {
-        //         (xn, rn) = (rn, xn);
-        //     }
-        //     trace!("scorr: {xn} -> {rn}");
-        //     scorr.insert_lit(xn, rn);
-        // }
-        // let mut vars: Vec<Var> = scorr.keys().copied().collect();
-        // vars.sort();
-        // for v in vars {
-        //     let r = scorr[&v];
-        //     if let Some(rr) = scorr.map_lit(r) {
-        //         if rr.var() != r.var() {
-        //             scorr.insert_lit(v.lit(), rr);
-        //         }
-        //     }
-        // }
         self.ts.replace(&scorr, &mut self.rst);
         self.ts.simplify(&mut self.rst);
         info!("scorr: simplified ts: {}", self.ts.statistic());

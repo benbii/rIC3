@@ -3,62 +3,103 @@ use crate::{
     gipsat::DagCnfSolver,
     transys::{Transys, certify::Restore},
 };
-use ahash::HashMap;
+use ahash::{HashMap, HashSet};
 use log::{debug, info, trace};
-use logicrs::{Lit, LitVec, Var, VarLMap, VarMap, VarVMap, simplify::DagCnfSimplify};
+use logicrs::{
+    Lit, LitVec, Var, VarLMap, VarMap, VarRange, bitvec::BitVec, simplify::DagCnfSimplify,
+};
 use rand::{SeedableRng, rngs::StdRng};
 use std::time::Instant;
 
-#[allow(unused)]
 pub struct FrTs {
     cfg: PreprocConfig,
     ts: Transys,
-    candidate: VarMap<Vec<Lit>>,
     map: VarLMap,
-    eqc: VarVMap,
     solver: DagCnfSolver,
-    rng: StdRng,
     rst: Restore,
 }
 
 impl FrTs {
     pub fn new(mut ts: Transys, cfg: &PreprocConfig, mut rst: Restore) -> Self {
+        const NUM_WORD: usize = 1000;
         ts.topsort(&mut rst);
-        let sim = ts.rel.simulation(1000);
         let solver = DagCnfSolver::new(&ts.rel);
-        let mut map = VarLMap::new();
-        let mut eqc = VarVMap::new();
-        let mut simval: HashMap<_, Vec<_>> = HashMap::default();
-        let mut candidate: VarMap<Vec<Lit>> = VarMap::new_with(ts.max_var());
-        for v in ts.rel.var_iter() {
-            let lv = v.lit();
-            let slv = sim.val(lv);
-            let snlv = sim.val(!lv);
-            if let Some(e) = simval.get_mut(&slv) {
-                e.push(lv);
-                map.insert_lit(lv, e[0]);
-                eqc.insert(lv.var(), e[0].var());
-                candidate[e[0].var()].push(lv);
-            } else if let Some(e) = simval.get_mut(&snlv) {
-                e.push(!lv);
-                map.insert_lit(!lv, e[0]);
-                eqc.insert(lv.var(), e[0].var());
-                candidate[e[0].var()].push(!lv);
-            } else {
-                simval.insert(slv, vec![lv]);
-                candidate[lv.var()].push(lv);
+        let mut rng = StdRng::seed_from_u64(0);
+        let mut sim = VarMap::new_with(ts.max_var());
+        sim[Var::CONST] = BitVec::from_elem(NUM_WORD * BitVec::WORD_SIZE, false);
+        let mut leafs = HashSet::default();
+        for v in VarRange::new_inclusive(Var(1), ts.max_var()) {
+            if ts.rel.is_leaf(v) {
+                loop {
+                    let x = BitVec::new_rand(NUM_WORD, &mut rng);
+                    if !leafs.contains(&x) {
+                        leafs.insert(x.clone());
+                        sim[v] = x;
+                        break;
+                    }
+                }
+                continue;
+            }
+            sim[v] = BitVec::from_elem(NUM_WORD * BitVec::WORD_SIZE, false);
+        }
+        for v in VarRange::new_inclusive(Var(1), ts.max_var()) {
+            if ts.rel.is_leaf(v) {
+                continue;
+            }
+            for rel in &ts.rel[v] {
+                let mut r = if rel[0].polarity() {
+                    sim[rel[0].var()].clone()
+                } else {
+                    !&sim[rel[0].var()]
+                };
+                let mut vl = rel[0];
+                for &l in &rel[1..] {
+                    if l.var() == v {
+                        vl = l;
+                    }
+                    if l.polarity() {
+                        r |= &sim[l.var()];
+                    } else {
+                        r |= &!&sim[l.var()];
+                    }
+                }
+                if vl.polarity() {
+                    sim[v] |= &!&r;
+                } else {
+                    sim[v] &= &r;
+                }
             }
         }
-        let rng = StdRng::seed_from_u64(0);
+        let mut map = VarLMap::new();
+        let mut simval: HashMap<BitVec, Lit> = HashMap::default();
+        for v in ts.rel.var_iter() {
+            let lv = v.lit();
+            let slv = if lv.polarity() {
+                sim[lv.var()].clone()
+            } else {
+                !&sim[lv.var()]
+            };
+            if let Some(&m) = simval.get(&slv) {
+                map.insert_lit(lv, m);
+                continue;
+            }
+            let snlv = if (!lv).polarity() {
+                sim[lv.var()].clone()
+            } else {
+                !&sim[lv.var()]
+            };
+            if let Some(&m) = simval.get(&snlv) {
+                map.insert_lit(!lv, m);
+                continue;
+            }
+            simval.insert(slv, lv);
+        }
         Self {
             ts,
             cfg: cfg.clone(),
-            candidate,
             map,
-            eqc,
             solver,
             rst,
-            rng,
         }
     }
 
@@ -87,21 +128,7 @@ impl FrTs {
                 vec![LitVec::from([m, lv]), LitVec::from([!m, !lv])],
                 1,
             ) {
-                Some(true) => {
-                    // let eqc = self.eqc[v];
-                    // let rlv = *self.candidate[eqc].iter().find(|l| l.var() == v).unwrap();
-                    // let rlvs = self.solver.sat_value(rlv).unwrap();
-                    // if let Some(newm) = self.candidate[eqc]
-                    //     .iter()
-                    //     .filter(|l| {
-                    //         !replace.contains_key(&l.var()) && l.var() < v && l.var() > m.var()
-                    //     })
-                    //     .find(|&l| self.solver.sat_value(*l).is_some_and(|x| x == rlvs))
-                    // {
-                    //     self.map.insert_lit(rlv, *newm);
-                    //     continue;
-                    // }
-                }
+                Some(true) => {}
                 Some(false) => {
                     debug!("frts: {v} -> {m}");
                     replace.insert_lit(lv, m);
