@@ -6,13 +6,13 @@ mod logic;
 pub use logic::bitvec;
 pub use logic::fol;
 pub use logic::nckvec;
+pub(crate) use logic::occur;
 pub use logic::satif;
 pub use logic::statistic;
-pub(crate) use logic::occur;
 
 pub mod aig;
-pub mod bmc;
 pub mod bitwuzla;
+pub mod bmc;
 pub mod btor;
 pub mod cadical;
 pub mod config;
@@ -443,10 +443,7 @@ pub trait Engine {
     }
 }
 
-pub fn create_bl_engine(
-    cfg: EngineConfig,
-    ts: Transys,
-) -> Box<dyn Engine> {
+pub fn create_bl_engine(cfg: EngineConfig, ts: Transys) -> Box<dyn Engine> {
     match cfg {
         EngineConfig::IC3(cfg) => Box::new(ic3::IC3::new(cfg, ts)),
         EngineConfig::Kind(cfg) => Box::new(kind::Kind::new(cfg, ts)),

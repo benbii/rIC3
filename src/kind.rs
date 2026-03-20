@@ -2,11 +2,7 @@ use crate::{
     BlProof, Engine, McProof, McResult, McWitness,
     cadical::CaDiCaL,
     config::{EngineConfig, PreprocConfig},
-    transys::{
-        Transys, certify::Restore,
-        nodep::NoDepTransysUnroll,
-        preproc_serde::PreprocModel,
-    },
+    transys::{Transys, certify::Restore, nodep::NoDepTransysUnroll, preproc_serde::PreprocModel},
 };
 use clap::{Args, Parser};
 use log::{error, info};
@@ -165,7 +161,10 @@ impl Engine for Kind {
             }
 
             info!("not {k}-inductive");
-            if self.skip_bmc { k += 1; continue; }
+            if self.skip_bmc {
+                k += 1;
+                continue;
+            }
             assump = self.uts.ts.inits().iter().flatten().copied().collect();
             assump.push(self.uts.lit_next(bad0, k));
             if self.solver.solve(&assump) {

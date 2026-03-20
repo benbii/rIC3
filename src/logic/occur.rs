@@ -1,5 +1,5 @@
-use crate::{Lit, LitMap, Var};
 use crate::nckvec::NckVec;
+use crate::{Lit, LitMap, Var};
 
 #[derive(Debug, Clone, Default)]
 struct Occur {

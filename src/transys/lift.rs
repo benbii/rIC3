@@ -1,7 +1,4 @@
-use crate::{
-    gipsat::DagCnfSolver,
-    transys::unroll::TransysUnroll,
-};
+use crate::{gipsat::DagCnfSolver, transys::unroll::TransysUnroll};
 use ahash::HashSet;
 use logicrs::{Lit, LitVec, Var, satif::Satif};
 

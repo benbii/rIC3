@@ -12,8 +12,8 @@ pub mod scorr;
 mod simp;
 pub mod unroll;
 
-pub use ctx::*;
 use ahash::{HashMap, HashSet};
+pub use ctx::*;
 use logicrs::{DagCnf, Lit, LitVec, LitVvec, Var, VarVMap, satif::Satif};
 use std::fmt::{self, Display};
 

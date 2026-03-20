@@ -142,12 +142,7 @@ impl AigFrontend {
         let ots = Transys::from_aig(&aig, true);
         let (aig, rst) = aig_preprocess(&aig);
         let ts = Transys::from_aig(&aig, true);
-        Self {
-            oaig,
-            ots,
-            ts,
-            rst,
-        }
+        Self { oaig, ots, ts, rst }
     }
 
     pub fn is_safety(&self) -> bool {

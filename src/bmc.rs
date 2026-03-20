@@ -1,15 +1,11 @@
+use crate::cadical::CaDiCaL;
+use crate::kissat::Kissat;
 use crate::{
     Engine, McResult, McWitness,
     config::{EngineConfig, PreprocConfig},
-    transys::{
-        Transys, certify::Restore,
-        nodep::NoDepTransysUnroll,
-        preproc_serde::PreprocModel,
-    },
+    transys::{Transys, certify::Restore, nodep::NoDepTransysUnroll, preproc_serde::PreprocModel},
 };
-use crate::cadical::CaDiCaL;
 use clap::{Args, Parser};
-use crate::kissat::Kissat;
 use log::info;
 use logicrs::{LitVec, satif::Satif};
 use rand::{Rng, SeedableRng, rngs::StdRng};

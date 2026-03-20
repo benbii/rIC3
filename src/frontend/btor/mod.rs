@@ -14,7 +14,10 @@ use crate::{
 };
 use ahash::{HashMap, HashSet};
 use log::{debug, error, warn};
-use logicrs::{LboolVec, fol::{self, BvTermValue, Term, TermValue}};
+use logicrs::{
+    LboolVec,
+    fol::{self, BvTermValue, Term, TermValue},
+};
 use std::{fmt::Display, mem::take, path::Path, process::Command};
 
 impl WlTransys {

@@ -1,8 +1,4 @@
-use crate::ic3::{
-    IC3,
-    mic::DropVarParameter,
-    proofoblig::ProofObligation,
-};
+use crate::ic3::{IC3, mic::DropVarParameter, proofoblig::ProofObligation};
 use log::debug;
 use logicrs::{LitOrdVec, LitVec, satif::Satif};
 use std::time::Instant;
@@ -111,11 +107,13 @@ impl IC3 {
                     }
                 }
                 let (limit, max, level) = match act {
-                    EXCTG_THRESHOLD.. => {
-                        (((act - EXCTG_THRESHOLD).powf(0.45) * 2.0 + 5.0).round() as usize, 5, 1)
-                    }
+                    EXCTG_THRESHOLD.. => (
+                        ((act - EXCTG_THRESHOLD).powf(0.45) * 2.0 + 5.0).round() as usize,
+                        5,
+                        1,
+                    ),
                     ..CTG_THRESHOLD => (0, 0, 0),
-                    _ => (1, (act - CTG_THRESHOLD) as usize / 10 + 2, 1)
+                    _ => (1, (act - CTG_THRESHOLD) as usize / 10 + 2, 1),
                 };
                 DropVarParameter::new(limit, max, level)
             } else {

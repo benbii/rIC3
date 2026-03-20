@@ -40,7 +40,7 @@ impl Ord for ProofObligationInner {
             Ordering::Equal => match self.depth.cmp(&other.depth) {
                 Ordering::Equal => match other.state.len().cmp(&self.state.len()) {
                     Ordering::Equal => other.state.cmp(&self.state),
-                    ord => ord
+                    ord => ord,
                 },
                 ord => ord,
             },

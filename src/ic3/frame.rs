@@ -1,7 +1,10 @@
 use super::{IC3, proofoblig::ProofObligation};
 use crate::{gipsat::TransysSolver, transys::TransysCtx};
 use logicrs::{Lit, LitOrdVec, LitSet, LitVec, Var, satif::Satif};
-use std::{fmt::Write, ops::{Deref, DerefMut}};
+use std::{
+    fmt::Write,
+    ops::{Deref, DerefMut},
+};
 
 pub type Frame = Vec<(LitOrdVec, Option<ProofObligation>)>;
 

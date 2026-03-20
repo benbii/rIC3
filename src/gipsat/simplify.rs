@@ -2,8 +2,8 @@ use super::{
     DagCnfSolver,
     cdb::{CREF_NONE, CRef},
 };
-use logicrs::nckvec::NckVec;
 use log::{debug, trace};
+use logicrs::nckvec::NckVec;
 use logicrs::{Lbool, LitOrdVec, LitVec, VarMap};
 use std::{mem::take, time::Instant};
 

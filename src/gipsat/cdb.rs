@@ -287,7 +287,6 @@ impl ClauseDB {
     pub fn num_learnt(&self) -> usize {
         self.learnt.len()
     }
-
 }
 
 impl Default for ClauseDB {
@@ -405,5 +404,4 @@ impl DagCnfSolver {
             self.cdb.allocator = to;
         }
     }
-
 }

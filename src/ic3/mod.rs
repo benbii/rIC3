@@ -4,8 +4,8 @@ use crate::{
     gipsat::{SolverStatistic, TransysSolver},
     ic3::{block::BlockResult, localabs::LocalAbs, predprop::PredProp},
     transys::{
-        Transys, TransysCtx, certify::Restore, lift::TsLift,
-        preproc_serde::PreprocModel, unroll::TransysUnroll,
+        Transys, TransysCtx, certify::Restore, lift::TsLift, preproc_serde::PreprocModel,
+        unroll::TransysUnroll,
     },
 };
 use activity::Activity;
@@ -16,8 +16,8 @@ use logicrs::{Lit, LitOrdVec, LitVec, LitVvec, satif::Satif};
 use proofoblig::{ProofObligation, ProofObligationQueue};
 use rand::{SeedableRng, rngs::StdRng};
 use serde::{Deserialize, Serialize};
-use std::{num::NonZeroU64, time::Instant};
 use stat::Statistic;
+use std::{num::NonZeroU64, time::Instant};
 
 mod activity;
 mod auxv;
@@ -80,7 +80,6 @@ pub struct IC3Config {
     /// Local proof (internal parameter)
     #[arg(skip)]
     pub local_proof: bool,
-
     // stream infinity-frame lemmas as DIMACS-like clauses (append mode)
     // #[arg(long = "inv-dump")]
     // pub inv_dump: Option<PathBuf>,
@@ -193,13 +192,9 @@ impl IC3 {
         if cfg.inn {
             ts = uts.internal_signals();
         }
-        let predprop = cfg.pred_prop.then(|| {
-            PredProp::new(
-                uts.clone(),
-                cfg.local_proof.then_some(prop),
-                cfg.inn,
-            )
-        });
+        let predprop = cfg
+            .pred_prop
+            .then(|| PredProp::new(uts.clone(), cfg.local_proof.then_some(prop), cfg.inn));
         let tsctx = Box::new(ts.ctx());
         let activity = Activity::new(&tsctx);
         let frame = Frames::new(&tsctx);
@@ -256,7 +251,9 @@ impl Engine for IC3 {
         let mut last_sec = 0;
         loop {
             let now_sec = self.statistic.time.time().as_secs();
-            if let Some(limit) = self.time_limit && now_sec > limit.get() {
+            if let Some(limit) = self.time_limit
+                && now_sec > limit.get()
+            {
                 return McResult::Unknown(Some(self.level()));
             }
             if now_sec - last_sec >= 10 {

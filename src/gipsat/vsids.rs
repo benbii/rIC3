@@ -1,6 +1,6 @@
 use super::{DagCnfSolver, cdb::CREF_NONE};
-use logicrs::{OptionU32, nckvec::NckVec};
 use logicrs::{Lbool, Lit, Var, VarMap};
+use logicrs::{OptionU32, nckvec::NckVec};
 use rand::Rng;
 use std::ops::{Index, MulAssign};
 
@@ -161,7 +161,6 @@ impl Activity {
     pub fn decay(&mut self) {
         self.act_inc *= 1.0 / Self::DECAY
     }
-
 }
 
 impl Default for Activity {

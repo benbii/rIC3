@@ -2,8 +2,8 @@ mod deparse;
 mod parse;
 pub mod ywb;
 
-use deparse::Deparser;
 use ahash::HashMap;
+use deparse::Deparser;
 use logicrs::fol::Term;
 use parse::Parser;
 use std::{fmt::Display, path::Path};

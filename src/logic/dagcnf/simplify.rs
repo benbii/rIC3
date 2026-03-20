@@ -1,10 +1,10 @@
 use super::DagCnf;
+use crate::nckvec::NckVec;
 use crate::{
-    LitMap, LitOrdVec, LitVec, LitVvec, Var, VarAssign, VarMap, VarRange,
-    lemmas_subsume_simplify, occur::Occurs,
+    LitMap, LitOrdVec, LitVec, LitVvec, Var, VarAssign, VarMap, VarRange, lemmas_subsume_simplify,
+    occur::Occurs,
 };
 use ahash::HashSet;
-use crate::nckvec::NckVec;
 use log::debug;
 use std::{
     cmp::Reverse,
@@ -18,7 +18,11 @@ pub struct DagCnfSimplify {
     max_var: Var,
     cnf: LitMap<Vec<usize>>,
     #[allow(clippy::type_complexity)]
-    occur: Option<(Occurs<LitOrdVec>, VarMap<u32>, BinaryHeap<(Reverse<usize>, Reverse<Var>, u32)>)>,
+    occur: Option<(
+        Occurs<LitOrdVec>,
+        VarMap<u32>,
+        BinaryHeap<(Reverse<usize>, Reverse<Var>, u32)>,
+    )>,
     frozen: HashSet<Var>,
     value: VarAssign,
     num_ocls: usize,
@@ -182,7 +186,9 @@ impl DagCnfSimplify {
         let mut res = LitVvec::new();
         for &pcls in pcnf {
             for &ncls in ncnf {
-                if let Some(resolvent) = self.cdb[pcls].0.ordered_resolvent(&self.cdb[ncls].0, pivot) {
+                if let Some(resolvent) =
+                    self.cdb[pcls].0.ordered_resolvent(&self.cdb[ncls].0, pivot)
+                {
                     res.push(resolvent);
                 }
                 if res.len() > limit {

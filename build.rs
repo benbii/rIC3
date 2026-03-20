@@ -1,10 +1,5 @@
 use cmake::Config;
-use std::{
-    env,
-    io,
-    path::PathBuf,
-    process::Command,
-};
+use std::{env, io, path::PathBuf, process::Command};
 
 fn main() -> io::Result<()> {
     println!("cargo::rustc-check-cfg=cfg(bitwuzla_stub)");

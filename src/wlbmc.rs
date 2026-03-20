@@ -3,8 +3,8 @@ use crate::{
     bitwuzla::Bitwuzla,
     wltransys::{WlTransys, unroll::WlTransysUnroll},
 };
-use clap::Args;
 use ahash::HashMap;
+use clap::Args;
 use log::info;
 use serde::{Deserialize, Serialize};
 

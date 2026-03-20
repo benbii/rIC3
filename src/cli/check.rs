@@ -29,7 +29,6 @@ pub struct CheckConfig {
     /// print witness when model is unsafe
     #[arg(long, default_value_t = false)]
     pub witness: bool,
-
 }
 
 fn report_res(chk: &CheckConfig, res: McResult) {

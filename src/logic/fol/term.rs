@@ -1,16 +1,16 @@
 use super::op::{Add, And, Ite, Neg, Not, Or, Sub, Xor};
 use super::{op::DynOp, sort::Sort};
+use crate::bitvec::BitVec;
 use crate::fol::op::{Concat, Slice};
 use crate::fol::{TermVec, Value, op};
-use crate::bitvec::BitVec;
 use ahash::HashMap;
 use std::cell::UnsafeCell;
 use std::fmt::{self, Debug};
 use std::hash;
 use std::iter::once;
 use std::ops::Index;
-use std::{hash::Hash, ops::Deref};
 use std::rc::Rc;
+use std::{hash::Hash, ops::Deref};
 
 #[derive(Clone)]
 pub struct Term {
@@ -495,7 +495,6 @@ impl TermManager {
         let term = TermType::Var(id);
         self.new_term(term, sort)
     }
-
 }
 
 thread_local! {
