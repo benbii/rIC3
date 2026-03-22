@@ -1,4 +1,4 @@
-use ahash::HashMap;
+use crate::RseedMap as HashMap;
 use logicrs::fol::op::{self, DynOp};
 
 #[repr(u32)]

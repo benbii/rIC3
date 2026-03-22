@@ -1,5 +1,5 @@
 use crate::ic3::IC3;
-use ahash::HashSet;
+use crate::RseedSet as HashSet;
 use logicrs::{DagCnf, Var};
 
 impl IC3 {

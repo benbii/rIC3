@@ -19,16 +19,12 @@ pub struct KindConfig {
     pub end: usize,
     #[command(flatten)]
     pub preproc: PreprocConfig,
-
     /// Simple path constraint
     #[arg(long = "simple-path", default_value_t = false)]
     pub simple_path: bool,
-
-    /// Skip BMC. It is adviced to run a BMC concurrently with K-Ind;
-    /// BMC finds SAT and K-Ind finds UNSAT.
-    #[arg(long = "skip-bmc", default_value_t = true)]
+    /// Skip BMC
+    #[arg(long = "skip-bmc", default_value_t = false)]
     pub skip_bmc: bool,
-
     /// Local proof (internal parameter)
     #[arg(skip)]
     pub local_proof: bool,
@@ -104,23 +100,24 @@ impl Kind {
 
 impl Engine for Kind {
     fn check(&mut self) -> McResult {
-        // feels odd: extracting from a new TransysUnroll?
         let bad0 = self.uts.ts.bad[self.bad_prop_id];
-        // load the 0th TransysUnroll, if not already (i.e. first call to `check`)
         let mut k = self.uts.num_unroll + 1;
+        // load the 0th TransysUnroll, if not already (i.e. first call to `check`)
         if k == 1 {
             self.uts.load_trans(&mut self.solver, 0, true);
         }
-        // K-Ind requires a) init satisfied; b) if safe at n, model is safe at n+k also.
-        // Therefore *unconditionally* check frame 0!
         let mut assump: LitVec = self.uts.ts.inits().iter().flatten().copied().collect();
-        assump.push(self.uts.lit_next(bad0, 0));
-        if self.solver.solve(&assump) {
-            info!("K-Ind init not satisfied");
-            return McResult::Unsafe(0);
-        }
 
         while k <= self.end {
+            if !self.skip_bmc {
+                assump.push(self.uts.lit_next(bad0, k - 1));
+                if self.solver.solve(&assump) {
+                    info!("bmc found a counterexample at depth {}", k - 1);
+                    return McResult::Unsafe(k - 1);
+                }
+                assump.pop();
+            }
+
             self.uts.unroll();
             debug_assert_eq!(self.uts.num_unroll, k);
             if self.use_simple_path {
@@ -141,7 +138,6 @@ impl Engine for Kind {
                 self.simple_path.push(sp);
             }
 
-            // old slv_trans_k == k
             self.uts.load_trans(&mut self.solver, k, true);
             if self.use_simple_path {
                 for cls in self.simple_path[k - 1].iter() {
@@ -149,7 +145,6 @@ impl Engine for Kind {
                 }
             }
 
-            // old slv_bad_k == k-1
             for b in self.uts.lits_next(&self.uts.ts.bad, k - 1) {
                 self.solver.add_clause(&[!b]);
             }
@@ -161,16 +156,6 @@ impl Engine for Kind {
             }
 
             info!("not {k}-inductive");
-            if self.skip_bmc {
-                k += 1;
-                continue;
-            }
-            assump = self.uts.ts.inits().iter().flatten().copied().collect();
-            assump.push(self.uts.lit_next(bad0, k));
-            if self.solver.solve(&assump) {
-                info!("bmc found a counterexample at depth {k}");
-                return McResult::Unsafe(k);
-            }
             k += 1;
         }
         info!("kind reached bound {}, stopping search", self.end);

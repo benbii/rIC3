@@ -1,5 +1,5 @@
 use super::{Aig, AigEdge};
-use ahash::HashMap;
+use crate::RseedMap as HashMap;
 use std::mem::swap;
 
 impl Aig {

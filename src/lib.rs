@@ -30,10 +30,48 @@ pub use logic::*;
 use serde::{Deserialize, Serialize};
 
 use std::{
+    collections::{HashMap, HashSet},
     fmt::{self, Debug, Display},
-    hash::Hash,
+    hash::{BuildHasher, Hash},
     ops::{Add, AddAssign, Deref, Not, Sub},
 };
+
+pub const RIC3_HASH_SEED: [u64; 4] = [0, 0, 0, 0];
+
+#[derive(Clone)]
+pub struct Ric3RandomState(ahash::RandomState);
+
+impl Default for Ric3RandomState {
+    #[inline]
+    fn default() -> Self {
+        Self(ahash::RandomState::with_seeds(
+            RIC3_HASH_SEED[0],
+            RIC3_HASH_SEED[1],
+            RIC3_HASH_SEED[2],
+            RIC3_HASH_SEED[3],
+        ))
+    }
+}
+
+impl BuildHasher for Ric3RandomState {
+    type Hasher = ahash::AHasher;
+
+    #[inline]
+    fn build_hasher(&self) -> Self::Hasher {
+        self.0.build_hasher()
+    }
+
+    #[inline]
+    fn hash_one<T: Hash>(&self, x: T) -> u64
+    where
+        Self: Sized,
+    {
+        self.0.hash_one(x)
+    }
+}
+
+pub type RseedMap<K, V> = HashMap<K, V, Ric3RandomState>;
+pub type RseedSet<T> = HashSet<T, Ric3RandomState>;
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Default, Serialize, Deserialize)]
 pub struct Var(pub u32);

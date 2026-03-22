@@ -1,7 +1,7 @@
 use super::{Sort, Term, TermType, TermVec};
 use crate::bitvec::BitVec;
 use crate::{DagCnf, Lit};
-use ahash::HashMap;
+use crate::RseedMap as HashMap;
 use std::{iter::repeat_with, ops::Deref};
 
 #[inline]

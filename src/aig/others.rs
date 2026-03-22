@@ -1,5 +1,5 @@
 use super::{Aig, AigEdge, AigNodeType};
-use ahash::{HashMap, HashSet};
+use crate::{RseedMap as HashMap, RseedSet as HashSet};
 use logicrs::{Var, VarVMap};
 use std::mem::take;
 

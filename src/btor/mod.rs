@@ -2,7 +2,7 @@ mod deparse;
 mod parse;
 pub mod ywb;
 
-use ahash::HashMap;
+use crate::RseedMap as HashMap;
 use deparse::Deparser;
 use logicrs::fol::Term;
 use parse::Parser;

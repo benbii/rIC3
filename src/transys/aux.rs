@@ -1,5 +1,5 @@
 use crate::transys::Transys;
-use ahash::{HashMap, HashSet};
+use crate::{RseedMap as HashMap, RseedSet as HashSet};
 use logicrs::{DagCnf, Var, VarRange};
 
 impl Transys {

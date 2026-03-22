@@ -6,7 +6,7 @@ pub mod symbol;
 pub mod unroll;
 
 use crate::wltransys::certify::Restore;
-use ahash::{HashMap, HashSet};
+use crate::{RseedMap as HashMap, RseedSet as HashSet};
 use logicrs::fol::{Sort, Term, op};
 use std::mem::take;
 

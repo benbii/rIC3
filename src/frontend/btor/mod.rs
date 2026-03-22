@@ -12,7 +12,7 @@ use crate::{
         symbol::WlTsSymbol,
     },
 };
-use ahash::{HashMap, HashSet};
+use crate::{RseedMap as HashMap, RseedSet as HashSet};
 use log::{debug, error, warn};
 use logicrs::{
     LboolVec,

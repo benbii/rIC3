@@ -1,6 +1,6 @@
 use super::{Sort, Term, Value};
 use crate::LboolVec;
-use ahash::HashMap;
+use crate::RseedMap as HashMap;
 
 fn bv_val(s: &str) -> Value {
     Value::Bv(LboolVec::from(s))

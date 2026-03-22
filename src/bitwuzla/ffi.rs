@@ -1,6 +1,6 @@
 use std::ffi::{CString, c_void};
 
-use ahash::HashMap;
+use crate::RseedMap as HashMap;
 use logicrs::bitvec::BitVec;
 use logicrs::fol::{OpTerm, Sort, Term, TermType, op};
 

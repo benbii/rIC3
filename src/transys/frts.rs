@@ -3,7 +3,7 @@ use crate::{
     gipsat::DagCnfSolver,
     transys::{Transys, certify::Restore},
 };
-use ahash::{HashMap, HashSet};
+use crate::{RseedMap as HashMap, RseedSet as HashSet};
 use log::{debug, info, trace};
 use logicrs::{
     Lit, LitVec, Var, VarLMap, VarMap, VarRange, bitvec::BitVec, simplify::DagCnfSimplify,

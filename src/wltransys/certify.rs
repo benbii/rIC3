@@ -1,5 +1,5 @@
 use crate::wltransys::WlTransys;
-use ahash::{HashMap, HashSet};
+use crate::{RseedMap as HashMap, RseedSet as HashSet};
 use logicrs::fol::{self, BvTermValue, Term, TermValue};
 use std::ops::{Deref, DerefMut};
 

@@ -1,5 +1,5 @@
 use super::{Aig, AigEdge};
-use ahash::HashSet;
+use crate::RseedSet as HashSet;
 use logicrs::{DagCnf, LitVvec, Var};
 
 impl Aig {

@@ -4,7 +4,7 @@ use crate::{
     cadical::CaDiCaL,
     transys::{Transys, unroll::TransysUnroll},
 };
-use ahash::{HashMap, HashSet};
+use crate::{RseedMap as HashMap, RseedSet as HashSet};
 use log::{debug, info};
 use logicrs::{LitVec, LitVvec, Var, satif::Satif};
 use rand::seq::SliceRandom;

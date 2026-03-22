@@ -3,7 +3,7 @@ use crate::{
     config::PreprocConfig,
     transys::{certify::Restore, frts::FrTs, scorr::Scorr},
 };
-use ahash::HashSet;
+use crate::RseedSet as HashSet;
 use log::{debug, info};
 use logicrs::{Lit, Var, VarRange};
 

@@ -1,5 +1,5 @@
 use super::IC3;
-use ahash::HashSet;
+use crate::RseedSet as HashSet;
 use log::trace;
 use logicrs::{Lit, LitOrdVec, LitVec, satif::Satif};
 use rand::{Rng, seq::SliceRandom};

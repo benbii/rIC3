@@ -1,6 +1,6 @@
 use super::Transys;
 use crate::transys::certify::{BlWitness, Restore};
-use ahash::HashMap;
+use crate::RseedMap as HashMap;
 use logicrs::{Cnf, Lit, LitMap, LitVec, LitVvec, Var, VarRange, satif::Satif};
 
 #[derive(Default, Debug, Clone)]

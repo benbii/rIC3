@@ -1,5 +1,5 @@
 use crate::wltransys::WlTransys;
-use ahash::HashMap;
+use crate::RseedMap as HashMap;
 use logicrs::fol::{Sort, Term, TermType, op};
 use std::ops::Deref;
 

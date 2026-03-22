@@ -1,28 +1,120 @@
 use super::DagCnf;
 use crate::nckvec::NckVec;
 use crate::{
-    LitMap, LitOrdVec, LitVec, LitVvec, Var, VarAssign, VarMap, VarRange, lemmas_subsume_simplify,
+    LitMap, LitOrdVec, LitVec, LitVvec, Var, VarAssign, VarRange, lemmas_subsume_simplify,
     occur::Occurs,
 };
-use ahash::HashSet;
+use crate::RseedSet as HashSet;
 use log::debug;
 use std::{
-    cmp::Reverse,
-    collections::BinaryHeap,
     iter::once,
     time::{Duration, Instant},
 };
+
+struct AccidentalHeap {
+    heap: Vec<Var>,
+    pos: Vec<usize>,
+}
+
+impl AccidentalHeap {
+    const NONE: usize = usize::MAX;
+
+    fn new(max_var: Var) -> Self {
+        Self {
+            heap: Vec::new(),
+            pos: vec![Self::NONE; usize::from(max_var) + 1],
+        }
+    }
+
+    fn score(occur: &Occurs<LitOrdVec>, v: Var) -> usize {
+        occur.num_occur(v.lit()) + occur.num_occur(!v.lit())
+    }
+
+    fn up(&mut self, v: Var, occur: &Occurs<LitOrdVec>) {
+        let mut idx = self.pos[usize::from(v)];
+        if idx == Self::NONE {
+            return;
+        }
+        while idx != 0 {
+            let pidx = (idx - 1) >> 1;
+            if Self::score(occur, self.heap[pidx]) < Self::score(occur, v) {
+                break;
+            }
+            self.heap[idx] = self.heap[pidx];
+            self.pos[usize::from(self.heap[idx])] = idx;
+            idx = pidx;
+        }
+        if self.heap[idx] == v {
+            return;
+        }
+        self.heap[idx] = v;
+        self.pos[usize::from(v)] = idx;
+    }
+
+    fn down(&mut self, v: Var, occur: &Occurs<LitOrdVec>) {
+        let mut idx = self.pos[usize::from(v)];
+        if idx == Self::NONE {
+            return;
+        }
+        loop {
+            let left = (idx << 1) + 1;
+            if left >= self.heap.len() {
+                break;
+            }
+            let right = left + 1;
+            let child = if right < self.heap.len()
+                && Self::score(occur, self.heap[right]) < Self::score(occur, self.heap[left])
+            {
+                right
+            } else {
+                left
+            };
+            if Self::score(occur, v) < Self::score(occur, self.heap[child]) {
+                break;
+            }
+            self.heap[idx] = self.heap[child];
+            self.pos[usize::from(self.heap[idx])] = idx;
+            idx = child;
+        }
+        if self.heap[idx] == v {
+            return;
+        }
+        self.heap[idx] = v;
+        self.pos[usize::from(v)] = idx;
+    }
+
+    fn push(&mut self, v: Var, occur: &Occurs<LitOrdVec>) {
+        if self.pos[usize::from(v)] != Self::NONE {
+            return;
+        }
+        let idx = self.heap.len();
+        self.heap.push(v);
+        self.pos[usize::from(v)] = idx;
+        self.up(v, occur);
+    }
+
+    fn pop(&mut self, occur: &Occurs<LitOrdVec>) -> Option<Var> {
+        if self.heap.is_empty() {
+            return None;
+        }
+        let value = self.heap[0];
+        self.heap[0] = self.heap[self.heap.len() - 1];
+        self.pos[usize::from(self.heap[0])] = 0;
+        self.pos[usize::from(value)] = Self::NONE;
+        self.heap.pop();
+        if self.heap.len() > 1 {
+            self.down(self.heap[0], occur);
+        }
+        Some(value)
+    }
+}
 
 pub struct DagCnfSimplify {
     cdb: NckVec<(LitOrdVec, bool)>,
     max_var: Var,
     cnf: LitMap<Vec<usize>>,
     #[allow(clippy::type_complexity)]
-    occur: Option<(
-        Occurs<LitOrdVec>,
-        VarMap<u32>,
-        BinaryHeap<(Reverse<usize>, Reverse<Var>, u32)>,
-    )>,
+    occur: Option<(Occurs<LitOrdVec>, AccidentalHeap)>,
     frozen: HashSet<Var>,
     value: VarAssign,
     num_ocls: usize,
@@ -70,14 +162,11 @@ impl DagCnfSimplify {
                     }
                 }
             }
-            let mut queue_ver = VarMap::new_with(self.max_var);
-            let mut qbve = BinaryHeap::new();
+            let mut qbve = AccidentalHeap::new(self.max_var);
             for v in VarRange::new_inclusive(Var::CONST, self.max_var) {
-                let score = occur.num_occur(v.lit()) + occur.num_occur(!v.lit());
-                queue_ver[v] += 1;
-                qbve.push((Reverse(score), Reverse(v), queue_ver[v]));
+                qbve.push(v, &occur);
             }
-            self.occur = Some((occur, queue_ver, qbve));
+            self.occur = Some((occur, qbve));
         }
     }
 
@@ -104,14 +193,12 @@ impl DagCnfSimplify {
         self.cdb.push((rel, false));
         let relid = self.cdb.len() - 1;
         self.cnf[n].push(relid);
-        if let Some((occur, queue_ver, qbve)) = &mut self.occur {
+        if let Some((occur, qbve)) = &mut self.occur {
             for &l in self.cdb[relid].0.iter() {
                 let lv = l.var();
                 if lv != n.var() {
                     occur.add(l, relid);
-                    let score = occur.num_occur(lv.lit()) + occur.num_occur(!lv.lit());
-                    queue_ver[lv] += 1;
-                    qbve.push((Reverse(score), Reverse(lv), queue_ver[lv]));
+                    qbve.down(lv, occur);
                 }
             }
         }
@@ -125,14 +212,12 @@ impl DagCnfSimplify {
             while i < self.cnf[o].len() {
                 if relset.contains(&self.cnf[o][i]) {
                     let cls = self.cnf[o].swap_remove(i);
-                    if let Some((occur, queue_ver, qbve)) = &mut self.occur {
+                    if let Some((occur, qbve)) = &mut self.occur {
                         for &l in self.cdb[cls].0.iter() {
                             let lv = l.var();
                             if lv != o.var() {
                                 occur.del(l, cls);
-                                let score = occur.num_occur(lv.lit()) + occur.num_occur(!lv.lit());
-                                queue_ver[lv] += 1;
-                                qbve.push((Reverse(score), Reverse(lv), queue_ver[lv]));
+                                qbve.up(lv, occur);
                             }
                         }
                     }
@@ -144,21 +229,18 @@ impl DagCnfSimplify {
         }
     }
 
-    #[inline]
     fn remove_node(&mut self, n: Var) {
         let ln = n.lit();
-        if let Some((occur, _, _)) = &mut self.occur {
+        if let Some((occur, _)) = &mut self.occur {
             assert!(occur.num_occur(ln) == 0 && occur.num_occur(!ln) == 0);
         }
         for &cls in self.cnf[ln].iter().chain(self.cnf[!ln].iter()) {
-            if let Some((occur, queue_ver, qbve)) = &mut self.occur {
+            if let Some((occur, qbve)) = &mut self.occur {
                 for &l in self.cdb[cls].0.iter() {
                     let lv = l.var();
                     if lv != n {
                         occur.del(l, cls);
-                        let score = occur.num_occur(lv.lit()) + occur.num_occur(!lv.lit());
-                        queue_ver[lv] += 1;
-                        qbve.push((Reverse(score), Reverse(lv), queue_ver[lv]));
+                        qbve.up(lv, occur);
                     }
                 }
             }
@@ -242,12 +324,10 @@ impl DagCnfSimplify {
     pub fn bve_simplify(&mut self) {
         let start = Instant::now();
         self.enable_occur();
-        while let Some((Reverse(score), Reverse(v), ver)) = self.occur.as_mut().unwrap().2.pop() {
-            let (occur, queue_ver, _) = self.occur.as_mut().unwrap();
-            let current = occur.num_occur(v.lit()) + occur.num_occur(!v.lit());
-            if queue_ver[v] != ver || current != score {
-                continue;
-            }
+        while let Some(v) = {
+            let (occur, qbve) = self.occur.as_mut().unwrap();
+            qbve.pop(occur)
+        } {
             self.eliminate(v);
         }
         self.time += start.elapsed();

@@ -4,7 +4,7 @@ mod others;
 mod strash;
 mod ternary;
 
-use ahash::HashMap;
+use crate::RseedMap as HashMap;
 use logicrs::Lit;
 use std::{
     mem::swap,

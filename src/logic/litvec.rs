@@ -1,5 +1,5 @@
 use crate::{Lit, Var, VarAssign};
-use ahash::HashSet;
+use crate::RseedSet as HashSet;
 use serde::{Deserialize, Serialize};
 use std::{
     cmp::Ordering,

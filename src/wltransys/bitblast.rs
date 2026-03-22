@@ -6,7 +6,7 @@ use crate::{
     },
     wltransys::certify::{WlProof, WlWitness},
 };
-use ahash::HashMap;
+use crate::RseedMap as HashMap;
 use logicrs::bitvec::BitVec;
 use logicrs::{
     DagCnf, Lbool, LboolVec, Lit, LitVec, Var,

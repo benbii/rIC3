@@ -1,4 +1,4 @@
-use ahash::HashMap;
+use crate::RseedMap as HashMap;
 use logicrs::fol::Term;
 use std::ops::Deref;
 

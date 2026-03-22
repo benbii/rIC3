@@ -1,5 +1,5 @@
 use crate::{DagCnf, Lit, LitVec, LitVvec, Var, VarVMap};
-use ahash::HashSet;
+use crate::RseedSet as HashSet;
 use std::{
     iter::once,
     ops::{Deref, DerefMut},

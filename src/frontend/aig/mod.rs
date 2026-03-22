@@ -4,7 +4,7 @@ use crate::{
     aig::{Aig, AigEdge},
     transys::Transys,
 };
-use ahash::HashMap;
+use crate::RseedMap as HashMap;
 use log::{debug, error, warn};
 use logicrs::{Lbool, Lit, LitVec, Var, VarVMap};
 use std::{fmt::Display, path::Path, process::Command};

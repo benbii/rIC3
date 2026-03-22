@@ -12,7 +12,7 @@ pub mod scorr;
 mod simp;
 pub mod unroll;
 
-use ahash::{HashMap, HashSet};
+use crate::{RseedMap as HashMap, RseedSet as HashSet};
 pub use ctx::*;
 use logicrs::{DagCnf, Lit, LitVec, LitVvec, Var, VarVMap, satif::Satif};
 use std::fmt::{self, Display};

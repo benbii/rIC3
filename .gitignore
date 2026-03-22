@@ -2,5 +2,6 @@
 build/
 ric3proj/
 .local/
+*.preproc
 
 /deps/logicrs/

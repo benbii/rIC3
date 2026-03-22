@@ -1,6 +1,6 @@
 use crate::bitwuzla::Bitwuzla;
 use crate::wltransys::{WlTransys, certify::WlWitness};
-use ahash::HashMap;
+use crate::RseedMap as HashMap;
 use logicrs::{
     LboolVec,
     fol::{self, BvTermValue, Term, TermValue},

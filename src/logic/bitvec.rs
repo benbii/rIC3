@@ -544,7 +544,7 @@ impl fmt::Binary for BitVec {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ahash::HashSet;
+    use crate::RseedSet as HashSet;
 
     #[test]
     fn test0() {

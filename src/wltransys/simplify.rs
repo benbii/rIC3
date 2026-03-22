@@ -1,5 +1,5 @@
 use super::WlTransys;
-use ahash::{HashMap, HashSet};
+use crate::{RseedMap as HashMap, RseedSet as HashSet};
 use logicrs::fol::{Term, TermType};
 use std::{mem::take, ops::Deref};
 
