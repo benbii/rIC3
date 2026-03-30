@@ -49,24 +49,10 @@ pub struct DagCnfSolver {
     constrain_act: Var,
     dc: DagCnf,
     trivial_unsat: bool,
-    rng: StdRng,
-    pub cfg: Config,
-
     assump: LitVec,
-    constraint: Vec<LitVec>,
-
     statistic: SolverStatistic,
-}
-
-#[derive(Debug, Clone)]
-pub struct Config {
-    pub phase_saving: bool,
-}
-
-impl Default for Config {
-    fn default() -> Self {
-        Self { phase_saving: true }
-    }
+    pub use_phase_saving: bool,
+    pub rng: StdRng,
 }
 
 impl DagCnfSolver {
@@ -93,11 +79,10 @@ impl DagCnfSolver {
             prepared_vsids: false,
             constrain_act,
             assump: Default::default(),
-            constraint: Default::default(),
             statistic: Default::default(),
             trivial_unsat: false,
             rng: StdRng::seed_from_u64(0),
-            cfg: Default::default(),
+            use_phase_saving: true,
         };
         while solver.num_var() < solver.dc.num_var() {
             solver.new_var();
@@ -220,7 +205,6 @@ impl DagCnfSolver {
         limit: Option<usize>,
     ) -> Option<bool> {
         self.assump = assump.into();
-        self.constraint = constraint.clone();
         if self.trivial_unsat {
             self.unsat_core.clear();
             return Some(false);

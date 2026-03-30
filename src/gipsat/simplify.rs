@@ -2,10 +2,10 @@ use super::{
     DagCnfSolver,
     cdb::{CREF_NONE, CRef},
 };
-use log::{debug, trace};
+use log::trace;
 use logicrs::nckvec::NckVec;
 use logicrs::{Lbool, LitOrdVec, LitVec, VarMap};
-use std::{mem::take, time::Instant};
+use std::mem::take;
 
 #[derive(Clone)]
 pub struct Simplify {
@@ -26,21 +26,38 @@ impl Default for Simplify {
 
 impl DagCnfSolver {
     pub fn simplify(&mut self) {
-        assert!(self.highest_level() == 0);
-        assert!(self.propagate() == CREF_NONE);
-        if self.statistic.num_solve > self.simplify.last_simplify + 100 {
-            if self.simplify.last_num_assign < self.trail.len() {
-                self.simplify_satisfied();
-            }
-            if self.simplify.last_num_lemma + 1000 < self.cdb.lemmas.len() {
-                let lemmas = take(&mut self.cdb.lemmas);
-                self.cdb.lemmas = self.simplify_subsume(lemmas);
-                self.simplify.last_num_lemma = self.cdb.lemmas.len();
-            }
-            self.clean_eq();
-            self.garbage_collect();
-            self.simplify.last_simplify = self.statistic.num_solve;
+        debug_assert!(self.highest_level() == 0);
+        debug_assert!(self.propagate() == CREF_NONE);
+        // param finetune: 100 1000
+        if self.statistic.num_solve <= self.simplify.last_simplify + 100 {
+            return;
         }
+        if self.simplify.last_num_assign < self.trail.len() {
+            debug_assert!(self.highest_level() == 0);
+            let mut simplified = 0;
+            let lemmas = take(&mut self.cdb.lemmas);
+            simplified += lemmas.len();
+            self.cdb.lemmas = self.simplify_satisfied_clauses(lemmas);
+            simplified -= self.cdb.lemmas.len();
+            let learnt = take(&mut self.cdb.learnt);
+            simplified += learnt.len();
+            self.cdb.learnt = self.simplify_satisfied_clauses(learnt);
+            simplified -= self.cdb.learnt.len();
+            let trans = take(&mut self.cdb.trans);
+            simplified += trans.len();
+            self.cdb.trans = self.simplify_satisfied_clauses(trans);
+            simplified -= self.cdb.trans.len();
+            self.simplify.last_num_assign = self.trail.len();
+            trace!("gipsat simplifies {simplified} statisfied clauses");
+        }
+        if self.simplify.last_num_lemma + 1000 < self.cdb.lemmas.len() {
+            let lemmas = take(&mut self.cdb.lemmas);
+            self.cdb.lemmas = self.simplify_subsume(lemmas);
+            self.simplify.last_num_lemma = self.cdb.lemmas.len();
+        }
+        self.clean_eq();
+        self.garbage_collect();
+        self.simplify.last_simplify = self.statistic.num_solve;
     }
 
     pub fn simplify_satisfied_clauses(&mut self, mut clauses: NckVec<CRef>) -> NckVec<CRef> {
@@ -78,34 +95,7 @@ impl DagCnfSolver {
         clauses
     }
 
-    pub fn simplify_satisfied(&mut self) {
-        assert!(self.highest_level() == 0);
-        if self.simplify.last_num_assign >= self.trail.len() {
-            return;
-        }
-        let start = Instant::now();
-        let mut simplified = 0;
-        let lemmas = take(&mut self.cdb.lemmas);
-        simplified += lemmas.len();
-        self.cdb.lemmas = self.simplify_satisfied_clauses(lemmas);
-        simplified -= self.cdb.lemmas.len();
-        let learnt = take(&mut self.cdb.learnt);
-        simplified += learnt.len();
-        self.cdb.learnt = self.simplify_satisfied_clauses(learnt);
-        simplified -= self.cdb.learnt.len();
-        let trans = take(&mut self.cdb.trans);
-        simplified += trans.len();
-        self.cdb.trans = self.simplify_satisfied_clauses(trans);
-        simplified -= self.cdb.trans.len();
-        self.simplify.last_num_assign = self.trail.len();
-        trace!(
-            "gipsat simplifies {simplified} statisfied clauses in {:?}",
-            start.elapsed()
-        );
-    }
-
     fn simplify_subsume(&mut self, clauses: NckVec<CRef>) -> NckVec<CRef> {
-        debug!("simplify subsume");
         let mut clauses: Vec<(CRef, LitOrdVec)> = clauses
             .into_iter()
             .filter_map(|cref| {

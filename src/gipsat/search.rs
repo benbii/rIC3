@@ -2,7 +2,7 @@ use super::{
     DagCnfSolver,
     cdb::{CREF_NONE, CRef, ClauseKind},
 };
-use log::debug;
+use log::trace;
 use logicrs::{Lbool, Lit};
 
 impl DagCnfSolver {
@@ -63,15 +63,7 @@ impl DagCnfSolver {
             }
             let rest_base = luby(2.0, restarts);
             match self.search(assumption, Some(rest_base * 100.0)) {
-                None => {
-                    restarts += 1;
-                    if restarts % 10 == 0 {
-                        debug!(
-                            "gipsat restarted {restarts} times with {} learnt clauses",
-                            self.cdb.num_learnt()
-                        );
-                    }
-                }
+                None => restarts += 1,
                 Some(r) => return Some(r),
             }
         }

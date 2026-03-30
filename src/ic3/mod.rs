@@ -261,7 +261,6 @@ impl Engine for IC3 {
                 last_sec = now_sec;
             }
             let start = Instant::now();
-            debug!("blocking phase begin");
 
             loop {
                 match self.block() {
@@ -278,8 +277,7 @@ impl Engine for IC3 {
                     _ => (),
                 }
                 if let Some((bad, inputs)) = self.get_bad() {
-                    debug!("bad state found in frame {}", self.level());
-                    trace!("bad = {bad}");
+                    trace!("bad state {bad} found in frame {}", self.level());
                     let bad = LitOrdVec::new(bad);
                     let depth = inputs.len() - 1;
                     self.add_obligation(ProofObligation::new(
