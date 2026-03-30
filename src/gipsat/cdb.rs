@@ -1,6 +1,6 @@
 use super::DagCnfSolver;
 use bitfield_struct::bitfield;
-use log::debug;
+use log::trace;
 use logicrs::nckvec::NckVec;
 use logicrs::{Lit, LitVec};
 use std::{
@@ -354,7 +354,7 @@ impl DagCnfSolver {
                     self.cdb.learnt.push(l);
                 }
             }
-            debug!(
+            trace!(
                 "gipsat reduced learnt clauses from {} to {}",
                 onum_learnt,
                 self.cdb.num_learnt()

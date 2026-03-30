@@ -119,7 +119,7 @@ impl Scorr {
             let block = self.ts.lits_next(block.iter());
             slv.add_clause(&block);
         }
-        slv.cfg.phase_saving = false;
+        slv.use_phase_saving = false;
         let domain: Vec<_> = self.ts.next.values().map(|l| l.var()).collect();
 
         for from in 0..init[Var::CONST].len() {

@@ -390,7 +390,7 @@ impl DagCnfSimplify {
         }
     }
 
-    pub fn subsume_simplify(&mut self) {
+    fn subsume_simplify(&mut self) {
         let start = Instant::now();
         self.enable_occur();
         for v in VarRange::new_inclusive(Var::CONST, self.max_var) {
