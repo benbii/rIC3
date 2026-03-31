@@ -148,7 +148,7 @@ impl Scorr {
         sim
     }
 
-    fn check_scorr(&mut self, x: Lit, y: Lit) -> bool {
+    pub fn check_scorr(&mut self, x: Lit, y: Lit) -> bool {
         if self
             .init_slv
             .solve_with_restart_limit(&[], vec![LitVec::from([x, y]), LitVec::from([!x, !y])], 10)

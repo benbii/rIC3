@@ -1,7 +1,9 @@
 mod check;
+mod common;
 mod preprocess;
+mod toy_scorr;
 
-use crate::cli::{check::CheckConfig, preprocess::PreprocessConfig};
+use crate::cli::{check::CheckConfig, preprocess::PreprocessConfig, toy_scorr::ToyScorrConfig};
 use clap::{Parser, Subcommand};
 use rIC3::config::EngineConfig;
 
@@ -32,9 +34,12 @@ pub enum Commands {
     Preprocess {
         #[command(flatten)]
         pp: PreprocessConfig,
+    },
 
-        #[command(subcommand)]
-        cfg: EngineConfig,
+    /// toy playground for scorr experiments
+    ToyScorr {
+        #[command(flatten)]
+        cfg: ToyScorrConfig,
     },
 }
 
@@ -42,6 +47,7 @@ pub(crate) fn cli_main() -> anyhow::Result<i32> {
     let cli = Cli::parse();
     match cli.command {
         Commands::Check { chk, cfg } => check::check(chk, cfg),
-        Commands::Preprocess { pp, cfg } => preprocess::preprocess(pp, cfg),
+        Commands::Preprocess { pp } => preprocess::preprocess(pp),
+        Commands::ToyScorr { cfg } => toy_scorr::toy_scorr(cfg),
     }
 }
