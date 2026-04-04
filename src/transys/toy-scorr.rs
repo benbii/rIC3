@@ -1,31 +1,33 @@
 use crate::{
-    Lit, config::PreprocConfig, gipsat::DagCnfSolver, transys::{Transys, certify::Restore}
+    Lit, aig::Aig, frontend::{Frontend, aig::AigFrontend},
+    gipsat::DagCnfSolver,
+    transys::{Transys, certify::Restore}
 };
+use ahash::HashMap;
 use logicrs::bitvec::BitVec;
-use logicrs::{LitVec, Var, VarMap, satif::Satif};
-use log::info;
+use logicrs::{LitVec, Var, VarLMap, VarMap, satif::Satif};
 use rand::{Rng, SeedableRng, rngs::StdRng, seq::SliceRandom};
-use std::{path::Path, sync::atomic::{AtomicUsize, Ordering}};
-use std::thread;
+use std::{fs::File, io::{BufWriter, Write}, path::PathBuf};
 
 fn check_scorr(
-    init_slv:&mut DagCnfSolver, ind_slv: &mut DagCnfSolver, ts: &Transys, x: Lit, y: Lit
+    base_slv: &mut DagCnfSolver, ts: &Transys, replace: &VarLMap, x: Lit, y: Lit
 ) -> bool {
-    if init_slv .solve_with_constraint(&[], vec![LitVec::from([x, y]), LitVec::from([!x, !y])]) {
+    let xn = if x.var().is_constant() {
+        x
+    } else {
+        let xn = ts.next(x);
+        replace.map_lit(xn).unwrap_or(xn)
+    };
+    let yn = if y.var().is_constant() {
+        y
+    } else {
+        let yn = ts.next(y);
+        replace.map_lit(yn).unwrap_or(yn)
+    };
+    if base_slv.solve(&[xn, !yn]) {
         return false;
     }
-    let xn = ts.next(x);
-    let yn = if y.var().is_constant() { y } else { ts.next(y) };
-    !ind_slv
-        .solve_with_constraint(
-            &[],
-            vec![
-            LitVec::from([x, !y]),
-            LitVec::from([!x, y]),
-            LitVec::from([xn, yn]),
-            LitVec::from([!xn, !yn]),
-            ],
-        )
+    !base_slv.solve(&[!xn, yn])
 }
 
 fn init_simulation(ts: &Transys, num_pattern: usize) -> VarMap<BitVec> {
@@ -69,79 +71,154 @@ fn init_simulation(ts: &Transys, num_pattern: usize) -> VarMap<BitVec> {
         sim[Var::CONST].push(false);
         rng = slv.rng;
     }
+
+    // filter singletons
+    let mut cand: HashMap<BitVec, bool> = HashMap::default();
+    cand.insert(sim[Var::CONST].clone(), true);
+    for &v in ts.latch.iter() {
+        if let Some(c) = cand.get_mut(&sim[v]) {
+            *c = false;
+        } else if let Some(c) = cand.get_mut(&!&sim[v]) {
+            *c = false;
+        } else {
+            cand.insert(sim[v].clone(), true);
+        }
+    }
+    for &v in ts.latch.iter() {
+        // doesn't exist y where x = y or !y <=> x gets inserted once with true
+        // exists y where x = y <=> the latter of x,y turns common entry false
+        // exists y where x = !y <=> the earlier of x,y is turned false,
+        // the latter of x,y never gets inserted (aka. None)
+        if *cand.get(&sim[v]).unwrap_or(&false) {
+            sim[v].clear();
+        }
+    }
     sim
 }
 
-pub struct ToyScorr {
-    ts: Transys,
-    cfg: PreprocConfig,
+#[allow(dead_code)]
+fn rt_simulation(ts: &Transys, sim: &mut VarMap<BitVec>, nr_patt: usize) {
+    fn assign(sim: &VarMap<BitVec>, idx: usize, vars: &[Var]) -> LitVec {
+        vars.iter().map(|&v| v.lit().not_if(!sim[v].get(idx))).collect()
+    }
+    let consider: Vec<_> = ts.latch().filter(|v| !sim[*v].is_empty()).collect();
+    // HELP: let domain: Vec<_> = consider.iter().map(|&v| ts.next(v.lit()).var()).collect();
+    let domain: Vec<_> = ts.next.values().map(|l| l.var()).collect();
+    let init_len = sim[Var::CONST].len();
+    let mut slv = DagCnfSolver::new(&ts.rel);
+    slv.use_phase_saving = false;
+    for cls in ts.constraint() { slv.add_clause(&cls.cube()); }
+    for i in 0..init_len {
+        let block = !assign(sim, i, &consider);
+        let block = ts.lits_next(block.iter());
+        slv.add_clause(&block);
+    }
+
+    fn dfs(
+        ts: &Transys,
+        sim: &mut VarMap<BitVec>,
+        slv: &mut DagCnfSolver,
+        consider: &[Var],
+        domain: &[Var],
+        nr_patt: usize,
+        from: usize,
+    ) {
+        let assump = assign(sim, from, consider);
+        if sim[Var::CONST].len() >= nr_patt { return; }
+        // Some(5) limit is usually hit deep inside DFS when most assignments
+        // in current exploration is blocked. At this time, better get off
+        // and try other, shallower pre-image patterns :D
+        if !slv
+            .solve_with_param(&assump, vec![], domain.iter().copied(), Some(5))
+            .unwrap_or(false)
+        {
+            return;
+        }
+        sim[Var::CONST].push(false);
+        let mut block = LitVec::new();
+        for &v in consider {
+            let n = ts.next(v.lit());
+            let va = slv.sat_value(n).unwrap();
+            let na = slv.sat_value_lit(n.var()).unwrap();
+            sim[v].push(va);
+            block.push(!na);
+        }
+        slv.add_clause(&block);
+        dfs(ts, sim, slv, consider, domain, nr_patt, sim[Var::CONST].len() - 1);
+    }
+
+    for from in 0..init_len {
+        if sim[Var::CONST].len() >= nr_patt { return; }
+        dfs(ts, &mut *sim, &mut slv, &consider, &domain, nr_patt, from);
+    }
 }
 
-impl ToyScorr {
-    pub fn new(ts: Transys, cfg: &PreprocConfig) -> Self {
-        Self {
-            ts,
-            cfg: cfg.clone(),
+pub fn toy_scorr(model:PathBuf, output:PathBuf) -> (Transys, Restore) {
+    let model = model.canonicalize().unwrap();
+    let mut ts = AigFrontend::new(Aig::from_file(&model)).ts();
+    println!("original ts: {}", ts.statistic());
+    let mut rst = Restore::new(&ts);
+    ts.simplify(&mut rst);
+    println!("trivial simplified ts: {}", ts.statistic());
+    let sim = init_simulation(&ts, 32);
+    println!(
+        "init-simulated {} patterns for {} / {} latches into {}",
+        sim[Var::CONST].len(),
+        ts.latch.iter().filter(|v| !sim[**v].is_empty()).count(),
+        ts.latch.len(), output.display()
+    );
+    // let mut w = BufWriter::new(File::create(output).unwrap());
+    // for l in ts.latch.iter().filter(|v| !sim[**v].is_empty()) {
+    //     writeln!(&mut w, "{l}: {}", sim[*l]).unwrap();
+    // }
+
+    let mut latch: Vec<_> = ts.latch().filter(|v| !sim[*v].is_empty()).collect();
+    latch.sort(); // so that small ID becomes class representitive
+    let mut cand: HashMap<BitVec, LitVec> = HashMap::default();
+    cand.insert(sim[Var::CONST].clone(), LitVec::from([Lit::constant(false)]));
+    for &v in latch.iter() {
+        let l = v.lit();
+        if let Some(c) = cand.get_mut(&sim[v]) {
+            c.push(l);
+        } else if let Some(c) = cand.get_mut(&!&sim[v]) {
+            c.push(!l);
+        } else {
+            cand.insert(sim[v].clone(), LitVec::from([l]));
+        }
+    }
+    cand.retain(|_, eqc| eqc.len() > 1);
+    let mut replace = VarLMap::new();
+    for eqc in cand.values() {
+        let repr = eqc[0];
+        for &m in eqc.iter().skip(1) {
+            replace.insert_lit(m, repr);
         }
     }
 
-    pub fn run(mut self, _model: &Path, _output: &Path) -> anyhow::Result<(Transys, Restore)> {
-        info!("original ts: {}", self.ts.statistic());
-        let mut rst = Restore::new(&self.ts);
-        if self.cfg.preproc {
-            self.ts.simplify(&mut rst);
-            info!("trivial simplified ts: {}", self.ts.statistic());
-        }
-        let nr = AtomicUsize::new(0);
-
-        thread::scope(|scope| {
-            let ts = &self.ts;
-            let mut workers = Vec::with_capacity(48);
-            for tid in 0..48 {
-                let nr = &nr;
-                workers.push(scope.spawn(move || {
-                    let mut ind_slv = DagCnfSolver::new(&ts.rel);
-                    let mut init_slv = DagCnfSolver::new(&ts.rel);
-                    for c in ts.constraint.iter() {
-                        ind_slv.add_clause(&[*c]);
-                        init_slv.add_clause(&[*c]);
-                    }
-                    ts.load_init(&mut init_slv);
-                    for i in (tid..ts.latch.len()).step_by(48) {
-                        let x = ts.latch[i].lit();
-                        for j in (i + 1)..ts.latch.len() {
-                            let y = ts.latch[j].lit();
-                            if check_scorr(&mut init_slv, &mut ind_slv, &ts, x, y) {
-                                info!("{x} == {y}");
-                                nr.fetch_add(1, Ordering::Relaxed);
-                                break;
-                            }
-                            if check_scorr(&mut init_slv, &mut ind_slv, &ts, x, !y) {
-                                info!("{x} == !{y}");
-                                nr.fetch_add(1, Ordering::Relaxed);
-                                break;
-                            }
-                        }
-                    }
-                }));
+    // Construct base solver
+    let mut rel = ts.rel.clone();
+    rel.replace(&replace);
+    let mut base_slv = DagCnfSolver::new(&rel);
+    // safer to pass constraint unit-clauses through mapper as well
+    for c in ts.constraint().map(|c| replace.map_lit(c).unwrap_or(c)) {
+        base_slv.add_clause(&[c]);
+    }
+    println!("built base solver with {} eqv classes", cand.len());
+    let mut nr_eq = 0;
+    let mut nr_neq = 0;
+    for eqc in cand.values() {
+        let repr = eqc[0];
+        for &m in eqc.iter().skip(1) {
+            if check_scorr(&mut base_slv, &ts, &replace, repr, m) {
+                // println!("{repr} == {m}");
+                nr_eq += 1;
+            } else {
+                // println!("{repr} != {m}");
+                nr_neq += 1;
             }
-            workers
-                .into_iter()
-                .map(|worker| worker.join().unwrap())
-                .collect::<Vec<_>>()
-        });
-        info!(
-            "{} latches eliminated by full 1-ind sweep",
-            nr.load(Ordering::Relaxed)
-        );
-
-        // let init = init_simulation(&self.ts, 64);
-        // info!(
-        //     "toy-scorr: init simulation produced {} patterns for {} / {} latches",
-        //     init[Var::CONST].len(),
-        //     self.ts.latch.iter().filter(|v| !init[**v].is_empty()).count(),
-        //     self.ts.latch.len(),
-        // );
-        Ok((self.ts, rst))
+        }
     }
+    println!("base sweep proved {nr_eq}, disproved {nr_neq}");
+
+    (ts, rst)
 }

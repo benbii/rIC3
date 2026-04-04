@@ -1,11 +1,10 @@
 mod check;
 mod common;
 mod preprocess;
-mod toy_scorr;
 
-use crate::cli::{check::CheckConfig, preprocess::PreprocessConfig, toy_scorr::ToyScorrConfig};
+use crate::cli::{check::CheckConfig, preprocess::PreprocessConfig};
 use clap::{Parser, Subcommand};
-use rIC3::config::EngineConfig;
+use rIC3::{config::EngineConfig, transys};
 
 /// rIC3 Hardware Formal Verification Tool
 #[derive(Parser, Debug, Clone)]
@@ -39,7 +38,7 @@ pub enum Commands {
     /// toy playground for scorr experiments
     ToyScorr {
         #[command(flatten)]
-        cfg: ToyScorrConfig,
+        cfg: PreprocessConfig,
     },
 }
 
@@ -48,6 +47,9 @@ pub(crate) fn cli_main() -> anyhow::Result<i32> {
     match cli.command {
         Commands::Check { chk, cfg } => check::check(chk, cfg),
         Commands::Preprocess { pp } => preprocess::preprocess(pp),
-        Commands::ToyScorr { cfg } => toy_scorr::toy_scorr(cfg),
+        Commands::ToyScorr { cfg } => {
+            let _ = transys::toy_scorr::toy_scorr(cfg.model, cfg.output);
+            Ok(0)
+        }
     }
 }
