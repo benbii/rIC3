@@ -301,7 +301,7 @@ impl DagCnf {
 
     pub fn replace(&mut self, map: &VarLMap) {
         for (old, new) in map.iter() {
-            assert!(*old > new.var());
+            debug_assert!(*old > new.var());
         }
 
         for v in VarRange::new_inclusive(Var::CONST, self.max_var) {

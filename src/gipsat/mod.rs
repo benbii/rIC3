@@ -258,13 +258,8 @@ impl DagCnfSolver {
         self.solve_with_param(assumps, constraint, empty::<Var>(), Some(limit))
     }
 
-    pub fn solve_with_domain(
-        &mut self,
-        assumps: &[Lit],
-        domain: impl Iterator<Item = Var>,
-    ) -> bool {
-        self.solve_with_param(assumps, vec![], domain, None)
-            .unwrap()
+    pub fn solve_with_domain(&mut self, assump: &[Lit], domain: &[Var]) -> bool {
+        self.solve_with_param(assump, vec![], domain.iter().copied(), None).unwrap()
     }
 
     #[inline]

@@ -128,7 +128,7 @@ impl Scorr {
                 if sim[Var::CONST].len() >= num_word * BitVec::WORD_SIZE {
                     return sim;
                 }
-                if !slv.solve_with_domain(&assump, domain.iter().copied()) {
+                if !slv.solve_with_domain(&assump, &domain) {
                     break;
                 }
                 sim[Var::CONST].push(false);
