@@ -42,6 +42,6 @@ cmake = "0.1.50"
 opt-level = 3
 
 [profile.release]
-# lto = true
+lto = "thin"
 panic = "abort"
 strip = true

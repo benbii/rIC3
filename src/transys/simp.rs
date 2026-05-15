@@ -113,22 +113,23 @@ impl Transys {
 
     pub fn simplify(&mut self, rst: &mut Restore) {
         self.coi_refine(rst);
+        info!("coi refine run A: {}", self.statistic());
         let frozens = self.frozens();
         self.rel = self.rel.simplify(frozens.iter().copied());
+        info!("simplify: {}", self.statistic());
         self.coi_refine(rst);
+        info!("coi refine run B: {}", self.statistic());
         self.constraint.retain(|l| !l.is_constant(true));
         self.constraint.sort();
         self.constraint.dedup();
         self.rearrange(rst);
+        info!("rearrange: {}", self.statistic());
     }
-}
 
-impl Transys {
     pub fn preproc(&self, cfg: &PreprocConfig, mut rst: Restore) -> (Self, Restore) {
         let mut ts = self.clone();
         if cfg.preproc {
             ts.simplify(&mut rst);
-            info!("trivial simplified ts: {}", ts.statistic());
             if cfg.scorr {
                 let scorr = Scorr::new(ts, cfg, rst);
                 (ts, rst) = scorr.scorr();

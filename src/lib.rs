@@ -336,11 +336,6 @@ impl Lit {
     }
 
     #[inline]
-    pub fn cube(&self) -> LitVec {
-        LitVec::from([*self])
-    }
-
-    #[inline]
     pub fn map_var(&self, map: impl Fn(Var) -> Var) -> Self {
         Self::new(map(self.var()), self.polarity())
     }

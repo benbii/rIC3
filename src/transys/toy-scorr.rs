@@ -8,7 +8,7 @@ use crate::{
 use ahash::HashMap;
 use logicrs::bitvec::BitVec;
 use logicrs::{satif::Satif, LitVec, Var, VarLMap, VarMap};
-use rand::{rngs::StdRng, seq::SliceRandom, SeedableRng};
+use rand::{rngs::StdRng, SeedableRng};
 use std::{iter::zip, path::PathBuf};
 
 pub fn toy_scorr(model: PathBuf, _output: PathBuf) -> (Transys, Restore) {
@@ -19,37 +19,61 @@ pub fn toy_scorr(model: PathBuf, _output: PathBuf) -> (Transys, Restore) {
     ts.simplify(&mut rst);
     println!("trivial simplified ts: {}", ts.statistic());
 
-    // Step 0: run init simulation once
-    let mut rng = StdRng::seed_from_u64(12345678);
+    // Step 0: run simulation once
+    // seed exactly one init state
     let mut sim: VarMap<BitVec> = VarMap::new_with(ts.max_var());
-    let mut latch_shuf = ts.latch.clone();
-    while sim[Var::CONST].len() < 32 {
-        latch_shuf.shuffle(&mut rng);
-        let mut slv = DagCnfSolver::new(&ts.rel);
-        slv.rng = rng;
-        // Disabling phase saving not needed. One brand new solver per iter after all
-        // slv.use_phase_saving = false;
-        for cls in ts.constraint() {
-            slv.add_clause(&cls.cube());
+    let mut slv = DagCnfSolver::new(&ts.rel);
+    for cls in ts.constraint() {
+        slv.add_clause(&[cls]);
+    }
+    ts.load_init(&mut slv);
+    for &v in &ts.latch {
+        if ts.init(v).is_none() {
+            slv.add_clause(&[!v.lit()]);
         }
-        ts.load_init(&mut slv);
-        // Give all latches a concrete value
-        // HACK: need a non-empty `assump` to ensure assignment on all of `domain`
-        if !slv.solve_with_domain(&[Lit::constant(true)], &latch_shuf) {
-            break;
+    }
+    if !slv.solve_with_domain(&[Lit::constant(true)], &ts.latch) {
+        return (ts, rst); // not a single state satisfying init; bail out
+    }
+    sim[Var::CONST].push(false);
+    for &v in &ts.latch {
+        sim[v].push(slv.sat_value(v.lit()).unwrap());
+    }
+
+    // generate the rest of patterns by transition solving, not load_init
+    let mut slv = DagCnfSolver::new(&ts.rel);
+    slv.use_phase_saving = false;
+    for c in ts.constraint() {
+        slv.add_clause(&[c]);
+    }
+    let next_lits: Vec<Lit> = ts.latch.iter().map(|&v| ts.next(v.lit())).collect();
+    let domain: Vec<Var> = next_lits.iter().map(|l| l.var()).collect();
+    let mut from = 0;
+    while sim[Var::CONST].len() < 64 {
+        let assump = ts.latch.iter().map(|&v| v.lit().not_if(!sim[v].get(from)));
+        let assump: LitVec = assump.collect();
+        if !slv.solve_with_domain(&assump, &domain) {
+            // no more reachable states from current assignment! Back off
+            if from == 0 { break; }
+            from -= 1;
+            continue;
         }
-        for v in latch_shuf.iter() {
-            sim[*v].push(slv.sat_value(v.lit()).unwrap());
-        }
+        from = sim[Var::CONST].len(); // dfs
         sim[Var::CONST].push(false);
-        rng = slv.rng;
+        // essentially "do not give me a latch state I already sampled"
+        let mut block = Vec::with_capacity(ts.latch.len());
+        for (&v, &n) in zip(ts.latch.iter(), next_lits.iter()) {
+            sim[v].push(slv.sat_value(n).unwrap());
+            block.push(!slv.sat_value_lit(n.var()).unwrap());
+        }
+        slv.add_clause(&block);
     }
 
     let mut rng = StdRng::seed_from_u64(123456789);
     let mut maybe = ts.latch.clone();
     maybe.sort(); // so that small ID becomes class representitive
     let mut replace = VarLMap::new();
-    let mut prevround_simsz = 0;
+    let mut prevround_simsz = usize::MAX;
     // A SAT pushing sim trace length **will always** split classes further because in the trace
     // x != y, causing the class containing x and y to split, so progress are always made
     while prevround_simsz != sim[Var::CONST].len() {
@@ -125,6 +149,9 @@ pub fn toy_scorr(model: PathBuf, _output: PathBuf) -> (Transys, Restore) {
                     continue; // x == y under current assumption :D
                 }
                 sim[Var::CONST].push(false);
+                // if sim[Var::CONST].len() % 128 == 0 {
+                    // println!("{} patterns", sim[Var::CONST].len());
+                // }
                 for (l, ln) in zip(maybe.iter(), nxt_maybe.iter()) {
                     let ln = replace.map_lit(*ln).unwrap_or(*ln);
                     sim[*l].push(slv.sat_value(ln).unwrap());
@@ -135,78 +162,6 @@ pub fn toy_scorr(model: PathBuf, _output: PathBuf) -> (Transys, Restore) {
         rng = slv.rng; // so that solver rng does not restart with 0
     }
     ts.replace(&replace, &mut rst);
+    println!("toy scorr'd ts: {}", ts.statistic());
     return (ts, rst);
-}
-
-#[allow(dead_code)]
-fn rt_simulation(ts: &Transys, sim: &mut VarMap<BitVec>, nr_patt: usize) {
-    fn assign(sim: &VarMap<BitVec>, idx: usize, vars: &[Var]) -> LitVec {
-        vars.iter()
-            .map(|&v| v.lit().not_if(!sim[v].get(idx)))
-            .collect()
-    }
-    let consider: Vec<_> = ts.latch().filter(|v| !sim[*v].is_empty()).collect();
-    // HELP: let domain: Vec<_> = consider.iter().map(|&v| ts.next(v.lit()).var()).collect();
-    let domain: Vec<_> = ts.next.values().map(|l| l.var()).collect();
-    let init_len = sim[Var::CONST].len();
-    let mut slv = DagCnfSolver::new(&ts.rel);
-    slv.use_phase_saving = false;
-    for cls in ts.constraint() {
-        slv.add_clause(&cls.cube());
-    }
-    for i in 0..init_len {
-        let block = !assign(sim, i, &consider);
-        let block = ts.lits_next(block.iter());
-        slv.add_clause(&block);
-    }
-
-    fn dfs(
-        ts: &Transys,
-        sim: &mut VarMap<BitVec>,
-        slv: &mut DagCnfSolver,
-        consider: &[Var],
-        domain: &[Var],
-        nr_patt: usize,
-        from: usize,
-    ) {
-        let assump = assign(sim, from, consider);
-        if sim[Var::CONST].len() >= nr_patt {
-            return;
-        }
-        // Some(5) limit is usually hit deep inside DFS when most assignments
-        // in current exploration is blocked. At this time, better get off
-        // and try other, shallower pre-image patterns :D
-        if !slv
-            .solve_with_param(&assump, vec![], domain.iter().copied(), Some(5))
-            .unwrap_or(false)
-        {
-            return;
-        }
-        sim[Var::CONST].push(false);
-        let mut block = LitVec::new();
-        for &v in consider {
-            let n = ts.next(v.lit());
-            let va = slv.sat_value(n).unwrap();
-            let na = slv.sat_value_lit(n.var()).unwrap();
-            sim[v].push(va);
-            block.push(!na);
-        }
-        slv.add_clause(&block);
-        dfs(
-            ts,
-            sim,
-            slv,
-            consider,
-            domain,
-            nr_patt,
-            sim[Var::CONST].len() - 1,
-        );
-    }
-
-    for from in 0..init_len {
-        if sim[Var::CONST].len() >= nr_patt {
-            return;
-        }
-        dfs(ts, &mut *sim, &mut slv, &consider, &domain, nr_patt, from);
-    }
 }

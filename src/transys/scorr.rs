@@ -40,7 +40,7 @@ impl Scorr {
     fn init_simulation(&self, num_word: usize) -> VarMap<BitVec> {
         let mut slv = DagCnfSolver::new(&self.ts.rel);
         for cls in self.ts.constraint() {
-            slv.add_clause(&cls.cube());
+            slv.add_clause(&[cls]);
         }
         self.ts.load_init(&mut slv);
         let mut sim: VarMap<BitVec> = VarMap::new_with(self.ts.max_var());
@@ -112,7 +112,7 @@ impl Scorr {
         sim.reserve(self.ts.max_var());
         let mut slv = DagCnfSolver::new(&self.ts.rel);
         for cls in self.ts.constraint() {
-            slv.add_clause(&cls.cube());
+            slv.add_clause(&[cls]);
         }
         for i in 0..init[Var::CONST].len() {
             let block = !assign(init, i, &consider);
