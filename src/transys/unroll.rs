@@ -1,6 +1,6 @@
 use super::Transys;
-use crate::transys::certify::BlWitness;
 use crate::RseedMap as HashMap;
+use crate::transys::certify::BlWitness;
 use logicrs::{Lit, LitMap, LitVec, Var, VarRange, satif::Satif};
 use std::ops::Deref;
 

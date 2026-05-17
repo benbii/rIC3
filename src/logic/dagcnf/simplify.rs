@@ -1,10 +1,10 @@
 use super::DagCnf;
+use crate::RseedSet as HashSet;
 use crate::nckvec::NckVec;
 use crate::{
     LitMap, LitOrdVec, LitVec, LitVvec, Var, VarAssign, VarRange, lemmas_subsume_simplify,
     occur::Occurs,
 };
-use crate::RseedSet as HashSet;
 use log::debug;
 use std::{
     iter::once,

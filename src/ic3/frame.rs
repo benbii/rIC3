@@ -1,5 +1,8 @@
 use super::{IC3, proofoblig::ProofObligation};
-use crate::{gipsat::TransysSolver, transys::TransysCtx};
+use crate::{
+    gipsat::{inductive, new_transys_solver},
+    transys::TransysCtx,
+};
 use logicrs::{Lit, LitOrdVec, LitSet, LitVec, Var, satif::Satif};
 use std::{
     fmt::Write,
@@ -224,7 +227,7 @@ impl IC3 {
             if k == iter_max {
                 return invariants;
             }
-            let mut slv = TransysSolver::new(&self.tsctx);
+            let mut slv = new_transys_solver(&self.tsctx);
             for i in invariants.iter() {
                 slv.add_clause(&!i);
             }
@@ -233,7 +236,7 @@ impl IC3 {
             }
             let mut new_cand = Vec::new();
             for c in cand.iter() {
-                if slv.inductive(c, false) {
+                if inductive(&mut slv, &self.tsctx, c, false) {
                     new_cand.push(c.clone());
                 }
             }

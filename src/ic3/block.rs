@@ -1,3 +1,4 @@
+use crate::gipsat::{inductive, inductive_core};
 use crate::ic3::{IC3, mic::DropVarParameter, proofoblig::ProofObligation};
 use log::debug;
 use logicrs::{LitOrdVec, LitVec, satif::Satif};
@@ -13,8 +14,8 @@ impl IC3 {
     fn push_lemma(&mut self, frame: usize, mut cube: LitVec) -> (usize, LitVec) {
         let start = Instant::now();
         for i in frame + 1..=self.level() {
-            if self.solvers[i - 1].inductive(&cube, true) {
-                cube = self.solvers[i - 1].inductive_core().unwrap_or(cube);
+            if inductive(&mut self.solvers[i - 1], &self.tsctx, &cube, true) {
+                cube = inductive_core(&mut self.solvers[i - 1], &self.tsctx, &cube).unwrap_or(cube);
             } else {
                 return (i, cube);
             }
@@ -23,8 +24,15 @@ impl IC3 {
         (self.level() + 1, cube)
     }
 
-    fn generalize(&mut self, mut po: ProofObligation, parameter: DropVarParameter) -> bool {
-        let Some(mut mic) = self.solvers[po.frame - 1].inductive_core() else {
+    fn generalize(
+        &mut self,
+        mut po: ProofObligation,
+        core_cube: &LitVec,
+        parameter: DropVarParameter,
+    ) -> bool {
+        let Some(mut mic) =
+            inductive_core(&mut self.solvers[po.frame - 1], &self.tsctx, core_cube)
+        else {
             po.frame += 1;
             self.add_obligation(po.clone());
             return self.add_lemma(po.frame - 1, po.state.as_litvec().clone(), false, Some(po));
@@ -80,7 +88,7 @@ impl IC3 {
             }
 
             let blocked_start = Instant::now();
-            let blocked = self.blocked_with_ordered(po.frame, &po.state, false);
+            let (blocked, ordered_cube) = self.blocked_with_ordered(po.frame, &po.state, false);
             self.statistic.block.blocked_time += blocked_start.elapsed();
             if !blocked {
                 let (model, inputs) = self.get_pred(po.frame, true);
@@ -119,7 +127,7 @@ impl IC3 {
             } else {
                 self.default_mic
             };
-            if self.generalize(po, parameter) {
+            if self.generalize(po, &ordered_cube, parameter) {
                 return BlockResult::Proved;
             }
             debug!("{}", self.frame.statistic(false));
@@ -146,14 +154,20 @@ impl IC3 {
         }
         *limit -= 1;
         loop {
-            if self.blocked_with_ordered_with_constrain(
+            let (blocked, ordered_cube) = self.blocked_with_ordered_with_constrain(
                 frame,
                 &lemma,
                 false,
                 true,
                 constraint.to_vec(),
-            ) {
-                let mut mic = self.solvers[frame - 1].inductive_core().unwrap();
+            );
+            if blocked {
+                let mut mic = inductive_core(
+                    &mut self.solvers[frame - 1],
+                    &self.tsctx,
+                    &ordered_cube,
+                )
+                .unwrap();
                 mic = self.mic(frame, mic, constraint, parameter);
                 let (frame, mic) = self.push_lemma(frame, mic);
                 self.add_lemma(frame - 1, mic, false, None);

@@ -1,8 +1,8 @@
 use super::Term;
 use super::op::{OptLevel, SimplifyCtx};
+use crate::RseedMap as HashMap;
 use crate::fol::TermResult;
 use crate::fol::op::{DynOp, OpTrait};
-use crate::RseedMap as HashMap;
 
 fn op_simplify(ctx: &SimplifyCtx, op: DynOp, terms: &[Term]) -> TermResult {
     op.simplify(ctx, terms).or_else(|| {

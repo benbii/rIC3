@@ -6,9 +6,9 @@ mod simulate;
 mod test;
 
 use super::term::Term;
+use crate::RseedMap as HashMap;
 use crate::fol::{Sort, TermResult, TermVec, Value};
 use crate::{DagCnf, Lit};
-use crate::RseedMap as HashMap;
 pub use core_op::*;
 use lazy_static::lazy_static;
 pub use other_op::*;

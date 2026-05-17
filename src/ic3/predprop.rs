@@ -1,5 +1,5 @@
 use crate::{
-    gipsat::TransysSolver,
+    gipsat::{DagCnfSolver, new_transys_solver},
     ic3::{IC3, proofoblig::ProofObligation},
     transys::{Transys, TransysCtx, lift::TsLift, unroll::TransysUnroll},
 };
@@ -11,7 +11,7 @@ use std::time::Instant;
 pub struct PredProp {
     bts: Transys,
     tsctx: Box<TransysCtx>,
-    slv: TransysSolver,
+    slv: DagCnfSolver,
     lift: TsLift,
     inn: bool,
 }
@@ -28,7 +28,7 @@ impl PredProp {
         }
         bts.constraint.extend(!&uts.ts.bad);
         let tsctx = Box::new(bts.ctx());
-        let slv = TransysSolver::new(&tsctx);
+        let slv = new_transys_solver(&tsctx);
         let lift = TsLift::new(uts);
         Self {
             bts,
@@ -45,7 +45,7 @@ impl PredProp {
 
     pub fn extend<'a>(&'a mut self, lemmas: impl IntoIterator<Item = &'a LitVec>) {
         self.tsctx = Box::new(self.bts.ctx());
-        self.slv = TransysSolver::new(&self.tsctx);
+        self.slv = new_transys_solver(&self.tsctx);
         for l in lemmas.into_iter() {
             self.slv.add_clause(&!l);
         }
@@ -60,12 +60,23 @@ impl IC3 {
         }
         let bad = self.tsctx.bad.clone();
         let id = self.prop;
-        let mut slv = TransysSolver::new(&self.tsctx);
+        let mut slv = new_transys_solver(&self.tsctx);
         for init in self.tsctx.init.clone() {
             slv.add_clause(&init);
         }
         if slv.solve(&[self.tsctx.bad[id]]) {
-            let (input, bad) = slv.trivial_pred();
+            let mut input = LitVec::new();
+            for i in self.tsctx.input() {
+                if let Some(v) = slv.sat_value_lit(i) {
+                    input.push(v);
+                }
+            }
+            let mut bad = LitVec::new();
+            for l in self.tsctx.latch() {
+                if let Some(v) = slv.sat_value_lit(l) {
+                    bad.push(v);
+                }
+            }
             self.add_obligation(ProofObligation::new(
                 0,
                 LitOrdVec::new(bad),
@@ -79,7 +90,7 @@ impl IC3 {
         self.tsctx.constraint.extend(!&bad);
         self.ts.constraint.extend(!bad);
         self.lift = TsLift::new(TransysUnroll::new(&self.ts));
-        self.inf_solver = TransysSolver::new(&self.tsctx);
+        self.inf_solver = new_transys_solver(&self.tsctx);
         true
     }
 

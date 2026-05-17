@@ -1,4 +1,5 @@
 use super::IC3;
+use crate::gipsat::{inductive, inductive_with_constrain};
 use log::trace;
 use logicrs::{Lit, LitVec, satif::Satif};
 use rand::seq::SliceRandom;
@@ -25,10 +26,16 @@ impl IC3 {
         frame: usize,
         cube: &LitVec,
         strengthen: bool,
-    ) -> bool {
+    ) -> (bool, LitVec) {
         let mut ordered_cube = cube.clone();
         self.activity.sort_by_activity(&mut ordered_cube, false);
-        self.solvers[frame - 1].inductive(&ordered_cube, strengthen)
+        let blocked = inductive(
+            &mut self.solvers[frame - 1],
+            &self.tsctx,
+            &ordered_cube,
+            strengthen,
+        );
+        (blocked, ordered_cube)
     }
 
     pub(super) fn blocked_with_ordered_with_constrain(
@@ -38,16 +45,23 @@ impl IC3 {
         ascending: bool,
         strengthen: bool,
         constraint: Vec<LitVec>,
-    ) -> bool {
+    ) -> (bool, LitVec) {
         let mut ordered_cube = cube.clone();
         self.activity.sort_by_activity(&mut ordered_cube, ascending);
-        self.solvers[frame - 1].inductive_with_constrain(&ordered_cube, strengthen, constraint)
+        let blocked = inductive_with_constrain(
+            &mut self.solvers[frame - 1],
+            &self.tsctx,
+            &ordered_cube,
+            strengthen,
+            constraint,
+        );
+        (blocked, ordered_cube)
     }
 
     pub(super) fn get_pred(&mut self, frame: usize, strengthen: bool) -> (LitVec, Vec<LitVec>) {
         let start = Instant::now();
         let solver = &mut self.solvers[frame - 1];
-        let mut cls: LitVec = solver.get_assump().clone();
+        let mut cls: LitVec = solver.assump.clone();
         let mut cst = self.ts.constraint.clone();
         cls.retain(|l| self.localabs.refine_has(l.var()));
         cst.retain(|l| self.localabs.refine_has(l.var()));

@@ -1,9 +1,9 @@
 use super::op::{Add, And, Ite, Neg, Not, Or, Sub, Xor};
 use super::{op::DynOp, sort::Sort};
+use crate::RseedMap as HashMap;
 use crate::bitvec::BitVec;
 use crate::fol::op::{Concat, Slice};
 use crate::fol::{TermVec, Value, op};
-use crate::RseedMap as HashMap;
 use std::cell::UnsafeCell;
 use std::fmt::{self, Debug};
 use std::hash;

@@ -1,9 +1,9 @@
+use crate::{RseedMap as HashMap, RseedSet as HashSet};
 use crate::{
     config::PreprocConfig,
     gipsat::DagCnfSolver,
     transys::{Transys, certify::Restore},
 };
-use crate::{RseedMap as HashMap, RseedSet as HashSet};
 use log::{debug, info, trace};
 use logicrs::{
     Lit, LitVec, Var, VarLMap, VarMap, VarRange, bitvec::BitVec, simplify::DagCnfSimplify,

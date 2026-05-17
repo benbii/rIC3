@@ -1,5 +1,5 @@
-use crate::{Lit, Var, VarRange};
 use crate::RseedMap as HashMap;
+use crate::{Lit, Var, VarRange};
 use serde::{Deserialize, Serialize};
 use std::{
     fmt::Debug,

@@ -1,9 +1,9 @@
 use super::Transys;
+use crate::RseedSet as HashSet;
 use crate::{
     config::PreprocConfig,
     transys::{certify::Restore, frts::FrTs, scorr::Scorr},
 };
-use crate::RseedSet as HashSet;
 use log::{debug, info};
 use logicrs::{Lit, Var, VarRange};
 

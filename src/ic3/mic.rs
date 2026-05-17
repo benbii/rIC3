@@ -1,5 +1,6 @@
 use super::IC3;
 use crate::RseedSet as HashSet;
+use crate::gipsat::inductive_core;
 use log::trace;
 use logicrs::{Lit, LitOrdVec, LitVec, satif::Satif};
 use rand::{Rng, seq::SliceRandom};
@@ -51,14 +52,18 @@ impl IC3 {
                 return None;
             }
             self.statistic.num_down_sat += 1;
-            if self.blocked_with_ordered_with_constrain(
+            let (blocked, ordered_cube) = self.blocked_with_ordered_with_constrain(
                 frame,
                 &cube,
                 false,
                 true,
                 constraint.to_vec(),
-            ) {
-                return Some(self.solvers[frame - 1].inductive_core().unwrap());
+            );
+            if blocked {
+                return Some(
+                    inductive_core(&mut self.solvers[frame - 1], &self.tsctx, &ordered_cube)
+                        .unwrap(),
+                );
             }
             let mut ret = false;
             let mut cube_new = LitVec::new();
@@ -112,8 +117,12 @@ impl IC3 {
                 return None;
             }
             self.statistic.num_down_sat += 1;
-            if self.blocked_with_ordered(frame, &cube, true) {
-                return Some(self.solvers[frame - 1].inductive_core().unwrap());
+            let (blocked, ordered_cube) = self.blocked_with_ordered(frame, &cube, true);
+            if blocked {
+                return Some(
+                    inductive_core(&mut self.solvers[frame - 1], &self.tsctx, &ordered_cube)
+                        .unwrap(),
+                );
             }
             for lit in cube.iter() {
                 if keep.contains(lit) && !self.solvers[frame - 1].sat_value(*lit).is_some_and(|v| v)

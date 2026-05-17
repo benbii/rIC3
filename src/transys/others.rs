@@ -1,6 +1,6 @@
 use super::Transys;
-use crate::transys::certify::Restore;
 use crate::RseedMap as HashMap;
+use crate::transys::certify::Restore;
 use logicrs::{Lit, LitVec, Var, VarLMap, VarRange};
 use std::mem::take;
 

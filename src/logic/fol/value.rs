@@ -1,8 +1,8 @@
+use crate::RseedMap as HashMap;
 use crate::{
     Lbool, LboolVec,
     fol::{Sort, Term},
 };
-use crate::RseedMap as HashMap;
 use enum_as_inner::EnumAsInner;
 
 #[derive(Clone, Debug, EnumAsInner)]

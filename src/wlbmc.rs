@@ -1,9 +1,9 @@
+use crate::RseedMap as HashMap;
 use crate::{
     Engine, McResult, McWitness,
     bitwuzla::Bitwuzla,
     wltransys::{WlTransys, unroll::WlTransysUnroll},
 };
-use crate::RseedMap as HashMap;
 use clap::Args;
 use log::info;
 use serde::{Deserialize, Serialize};

@@ -49,7 +49,7 @@ pub struct DagCnfSolver {
     constrain_act: Var,
     dc: DagCnf,
     trivial_unsat: bool,
-    assump: LitVec,
+    pub assump: LitVec,
     statistic: SolverStatistic,
     pub use_phase_saving: bool,
     pub rng: StdRng,

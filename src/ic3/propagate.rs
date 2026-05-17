@@ -1,3 +1,4 @@
+use crate::gipsat::{inductive, inductive_core};
 use crate::ic3::{Frame, IC3};
 // use log::error;
 use logicrs::{LitOrdVec, LitVec};
@@ -18,10 +19,12 @@ impl IC3 {
                     continue;
                 }
                 for ctp in 0..3 {
-                    if self.blocked_with_ordered(frame_idx + 1, &lemma.0, false) {
-                        let core = self.solvers[frame_idx]
-                            .inductive_core()
-                            .unwrap_or(lemma.0.as_litvec().clone());
+                    let (blocked, ordered_cube) =
+                        self.blocked_with_ordered(frame_idx + 1, &lemma.0, false);
+                    if blocked {
+                        let core =
+                            inductive_core(&mut self.solvers[frame_idx], &self.tsctx, &ordered_cube)
+                                .unwrap_or(ordered_cube);
                         if let Some(po) = &mut lemma.1
                             && po.frame < frame_idx + 2
                             && self.obligations.remove(po)
@@ -38,9 +41,11 @@ impl IC3 {
                     }
                     let (ctp, _) = self.get_pred(frame_idx + 1, false);
                     if !self.tsctx.cube_subsume_init(&ctp)
-                        && self.solvers[frame_idx - 1].inductive(&ctp, true)
+                        && inductive(&mut self.solvers[frame_idx - 1], &self.tsctx, &ctp, true)
                     {
-                        let core = self.solvers[frame_idx - 1].inductive_core().unwrap();
+                        let core =
+                            inductive_core(&mut self.solvers[frame_idx - 1], &self.tsctx, &ctp)
+                                .unwrap();
                         let mic = self.mic(frame_idx, core, &[], Default::default());
                         if self.add_lemma(frame_idx, mic, false, None) {
                             return true;
@@ -71,7 +76,7 @@ impl IC3 {
         };
         let mut lemma = lastf.swap_remove(lidx);
         loop {
-            if self.inf_solver.inductive(&lemma.0, true) {
+            if inductive(&mut self.inf_solver, &self.tsctx, &lemma.0, true) {
                 if let Some(po) = &mut lemma.1 {
                     self.obligations.remove(po);
                 }
@@ -102,7 +107,7 @@ impl IC3 {
                     |i, _| i == 0,
                 );
                 if !self.propagete_to_inf_rec(lastf, ctp) {
-                // if !self.propagete_to_inf_rec(lastf, ctp, dump_buf, dump) {
+                    // if !self.propagete_to_inf_rec(lastf, ctp, dump_buf, dump) {
                     return false;
                 }
             }
@@ -117,7 +122,7 @@ impl IC3 {
         // let mut dump_buf = Vec::new();
         while let Some(mut lemma) = lastf.pop() {
             loop {
-                if self.inf_solver.inductive(&lemma.0, true) {
+                if inductive(&mut self.inf_solver, &self.tsctx, &lemma.0, true) {
                     if let Some(po) = &mut lemma.1 {
                         self.obligations.remove(po);
                     }

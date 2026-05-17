@@ -1,7 +1,7 @@
 use crate::{
     BlProof, BlWitness, Engine, McProof, McResult, McWitness,
     config::{EngineConfig, PreprocConfig},
-    gipsat::{SolverStatistic, TransysSolver},
+    gipsat::{DagCnfSolver, SolverStatistic, new_transys_solver},
     ic3::{block::BlockResult, localabs::LocalAbs, predprop::PredProp},
     transys::{
         Transys, TransysCtx, certify::Restore, lift::TsLift, preproc_serde::PreprocModel,
@@ -94,8 +94,8 @@ impl Default for IC3Config {
 pub struct IC3 {
     ts: Transys,
     tsctx: Box<TransysCtx>,
-    solvers: Vec<TransysSolver>,
-    inf_solver: TransysSolver,
+    solvers: Vec<DagCnfSolver>,
+    inf_solver: DagCnfSolver,
     lift: TsLift,
     frame: Frames,
     obligations: ProofObligationQueue,
@@ -198,7 +198,7 @@ impl IC3 {
         let tsctx = Box::new(ts.ctx());
         let activity = Activity::new(&tsctx);
         let frame = Frames::new(&tsctx);
-        let inf_solver = TransysSolver::new(&tsctx);
+        let inf_solver = new_transys_solver(&tsctx);
         let lift = TsLift::new(TransysUnroll::new(&ts));
         let localabs = LocalAbs::new(&ts, cfg.abs_cst, cfg.abs_trans);
         Self {

@@ -1,5 +1,5 @@
-use crate::transys::Transys;
 use crate::RseedSet as HashSet;
+use crate::transys::Transys;
 use log::info;
 use logicrs::{LitOrdVec, LitVec, LitVvec, Var, VarMap, VarRange, VarVMap};
 

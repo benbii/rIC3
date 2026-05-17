@@ -1,10 +1,10 @@
 use super::Frontend;
+use crate::RseedMap as HashMap;
 use crate::{
     McProof, McWitness,
     aig::{Aig, AigEdge},
     transys::Transys,
 };
-use crate::RseedMap as HashMap;
 use log::{debug, error, warn};
 use logicrs::{Lbool, Lit, LitVec, Var, VarVMap};
 use std::{fmt::Display, path::Path, process::Command};

@@ -1,4 +1,5 @@
 use super::WlTransys;
+use crate::RseedMap as HashMap;
 use crate::{
     transys::{
         Transys,
@@ -6,7 +7,6 @@ use crate::{
     },
     wltransys::certify::{WlProof, WlWitness},
 };
-use crate::RseedMap as HashMap;
 use logicrs::bitvec::BitVec;
 use logicrs::{
     DagCnf, Lbool, LboolVec, Lit, LitVec, Var,

@@ -1,5 +1,5 @@
-use crate::{gipsat::DagCnfSolver, transys::unroll::TransysUnroll};
 use crate::RseedSet as HashSet;
+use crate::{gipsat::DagCnfSolver, transys::unroll::TransysUnroll};
 use logicrs::{Lit, LitVec, Var, satif::Satif};
 
 pub struct TsLift {

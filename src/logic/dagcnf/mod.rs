@@ -1,8 +1,8 @@
 pub mod simplify;
 mod top;
 
-use crate::{Lit, LitVec, LitVvec, Var, VarLMap, VarMap, VarRange, VarVMap};
 use crate::RseedSet as HashSet;
+use crate::{Lit, LitVec, LitVvec, Var, VarLMap, VarMap, VarRange, VarVMap};
 use serde::{Deserialize, Serialize};
 use std::{
     fmt::Display,

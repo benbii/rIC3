@@ -2,7 +2,6 @@ use super::{
     DagCnfSolver,
     cdb::{CREF_NONE, CRef, ClauseKind},
 };
-use log::trace;
 use logicrs::{Lbool, Lit};
 
 impl DagCnfSolver {

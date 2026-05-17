@@ -1,9 +1,9 @@
+use crate::RseedMap as HashMap;
 use crate::{
     Engine, McProof, McResult, McWitness,
     bitwuzla::Bitwuzla,
     wltransys::{WlTransys, certify::WlProof, unroll::WlTransysUnroll},
 };
-use crate::RseedMap as HashMap;
 use clap::Args;
 use log::info;
 use logicrs::fol::{Sort, Term, op};

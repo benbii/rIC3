@@ -1,8 +1,8 @@
+use crate::RseedMap as HashMap;
 use crate::{
     gipsat::DagCnfSolver,
     transys::{Transys, unroll::TransysUnroll},
 };
-use crate::RseedMap as HashMap;
 use logicrs::{Lit, LitVec, LitVvec, Var, VarVMap, satif::Satif};
 use std::ops::{Deref, DerefMut};
 
