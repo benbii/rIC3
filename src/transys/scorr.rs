@@ -120,7 +120,7 @@ impl Scorr {
             slv.add_clause(&block);
         }
         slv.use_phase_saving = false;
-        let domain: Vec<_> = self.ts.next.values().map(|l| l.var()).collect();
+        let domain: Vec<_> = self.ts.latch().map(|l| self.ts.next(l.lit()).var()).collect();
 
         for from in 0..init[Var::CONST].len() {
             let assump = assign(init, from, &consider);
@@ -210,7 +210,7 @@ impl Scorr {
         }
         let mut scorr = VarLMap::new();
         'm: for x in latch {
-            if let Some(n) = self.ts.init.get(&x)
+            if let Some(n) = self.ts.init(x)
                 && !n.var().is_constant()
             {
                 continue;

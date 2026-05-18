@@ -14,8 +14,8 @@ impl IC3 {
     fn push_lemma(&mut self, frame: usize, mut cube: LitVec) -> (usize, LitVec) {
         let start = Instant::now();
         for i in frame + 1..=self.level() {
-            if inductive(&mut self.solvers[i - 1], &self.tsctx, &cube, true) {
-                cube = inductive_core(&mut self.solvers[i - 1], &self.tsctx, &cube).unwrap_or(cube);
+            if inductive(&mut self.solvers[i - 1], &self.ts, &cube, true) {
+                cube = inductive_core(&mut self.solvers[i - 1], &self.ts, &cube).unwrap_or(cube);
             } else {
                 return (i, cube);
             }
@@ -31,7 +31,7 @@ impl IC3 {
         parameter: DropVarParameter,
     ) -> bool {
         let Some(mut mic) =
-            inductive_core(&mut self.solvers[po.frame - 1], &self.tsctx, core_cube)
+            inductive_core(&mut self.solvers[po.frame - 1], &self.ts, core_cube)
         else {
             po.frame += 1;
             self.add_obligation(po.clone());
@@ -55,7 +55,7 @@ impl IC3 {
             const MAX_ACT_BEFORE_DROP: f64 = 20.0;
 
             // intersects with init; failed if on frame 0
-            if self.tsctx.cube_subsume_init(&po.state) {
+            if self.ts.cube_subsume_init(&po.state) {
                 if self.abs_cst || self.abs_trans {
                     self.add_obligation(po.clone());
                     if self.check_witness_by_bmc(po.depth) {
@@ -146,7 +146,7 @@ impl IC3 {
         if frame == 0 {
             return false;
         }
-        if self.tsctx.cube_subsume_init(&lemma) {
+        if self.ts.cube_subsume_init(&lemma) {
             return false;
         }
         if *limit == 0 {
@@ -164,7 +164,7 @@ impl IC3 {
             if blocked {
                 let mut mic = inductive_core(
                     &mut self.solvers[frame - 1],
-                    &self.tsctx,
+                    &self.ts,
                     &ordered_cube,
                 )
                 .unwrap();

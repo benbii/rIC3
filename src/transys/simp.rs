@@ -5,7 +5,7 @@ use crate::{
     transys::{certify::Restore, frts::FrTs, scorr::Scorr},
 };
 use log::{debug, info};
-use logicrs::{Lit, Var, VarRange};
+use logicrs::{Lit, OptionU32, Var, VarMap, VarRange};
 
 impl Transys {
     pub fn coi_refine(&mut self, rst: &mut Restore) {
@@ -32,14 +32,15 @@ impl Transys {
             }
         }
         while let Some(v) = queue.pop() {
-            if let Some(n) = self.next.get(&v) {
+            if self.is_latch(v) {
+                let n = self.next(v.lit());
                 let nv = n.var();
                 if !mark.contains(&nv) {
                     mark.insert(nv);
                     queue.push(nv);
                 }
             }
-            if let Some(i) = self.init.get(&v) {
+            if let Some(i) = self.init(v) {
                 let iv = i.var();
                 if !mark.contains(&iv) {
                     mark.insert(iv);
@@ -55,8 +56,13 @@ impl Transys {
         }
         for v in self.input.iter().chain(self.latch.iter()) {
             if !mark.contains(v) {
-                self.init.remove(v);
-                self.next.remove(v);
+                let idx: usize = (*v).into();
+                if idx < self.init.len() {
+                    self.init[*v] = OptionU32::NONE;
+                }
+                if idx < self.next.len() {
+                    self.next[*v] = OptionU32::NONE;
+                }
             }
         }
         self.input.retain(|i| mark.contains(i));
@@ -84,27 +90,33 @@ impl Transys {
                 .chain(self.latch.iter().copied()),
         );
         for l in self.latch.iter() {
-            if let Some(i) = self.init.get(l) {
+            if let Some(i) = self.init(*l) {
                 additional.push(i.var());
             }
-            if let Some(n) = self.next.get(l) {
-                additional.push(n.var());
-            }
+            additional.push(self.next(l.lit()).var());
         }
         let domain_map = self.rel.rearrange(additional);
         let map_lit = |l: Lit| Lit::new(domain_map[l.var()], l.polarity());
+        let old_input = self.input.clone();
+        let old_latch = self.latch.clone();
+        let mut init = VarMap::new();
+        let mut next = VarMap::new();
+        for &v in old_input.iter().chain(old_latch.iter()) {
+            if let Some(i) = self.init(v) {
+                let mv = domain_map[v];
+                init.reserve(mv);
+                init[mv] = OptionU32::some(map_lit(i).into());
+            }
+        }
+        for &l in old_latch.iter() {
+            let ml = domain_map[l];
+            next.reserve(ml);
+            next[ml] = OptionU32::some(map_lit(self.next(l.lit())).into());
+        }
         self.input = self.input.iter().map(|v| domain_map[*v]).collect();
         self.latch = self.latch.iter().map(|v| domain_map[*v]).collect();
-        self.init = self
-            .init
-            .iter()
-            .map(|(v, i)| (domain_map[*v], map_lit(*i)))
-            .collect();
-        self.next = self
-            .next
-            .iter()
-            .map(|(v, &n)| (domain_map[*v], map_lit(n)))
-            .collect();
+        self.init = init;
+        self.next = next;
         self.bad = self.bad.map(map_lit);
         self.constraint = self.constraint.map(map_lit);
         self.justice = self.justice.map(map_lit);

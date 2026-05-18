@@ -1,7 +1,7 @@
 use super::{IC3, proofoblig::ProofObligation};
 use crate::{
     gipsat::{inductive, new_transys_solver},
-    transys::TransysCtx,
+    transys::Transys,
 };
 use logicrs::{Lit, LitOrdVec, LitSet, LitVec, Var, satif::Satif};
 use std::{
@@ -19,19 +19,15 @@ pub struct Frames {
 }
 
 impl Frames {
-    pub fn new(ts: &TransysCtx) -> Self {
+    pub fn new(ts: &Transys) -> Self {
         let mut tmp_lit_set = LitSet::new();
-        tmp_lit_set.reserve(ts.max_latch);
+        tmp_lit_set.reserve(ts.latch.iter().copied().max().unwrap_or(Var::CONST));
         Self {
             frames: Default::default(),
             inf: Default::default(),
             early: 1,
             tmp_lit_set,
         }
-    }
-
-    pub fn reserve(&mut self, var: Var) {
-        self.tmp_lit_set.reserve(var);
     }
 
     pub fn trivial_contained<'a>(
@@ -227,7 +223,7 @@ impl IC3 {
             if k == iter_max {
                 return invariants;
             }
-            let mut slv = new_transys_solver(&self.tsctx);
+            let mut slv = new_transys_solver(&self.ts);
             for i in invariants.iter() {
                 slv.add_clause(&!i);
             }
@@ -236,7 +232,7 @@ impl IC3 {
             }
             let mut new_cand = Vec::new();
             for c in cand.iter() {
-                if inductive(&mut slv, &self.tsctx, c, false) {
+                if inductive(&mut slv, &self.ts, c, false) {
                     new_cand.push(c.clone());
                 }
             }

@@ -1,6 +1,4 @@
-mod aux;
 pub mod certify;
-mod ctx;
 pub mod frts;
 pub mod lift;
 mod live;
@@ -12,17 +10,15 @@ pub mod scorr;
 mod simp;
 pub mod unroll;
 
-use crate::{RseedMap as HashMap, RseedSet as HashSet};
-pub use ctx::*;
-use logicrs::{DagCnf, Lit, LitVec, LitVvec, Var, VarVMap, satif::Satif};
+use logicrs::{DagCnf, Lit, LitVec, LitVvec, OptionU32, Var, VarMap, satif::Satif};
 use std::fmt::{self, Display};
 
 #[derive(Default, Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Transys {
     pub input: Vec<Var>,
     pub latch: Vec<Var>,
-    pub next: HashMap<Var, Lit>,
-    pub init: HashMap<Var, Lit>,
+    pub next: VarMap<OptionU32>,
+    pub init: VarMap<OptionU32>,
     /// multiple bads, not single cube
     pub bad: LitVec,
     pub constraint: LitVec,
@@ -60,17 +56,28 @@ impl Transys {
 
     #[inline]
     pub fn is_latch(&self, v: Var) -> bool {
-        self.next.contains_key(&v)
+        let idx: usize = v.into();
+        idx < self.next.len() && self.next[v].is_some()
     }
 
     #[inline]
     pub fn next(&self, lit: Lit) -> Lit {
-        self.next.get(&lit.var()).unwrap().not_if(!lit.polarity())
+        debug_assert!(self.next[lit.var()].is_some());
+        let raw: u32 = *self.next[lit.var()] ^ (!lit.polarity() as u32);
+        Lit::new(Var(raw >> 1), raw & 1 == 0)
     }
 
     #[inline]
     pub fn init(&self, latch: Var) -> Option<Lit> {
-        self.init.get(&latch).copied()
+        let idx: usize = latch.into();
+        if idx >= self.init.len() {
+            return None;
+        }
+        let raw = match self.init[latch] {
+            OptionU32::NONE => return None,
+            raw => *raw,
+        };
+        Some(Lit::new(Var(raw >> 1), raw & 1 == 0))
     }
 
     #[inline]
@@ -90,6 +97,19 @@ impl Transys {
 
     pub fn lits_next<'a>(&self, lits: impl IntoIterator<Item = &'a Lit>) -> LitVec {
         lits.into_iter().map(|l| self.next(*l)).collect()
+    }
+
+    #[inline]
+    pub fn cube_subsume_init(&self, x: &[Lit]) -> bool {
+        for x in x {
+            if let Some(init) = self.init(x.var())
+                && let Some(i) = init.try_constant()
+                && i != x.polarity()
+            {
+                return false;
+            }
+        }
+        true
     }
 
     pub fn inits(&self) -> LitVvec {
@@ -146,37 +166,25 @@ impl Transys {
     #[inline]
     pub fn add_latch(&mut self, latch: Var, init: Option<Lit>, next: Lit) {
         self.latch.push(latch);
-        self.next.insert(latch, next);
+        self.next.reserve(latch);
+        self.init.reserve(latch);
+        debug_assert!(u32::from(next) != u32::MAX);
+        self.next[latch] = OptionU32::some(next.into());
         if let Some(i) = init {
-            self.init.insert(latch, i);
+            debug_assert!(u32::from(i) != u32::MAX);
+            self.init[latch] = OptionU32::some(i.into());
         }
     }
 
     #[inline]
     pub fn add_init(&mut self, latch: Var, init: Lit) {
-        self.init.insert(latch, init);
+        self.init.reserve(latch);
+        debug_assert!(u32::from(init) != u32::MAX);
+        self.init[latch] = OptionU32::some(init.into());
     }
 
     pub fn new() -> Self {
         Self::default()
-    }
-
-    pub fn unique_prime(&mut self, rst: &mut VarVMap) {
-        let mut unique = HashSet::default();
-        unique.insert(Var::CONST);
-        for l in self.latch.clone() {
-            let mut n = self.next[&l];
-            if unique.contains(&n.var()) {
-                let u = self.rel.new_var().lit();
-                self.rel.add_rel(u.var(), &LitVvec::cnf_assign(u, n));
-                self.next.insert(l, u);
-                if let Some(&r) = rst.get(&n.var()) {
-                    rst.insert(u.var(), r);
-                }
-                n = u;
-            }
-            unique.insert(n.var());
-        }
     }
 
     pub fn add_init_var(&mut self) -> Var {
@@ -190,7 +198,7 @@ impl Display for Transys {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(f, "input: {:?}", self.input)?;
         for l in self.latch.iter() {
-            if let Some(i) = self.init.get(l) {
+            if let Some(i) = self.init(*l) {
                 writeln!(f, "latch {l}, next {}, init {i}", self.next(l.lit()))?;
             } else {
                 writeln!(f, "latch {l}, next {}", self.var_next(*l))?;

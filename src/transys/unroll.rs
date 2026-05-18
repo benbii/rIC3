@@ -1,5 +1,4 @@
 use super::Transys;
-use crate::RseedMap as HashMap;
 use crate::transys::certify::BlWitness;
 use logicrs::{Lit, LitMap, LitVec, Var, VarRange, satif::Satif};
 use std::ops::Deref;
@@ -158,24 +157,24 @@ impl TransysUnroll {
                 rel.add_rel(v, &cls);
             }
         }
-        let next = self
-            .ts
-            .next
-            .iter()
-            .map(|(v, n)| (*v, self.lit_next(*n, self.num_unroll)))
-            .collect();
         assert!(self.ts.justice.is_empty());
-        let bad = self.lits_next(&self.ts.bad, self.num_unroll).collect();
-        Transys {
+        let bad: LitVec = self.lits_next(&self.ts.bad, self.num_unroll).collect();
+        let mut ts = Transys {
             input,
-            latch: self.ts.latch.clone(),
-            next,
-            init: self.ts.init.clone(),
             bad,
             constraint,
             justice: Default::default(),
             rel,
+            ..Default::default()
+        };
+        for &l in self.ts.latch.iter() {
+            ts.add_latch(
+                l,
+                self.ts.init(l),
+                self.lit_next(self.ts.next(l.lit()), self.num_unroll),
+            );
         }
+        ts
     }
 
     pub fn internal_signals(&self) -> Transys {
@@ -193,28 +192,24 @@ impl TransysUnroll {
             let cls: Vec<LitVec> = cls.iter().map(|c| self.lits_next(c, 1).collect()).collect();
             rel.add_rel(v, &cls);
         }
-        let mut latch = Vec::new();
-        let mut next = HashMap::default();
+        let mut ts = Transys {
+            input: self.ts.input.clone(),
+            bad: self.ts.bad.clone(),
+            constraint: self.ts.constraint.clone(),
+            justice: Default::default(),
+            rel,
+            ..Default::default()
+        };
         for v in VarRange::new_inclusive(Var::new(1), self.ts.max_var()) {
             if !keep.contains(&v) {
-                latch.push(v);
-                next.insert(v, self.lit_next(v.lit(), 1));
+                ts.add_latch(v, self.ts.init(v), self.lit_next(v.lit(), 1));
             }
         }
 
         // TODO: EXTEND INIT
 
         assert!(self.ts.justice.is_empty());
-        Transys {
-            input: self.ts.input.clone(),
-            latch,
-            next,
-            init: self.ts.init.clone(),
-            bad: self.ts.bad.clone(),
-            constraint: self.ts.constraint.clone(),
-            justice: Default::default(),
-            rel,
-        }
+        ts
     }
 
     pub fn internal_signals_with_full_prime(&self) -> Transys {
@@ -236,27 +231,22 @@ impl TransysUnroll {
             rel.add_rel(v, &cls);
         }
 
-        let mut latch = Vec::new();
-        let mut next = HashMap::default();
-        for v in VarRange::new_inclusive(Var::new(1), self.ts.max_var()) {
-            if !keep.contains(&v) {
-                latch.push(v);
-                next.insert(v, self.lit_next(v.lit(), 1));
-            }
-        }
-
         assert!(self.ts.justice.is_empty());
-
-        let bad = self.lits_next(&self.ts.bad, 1).collect();
-        Transys {
+        let bad: LitVec = self.lits_next(&self.ts.bad, 1).collect();
+        let mut ts = Transys {
             input,
-            latch,
-            next,
-            init: self.ts.init.clone(),
             bad,
             constraint,
             justice: Default::default(),
             rel,
+            ..Default::default()
+        };
+        for v in VarRange::new_inclusive(Var::new(1), self.ts.max_var()) {
+            if !keep.contains(&v) {
+                ts.add_latch(v, self.ts.init(v), self.lit_next(v.lit(), 1));
+            }
         }
+
+        ts
     }
 }

@@ -30,7 +30,7 @@ impl LocalAbs {
             refine.extend(ts.constraint.iter().map(|l| l.var()))
         }
         if !abs_trans {
-            refine.extend(ts.next.values().map(|l| l.var()));
+            refine.extend(ts.latch().map(|l| ts.next(l.lit()).var()));
         }
         let mut uts = TransysUnroll::new(ts);
         let mut opt = HashMap::default();

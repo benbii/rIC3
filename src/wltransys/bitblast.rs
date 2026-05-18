@@ -108,39 +108,32 @@ impl WlTransys {
             rst.insert(v, x.clone());
             latch.push(v);
         }
-        let mut next = HashMap::default();
-        for l in self.latch.iter() {
-            if let Some(n) = self.next.get(l) {
-                let l = l.cnf_encode(&mut dc, &mut map).var();
-                let n = n.cnf_encode(&mut dc, &mut map);
-                next.insert(l, n);
-            }
+        let mut next = Vec::new();
+        for (idx, l) in self.latch.iter().enumerate() {
+            let n = self.next.get(l).unwrap().cnf_encode(&mut dc, &mut map);
+            next.push((latch[idx], n));
         }
         let constraint: LitVec =
             cnf_encode_terms(self.constraint.iter(), &mut dc, &mut map).collect();
         let justice: LitVec = cnf_encode_terms(self.justice.iter(), &mut dc, &mut map).collect();
-        let mut init = HashMap::default();
-        for l in self.latch.iter() {
-            if let Some(i) = self.init.get(l) {
-                let l = l.cnf_encode(&mut dc, &mut map).var();
-                let i = i.cnf_encode(&mut dc, &mut map);
-                init.insert(l, i);
-            }
+        let mut init = Vec::new();
+        for (idx, l) in self.latch.iter().enumerate() {
+            let i = self.init.get(l).map(|i| i.cnf_encode(&mut dc, &mut map));
+            init.push((latch[idx], i));
         }
         let bad: LitVec = cnf_encode_terms(self.bad.iter(), &mut dc, &mut map).collect();
-        (
-            Transys {
-                input,
-                latch,
-                bad,
-                constraint,
-                rel: dc,
-                next,
-                init,
-                justice,
-            },
-            rst,
-        )
+        let mut ts = Transys {
+            input,
+            bad,
+            constraint,
+            rel: dc,
+            justice,
+            ..Default::default()
+        };
+        for ((l, n), (_, i)) in next.into_iter().zip(init) {
+            ts.add_latch(l, i, n);
+        }
+        (ts, rst)
     }
 
     pub fn bitblast_to_ts(&self) -> (Transys, BitblastMap) {

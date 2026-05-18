@@ -6,7 +6,7 @@ use crate::{
 };
 use clap::{Args, Parser};
 use log::{error, info};
-use logicrs::{Lit, LitVec, LitVvec, Var, VarRange, satif::Satif};
+use logicrs::{Lit, LitVec, LitVvec, OptionU32, Var, VarMap, VarRange, satif::Satif};
 use serde::{Deserialize, Serialize};
 
 #[derive(Args, Clone, Debug, Serialize, Deserialize)]
@@ -188,6 +188,17 @@ impl Engine for Kind {
         let mut latchs = proof.latch.clone();
         let mut next = proof.next.clone();
         let mut inits = proof.init.clone();
+        let dense_lit = |map: &VarMap<OptionU32>, v: Var| -> Option<Lit> {
+            let idx: usize = v.into();
+            if idx >= map.len() {
+                return None;
+            }
+            let raw = match map[v] {
+                OptionU32::NONE => return None,
+                raw => *raw,
+            };
+            Some(Lit::new(Var(raw >> 1), raw & 1 == 0))
+        };
         let mut bads = proof.bad.clone();
         let mut constrains = proof.constraint.clone();
         for _ in 1..k {
@@ -208,9 +219,11 @@ impl Engine for Kind {
             for &l in ts.latch.iter() {
                 let ml = map(l);
                 latchs.push(ml);
-                next.insert(ml, lmap(ts.next[&l]));
-                if let Some(i) = ts.init.get(&l) {
-                    inits.insert(ml, lmap(*i));
+                next.reserve(ml);
+                next[ml] = OptionU32::some(lmap(ts.next(l.lit())).into());
+                if let Some(i) = ts.init(l) {
+                    inits.reserve(ml);
+                    inits[ml] = OptionU32::some(lmap(i).into());
                 }
             }
             bads.extend(ts.bad.map(lmap));
@@ -258,14 +271,17 @@ impl Engine for Kind {
             let mut init = Vec::new();
             for j in 0..nl {
                 let lis1j = latchs[(i - 1) * nl + j];
-                if let Some(&linit) = inits.get(&lis1j) {
+                if let Some(linit) = dense_lit(&inits, lis1j) {
                     init.push(LitVec::from([lis1j.lit(), !linit]));
                     init.push(LitVec::from([!lis1j.lit(), linit]));
                 }
                 eqs.push(
                     proof
                         .rel
-                        .new_xnor(next[&latchs[j + i * nl]], latchs[j + (i - 1) * nl].lit()),
+                        .new_xnor(
+                            dense_lit(&next, latchs[j + i * nl]).unwrap(),
+                            latchs[j + (i - 1) * nl].lit(),
+                        ),
                 );
             }
             let p = proof.rel.new_and(eqs);

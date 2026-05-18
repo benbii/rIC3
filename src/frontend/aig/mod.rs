@@ -43,8 +43,8 @@ impl From<&Transys> for Aig {
         }
         let map_lit = |l: Lit| map[&l.var()].not_if(!l.polarity());
         for l in ts.latch.iter() {
-            let next = map_lit(ts.next[l]);
-            let init = ts.init.get(l).map(|&l| map_lit(l));
+            let next = map_lit(ts.next(l.lit()));
+            let init = ts.init(*l).map(map_lit);
             aig.add_latch(map[l].node_id(), next, init);
         }
         for &b in ts.bad.iter() {
@@ -63,17 +63,6 @@ impl From<&Transys> for Aig {
 impl Transys {
     pub fn from_aig(aig: &Aig, compact: bool) -> Transys {
         let input: Vec<Var> = aig.inputs.iter().map(|x| Var::new(*x)).collect();
-        let mut latch = Vec::new();
-        let mut next = HashMap::default();
-        let mut init = HashMap::default();
-        for l in aig.latchs.iter() {
-            let lv = Var::from(l.input);
-            latch.push(lv);
-            next.insert(lv, l.next.to_lit());
-            if let Some(i) = l.init {
-                init.insert(lv, i.to_lit());
-            }
-        }
         let bad = aig.bads.iter().map(|c| c.to_lit()).collect();
         let constraint: LitVec = aig.constraints.iter().map(|c| c.to_lit()).collect();
         let mut justice: LitVec = aig
@@ -83,16 +72,19 @@ impl Transys {
             .unwrap_or_default();
         justice.extend(aig.fairness.iter().map(|f| f.to_lit()));
         let rel = aig.cnf(compact);
-        Transys {
+        let mut ts = Transys {
             input,
-            latch,
-            next,
-            init,
             bad,
             constraint,
             justice,
             rel,
+            ..Default::default()
+        };
+        for l in aig.latchs.iter() {
+            let lv = Var::from(l.input);
+            ts.add_latch(lv, l.init.map(|i| i.to_lit()), l.next.to_lit());
         }
+        ts
     }
 }
 

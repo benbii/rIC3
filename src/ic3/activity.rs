@@ -1,4 +1,4 @@
-use crate::transys::TransysCtx;
+use crate::transys::Transys;
 use logicrs::{Lit, LitVec, Var, VarMap};
 use std::ops::MulAssign;
 
@@ -9,19 +9,14 @@ pub struct Activity {
 }
 
 impl Activity {
-    pub fn new(ts: &TransysCtx) -> Self {
+    pub fn new(ts: &Transys) -> Self {
         let mut activity = VarMap::new();
-        activity.reserve(ts.max_latch);
+        activity.reserve(ts.latch.iter().copied().max().unwrap_or(Var::CONST));
         Self {
             activity,
             max_act: 0.0,
             act_inc: 1.0,
         }
-    }
-
-    #[inline]
-    pub fn reserve(&mut self, var: Var) {
-        self.activity.reserve(var);
     }
 
     #[inline]

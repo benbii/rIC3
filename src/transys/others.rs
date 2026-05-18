@@ -1,8 +1,7 @@
 use super::Transys;
 use crate::RseedMap as HashMap;
 use crate::transys::certify::Restore;
-use logicrs::{Lit, LitVec, Var, VarLMap, VarRange};
-use std::mem::take;
+use logicrs::{Lit, LitVec, OptionU32, Var, VarLMap, VarMap, VarRange};
 
 impl Transys {
     pub fn frozens(&self) -> Vec<Var> {
@@ -17,12 +16,10 @@ impl Transys {
                 .chain(self.latch.iter().copied()),
         );
         for l in self.latch.iter() {
-            if let Some(i) = self.init.get(l) {
+            if let Some(i) = self.init(*l) {
                 frozens.push(i.var());
             }
-            if let Some(n) = self.next.get(l) {
-                frozens.push(n.var());
-            }
+            frozens.push(self.next(l.lit()).var());
         }
         frozens
     }
@@ -51,11 +48,7 @@ impl Transys {
             if ml <= begin {
                 continue;
             }
-            self.latch.push(ml);
-            self.next.insert(ml, lmap(other.next[l]));
-            if let Some(i) = other.init.get(l) {
-                self.init.insert(ml, lmap(*i));
-            }
+            self.add_latch(ml, other.init(*l).map(lmap), lmap(other.next(l.lit())));
         }
         for v in VarRange::new_inclusive(Var::CONST, other.max_var()) {
             let mv = vmap[&v];
@@ -90,7 +83,7 @@ impl Transys {
 
     pub fn has_gate_init(&self) -> bool {
         for l in self.input().chain(self.latch()) {
-            if let Some(i) = self.init.get(&l)
+            if let Some(i) = self.init(l)
                 && !(i.var().is_constant())
             {
                 return true;
@@ -100,12 +93,12 @@ impl Transys {
     }
 
     pub fn remove_gate_init(&mut self, rst: &mut Restore) {
-        let mut init = HashMap::default();
+        let mut const_init = Vec::new();
         let mut eq = Vec::new();
         for l in self.input().chain(self.latch()) {
-            if let Some(i) = self.init.get(&l).copied() {
+            if let Some(i) = self.init(l) {
                 if i.try_constant().is_some() {
-                    init.insert(l, i);
+                    const_init.push((l, i));
                 } else {
                     eq.push((l, i));
                 }
@@ -114,7 +107,10 @@ impl Transys {
         if eq.is_empty() {
             return;
         }
-        self.init = init;
+        self.init = VarMap::new();
+        for (l, i) in const_init {
+            self.add_init(l, i);
+        }
         let iv = rst.get_init_var(self);
         for (v, i) in eq {
             let e = self.rel.new_xnor(v.lit(), i);
@@ -124,17 +120,29 @@ impl Transys {
     }
 
     pub fn map(&mut self, map: impl Fn(Var) -> Var + Copy, rst: &mut Restore) {
+        let old_input = self.input.clone();
+        let old_latch = self.latch.clone();
+        let mut init = VarMap::new();
+        let mut next = VarMap::new();
+        for &v in old_input.iter().chain(old_latch.iter()) {
+            if let Some(i) = self.init(v) {
+                let mv = map(v);
+                init.reserve(mv);
+                init[mv] = OptionU32::some(i.map_var(map).into());
+            }
+        }
+        for &l in old_latch.iter() {
+            let ml = map(l);
+            next.reserve(ml);
+            next[ml] = OptionU32::some(self.next(l.lit()).map_var(map).into());
+        }
         self.input
             .iter_mut()
             .chain(self.latch.iter_mut())
             .for_each(|v| *v = map(*v));
         self.rel = self.rel.map(map);
-        for (k, v) in take(&mut self.init) {
-            self.init.insert(map(k), v.map_var(map));
-        }
-        for (k, v) in take(&mut self.next) {
-            self.next.insert(map(k), v.map_var(map));
-        }
+        self.init = init;
+        self.next = next;
         self.bad = self.bad.map_var(map);
         self.constraint = self.constraint.map_var(map);
         self.justice = self.justice.map_var(map);
@@ -147,15 +155,15 @@ impl Transys {
                 && let Some(x_init) = self.init(x)
             {
                 let y_init = x_init.not_if(!y.polarity());
-                if let Some(init) = self.init.get_mut(&y.var()) {
-                    let c = self.rel.new_xnor(*init, y_init);
+                if let Some(init) = self.init(y.var()) {
+                    let c = self.rel.new_xnor(init, y_init);
                     if !c.is_constant(true) {
                         let iv = rst.get_init_var(self);
                         let c = self.rel.new_imply(iv.lit(), c);
                         self.constraint.push(c);
                     }
                 } else {
-                    self.init.insert(y.var(), y_init);
+                    self.add_init(y.var(), y_init);
                 }
             }
         }
@@ -168,14 +176,27 @@ impl Transys {
         }
         self.input.retain(|l| !map.contains_key(l));
         self.latch.retain(|l| !map.contains_key(l));
-        self.init.retain(|l, _| !map.contains_key(l));
-        self.next.retain(|l, _| !map.contains_key(l));
         self.rel.replace(map);
-        for l in self.next.values_mut().chain(self.init.values_mut()) {
-            if let Some(m) = map.map_lit(*l) {
-                *l = m;
+        let mut init = VarMap::new();
+        let mut next = VarMap::new();
+        for v in VarRange::new_inclusive(Var::CONST, self.max_var()) {
+            if map.contains_key(&v) {
+                continue;
+            }
+            if let Some(i) = self.init(v) {
+                let i = map.map_lit(i).unwrap_or(i);
+                init.reserve(v);
+                init[v] = OptionU32::some(i.into());
             }
         }
+        for &l in self.latch.iter() {
+            let n = self.next(l.lit());
+            let n = map.map_lit(n).unwrap_or(n);
+            next.reserve(l);
+            next[l] = OptionU32::some(n.into());
+        }
+        self.init = init;
+        self.next = next;
         let map_fn = map.try_map_fn();
         self.bad = self.bad.map(|l| map_fn(l).unwrap_or(l));
         self.constraint = self.constraint.map(|l| map_fn(l).unwrap_or(l));

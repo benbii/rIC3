@@ -41,7 +41,7 @@ impl IC3 {
         let mut cube = cube.clone();
         self.statistic.num_down += 1;
         loop {
-            if self.tsctx.cube_subsume_init(&cube) {
+            if self.ts.cube_subsume_init(&cube) {
                 return None;
             }
             let lemma = LitOrdVec::new(cube.clone());
@@ -61,7 +61,7 @@ impl IC3 {
             );
             if blocked {
                 return Some(
-                    inductive_core(&mut self.solvers[frame - 1], &self.tsctx, &ordered_cube)
+                    inductive_core(&mut self.solvers[frame - 1], &self.ts, &ordered_cube)
                         .unwrap(),
                 );
             }
@@ -90,7 +90,7 @@ impl IC3 {
                 {
                     s.push(l.not_if(!v));
                 }
-                if let Some(v) = self.solvers[frame - 1].sat_value(self.tsctx.next(*l)) {
+                if let Some(v) = self.solvers[frame - 1].sat_value(self.ts.next(*l)) {
                     t.push(l.not_if(!v));
                 }
             }
@@ -113,14 +113,14 @@ impl IC3 {
         self.statistic.num_down += 1;
         let mut ctg = 0;
         loop {
-            if self.tsctx.cube_subsume_init(&cube) {
+            if self.ts.cube_subsume_init(&cube) {
                 return None;
             }
             self.statistic.num_down_sat += 1;
             let (blocked, ordered_cube) = self.blocked_with_ordered(frame, &cube, true);
             if blocked {
                 return Some(
-                    inductive_core(&mut self.solvers[frame - 1], &self.tsctx, &ordered_cube)
+                    inductive_core(&mut self.solvers[frame - 1], &self.ts, &ordered_cube)
                         .unwrap(),
                 );
             }
@@ -139,7 +139,7 @@ impl IC3 {
             // }
             if ctg < parameter.max
                 && frame > 1
-                && !self.tsctx.cube_subsume_init(&model)
+                && !self.ts.cube_subsume_init(&model)
                 && self.trivial_block(
                     frame - 1,
                     LitOrdVec::new(model.clone()),
@@ -195,7 +195,7 @@ impl IC3 {
         let start = Instant::now();
         if parameter.level == 0 {
             self.solvers[frame - 1].set_domain(
-                self.tsctx
+                self.ts
                     .lits_next(&cube)
                     .iter()
                     .copied()
@@ -236,7 +236,7 @@ impl IC3 {
                 if parameter.level == 0 {
                     self.solvers[frame - 1].unset_domain();
                     self.solvers[frame - 1].set_domain(
-                        self.tsctx
+                        self.ts
                             .lits_next(&cube)
                             .iter()
                             .copied()

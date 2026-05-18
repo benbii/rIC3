@@ -1,7 +1,7 @@
-use crate::{gipsat::DagCnfSolver, transys::TransysCtx};
+use crate::{gipsat::DagCnfSolver, transys::Transys};
 use logicrs::{Lit, LitVec, satif::Satif};
 
-pub fn new_transys_solver(ts: &TransysCtx) -> DagCnfSolver {
+pub fn new_transys_solver(ts: &Transys) -> DagCnfSolver {
     let mut slv = DagCnfSolver::new(&ts.rel);
     for c in ts.constraint.iter() {
         slv.add_clause(&[*c]);
@@ -11,7 +11,7 @@ pub fn new_transys_solver(ts: &TransysCtx) -> DagCnfSolver {
 
 pub fn inductive_with_constrain(
     slv: &mut DagCnfSolver,
-    ts: &TransysCtx,
+    ts: &Transys,
     cube: &[Lit],
     strengthen: bool,
     mut constraint: Vec<LitVec>,
@@ -23,11 +23,11 @@ pub fn inductive_with_constrain(
     !slv.solve_with_constraint(&assump, constraint)
 }
 
-pub fn inductive(slv: &mut DagCnfSolver, ts: &TransysCtx, cube: &[Lit], strengthen: bool) -> bool {
+pub fn inductive(slv: &mut DagCnfSolver, ts: &Transys, cube: &[Lit], strengthen: bool) -> bool {
     inductive_with_constrain(slv, ts, cube, strengthen, vec![])
 }
 
-pub fn inductive_core(slv: &mut DagCnfSolver, ts: &TransysCtx, cube: &[Lit]) -> Option<LitVec> {
+pub fn inductive_core(slv: &mut DagCnfSolver, ts: &Transys, cube: &[Lit]) -> Option<LitVec> {
     let mut ans = LitVec::new();
     for &l in cube.iter() {
         let nl = ts.next(l);
@@ -38,7 +38,7 @@ pub fn inductive_core(slv: &mut DagCnfSolver, ts: &TransysCtx, cube: &[Lit]) -> 
     if ts.cube_subsume_init(&ans) {
         ans = LitVec::new();
         let new = cube.iter().find(|&&l| {
-            ts.init_map[l.var()]
+            ts.init(l.var())
                 .and_then(|l| l.try_constant())
                 .is_some_and(|i| i != l.polarity())
         })?;

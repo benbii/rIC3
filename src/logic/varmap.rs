@@ -10,7 +10,7 @@ use std::{
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct VarMap<T> {
-    map: Vec<T>,
+    map: Vec<T>, // maybe NckMap?
 }
 
 impl<T: Default> VarMap<T> {

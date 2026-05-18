@@ -79,7 +79,7 @@ impl Rlive {
         let mut rts = self.rts.clone();
         for l in s {
             assert!(l.var() != self.base_var);
-            rts.init.insert(l.var(), Lit::constant(l.polarity()));
+            rts.add_init(l.var(), Lit::constant(l.polarity()));
         }
         let mut ic3 = IC3::new(self.rcfg.clone(), rts);
         let prev_level = log::max_level();

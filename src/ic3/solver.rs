@@ -12,8 +12,8 @@ impl IC3 {
             self.pred_prop_get_bad()
         } else {
             let start = Instant::now();
-            assert!(self.tsctx.bad.len() == 1);
-            let res = self.solvers.last_mut().unwrap().solve(&[self.tsctx.bad[0]]);
+            assert!(self.ts.bad.len() == 1);
+            let res = self.solvers.last_mut().unwrap().solve(&[self.ts.bad[0]]);
             self.statistic.block.get_bad_time += start.elapsed();
             res.then(|| self.get_pred(self.solvers.len(), true))
         }
@@ -31,7 +31,7 @@ impl IC3 {
         self.activity.sort_by_activity(&mut ordered_cube, false);
         let blocked = inductive(
             &mut self.solvers[frame - 1],
-            &self.tsctx,
+            &self.ts,
             &ordered_cube,
             strengthen,
         );
@@ -50,7 +50,7 @@ impl IC3 {
         self.activity.sort_by_activity(&mut ordered_cube, ascending);
         let blocked = inductive_with_constrain(
             &mut self.solvers[frame - 1],
-            &self.tsctx,
+            &self.ts,
             &ordered_cube,
             strengthen,
             constraint,

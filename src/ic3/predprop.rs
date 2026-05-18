@@ -1,7 +1,7 @@
 use crate::{
     gipsat::{DagCnfSolver, new_transys_solver},
     ic3::{IC3, proofoblig::ProofObligation},
-    transys::{Transys, TransysCtx, lift::TsLift, unroll::TransysUnroll},
+    transys::{Transys, lift::TsLift, unroll::TransysUnroll},
 };
 use log::info;
 use logicrs::{Lit, LitOrdVec, LitVec, satif::Satif};
@@ -10,7 +10,6 @@ use std::time::Instant;
 
 pub struct PredProp {
     bts: Transys,
-    tsctx: Box<TransysCtx>,
     slv: DagCnfSolver,
     lift: TsLift,
     inn: bool,
@@ -27,12 +26,10 @@ impl PredProp {
             bts.bad = LitVec::from([bts.bad[lp]]);
         }
         bts.constraint.extend(!&uts.ts.bad);
-        let tsctx = Box::new(bts.ctx());
-        let slv = new_transys_solver(&tsctx);
+        let slv = new_transys_solver(&bts);
         let lift = TsLift::new(uts);
         Self {
             bts,
-            tsctx,
             slv,
             lift,
             inn,
@@ -44,8 +41,7 @@ impl PredProp {
     }
 
     pub fn extend<'a>(&'a mut self, lemmas: impl IntoIterator<Item = &'a LitVec>) {
-        self.tsctx = Box::new(self.bts.ctx());
-        self.slv = new_transys_solver(&self.tsctx);
+        self.slv = new_transys_solver(&self.bts);
         for l in lemmas.into_iter() {
             self.slv.add_clause(&!l);
         }
@@ -58,21 +54,21 @@ impl IC3 {
         if self.predprop.is_none() {
             return true;
         }
-        let bad = self.tsctx.bad.clone();
+        let bad = self.ts.bad.clone();
         let id = self.prop;
-        let mut slv = new_transys_solver(&self.tsctx);
-        for init in self.tsctx.init.clone() {
+        let mut slv = new_transys_solver(&self.ts);
+        for init in self.ts.inits() {
             slv.add_clause(&init);
         }
-        if slv.solve(&[self.tsctx.bad[id]]) {
+        if slv.solve(&[self.ts.bad[id]]) {
             let mut input = LitVec::new();
-            for i in self.tsctx.input() {
+            for i in self.ts.input() {
                 if let Some(v) = slv.sat_value_lit(i) {
                     input.push(v);
                 }
             }
             let mut bad = LitVec::new();
-            for l in self.tsctx.latch() {
+            for l in self.ts.latch() {
                 if let Some(v) = slv.sat_value_lit(l) {
                     bad.push(v);
                 }
@@ -87,10 +83,9 @@ impl IC3 {
             info!("counter-example found in base checking");
             return false;
         }
-        self.tsctx.constraint.extend(!&bad);
         self.ts.constraint.extend(!bad);
         self.lift = TsLift::new(TransysUnroll::new(&self.ts));
-        self.inf_solver = new_transys_solver(&self.tsctx);
+        self.inf_solver = new_transys_solver(&self.ts);
         true
     }
 

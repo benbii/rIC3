@@ -4,7 +4,7 @@ use crate::{
     gipsat::{DagCnfSolver, SolverStatistic, new_transys_solver},
     ic3::{block::BlockResult, localabs::LocalAbs, predprop::PredProp},
     transys::{
-        Transys, TransysCtx, certify::Restore, lift::TsLift, preproc_serde::PreprocModel,
+        Transys, certify::Restore, lift::TsLift, preproc_serde::PreprocModel,
         unroll::TransysUnroll,
     },
 };
@@ -20,7 +20,6 @@ use stat::Statistic;
 use std::{num::NonZeroU64, time::Instant};
 
 mod activity;
-mod auxv;
 mod block;
 mod frame;
 mod localabs;
@@ -93,7 +92,6 @@ impl Default for IC3Config {
 
 pub struct IC3 {
     ts: Transys,
-    tsctx: Box<TransysCtx>,
     solvers: Vec<DagCnfSolver>,
     inf_solver: DagCnfSolver,
     lift: TsLift,
@@ -134,12 +132,12 @@ impl IC3 {
         self.solvers.push(solver);
         self.frame.push(Frame::new());
         if self.level() == 0 {
-            for init in self.tsctx.init.clone() {
+            for init in self.ts.inits() {
                 self.add_lemma(0, !init, true, None);
             }
             let mut init = LitVec::new();
-            for l in self.tsctx.latch.iter() {
-                if self.tsctx.init_map[*l].is_none()
+            for l in self.ts.latch.iter() {
+                if self.ts.init(*l).is_none()
                     && let Some(v) = self.solvers[0].sat_value(l.lit())
                 {
                     let l = l.lit().not_if(!v);
@@ -148,7 +146,6 @@ impl IC3 {
             }
             for i in init {
                 self.ts.add_init(i.var(), Lit::constant(i.polarity()));
-                self.tsctx.add_init(i.var(), Lit::constant(i.polarity()));
             }
         }
     }
@@ -195,15 +192,13 @@ impl IC3 {
         let predprop = cfg
             .pred_prop
             .then(|| PredProp::new(uts.clone(), cfg.local_proof.then_some(prop), cfg.inn));
-        let tsctx = Box::new(ts.ctx());
-        let activity = Activity::new(&tsctx);
-        let frame = Frames::new(&tsctx);
-        let inf_solver = new_transys_solver(&tsctx);
+        let activity = Activity::new(&ts);
+        let frame = Frames::new(&ts);
+        let inf_solver = new_transys_solver(&ts);
         let lift = TsLift::new(TransysUnroll::new(&ts));
         let localabs = LocalAbs::new(&ts, cfg.abs_cst, cfg.abs_trans);
         Self {
             ts,
-            tsctx,
             activity,
             solvers: Vec::new(),
             inf_solver,

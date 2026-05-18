@@ -258,11 +258,21 @@ impl NoDepTransysUnroll {
 
 impl Transys {
     pub fn remove_dep(self) -> NoDepTransys {
+        let mut next = HashMap::default();
+        for &l in self.latch.iter() {
+            next.insert(l, self.next(l.lit()));
+        }
+        let mut init = HashMap::default();
+        for &v in self.input.iter().chain(self.latch.iter()) {
+            if let Some(i) = self.init(v) {
+                init.insert(v, i);
+            }
+        }
         NoDepTransys {
             input: self.input,
             latch: self.latch,
-            next: self.next,
-            init: self.init,
+            next,
+            init,
             bad: self.bad,
             constraint: self.constraint,
             rel: self.rel.lower(),

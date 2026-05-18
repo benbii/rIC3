@@ -23,7 +23,7 @@ impl IC3 {
                         self.blocked_with_ordered(frame_idx + 1, &lemma.0, false);
                     if blocked {
                         let core =
-                            inductive_core(&mut self.solvers[frame_idx], &self.tsctx, &ordered_cube)
+                            inductive_core(&mut self.solvers[frame_idx], &self.ts, &ordered_cube)
                                 .unwrap_or(ordered_cube);
                         if let Some(po) = &mut lemma.1
                             && po.frame < frame_idx + 2
@@ -40,11 +40,11 @@ impl IC3 {
                         break;
                     }
                     let (ctp, _) = self.get_pred(frame_idx + 1, false);
-                    if !self.tsctx.cube_subsume_init(&ctp)
-                        && inductive(&mut self.solvers[frame_idx - 1], &self.tsctx, &ctp, true)
+                    if !self.ts.cube_subsume_init(&ctp)
+                        && inductive(&mut self.solvers[frame_idx - 1], &self.ts, &ctp, true)
                     {
                         let core =
-                            inductive_core(&mut self.solvers[frame_idx - 1], &self.tsctx, &ctp)
+                            inductive_core(&mut self.solvers[frame_idx - 1], &self.ts, &ctp)
                                 .unwrap();
                         let mic = self.mic(frame_idx, core, &[], Default::default());
                         if self.add_lemma(frame_idx, mic, false, None) {
@@ -76,7 +76,7 @@ impl IC3 {
         };
         let mut lemma = lastf.swap_remove(lidx);
         loop {
-            if inductive(&mut self.inf_solver, &self.tsctx, &lemma.0, true) {
+            if inductive(&mut self.inf_solver, &self.ts, &lemma.0, true) {
                 if let Some(po) = &mut lemma.1 {
                     self.obligations.remove(po);
                 }
@@ -100,10 +100,10 @@ impl IC3 {
                 // dump_buf[dump_start..dump_start + 4].copy_from_slice(&nlits.to_le_bytes());
                 return true;
             } else {
-                let target = self.tsctx.lits_next(lemma.0.as_litvec());
+                let target = self.ts.lits_next(lemma.0.as_litvec());
                 let (ctp, _) = self.lift.lift(
                     &mut self.inf_solver,
-                    target.iter().chain(self.tsctx.constraint.iter()),
+                    target.iter().chain(self.ts.constraint.iter()),
                     |i, _| i == 0,
                 );
                 if !self.propagete_to_inf_rec(lastf, ctp) {
@@ -122,7 +122,7 @@ impl IC3 {
         // let mut dump_buf = Vec::new();
         while let Some(mut lemma) = lastf.pop() {
             loop {
-                if inductive(&mut self.inf_solver, &self.tsctx, &lemma.0, true) {
+                if inductive(&mut self.inf_solver, &self.ts, &lemma.0, true) {
                     if let Some(po) = &mut lemma.1 {
                         self.obligations.remove(po);
                     }
@@ -147,10 +147,10 @@ impl IC3 {
                     // dump_buf[dump_start..dump_start + 4].copy_from_slice(&nlits.to_le_bytes());
                     break;
                 } else {
-                    let target = self.tsctx.lits_next(lemma.0.as_litvec());
+                    let target = self.ts.lits_next(lemma.0.as_litvec());
                     let (ctp, _) = self.lift.lift(
                         &mut self.inf_solver,
-                        target.iter().chain(self.tsctx.constraint.iter()),
+                        target.iter().chain(self.ts.constraint.iter()),
                         |i, _| i == 0,
                     );
                     // if !self.propagete_to_inf_rec(&mut lastf, ctp, &mut dump_buf, dump) {
