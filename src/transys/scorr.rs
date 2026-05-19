@@ -95,7 +95,7 @@ impl Scorr {
                 sim[Var::CONST].push(false);
                 let mut block = LitVec::new();
                 for &v in consider {
-                    let n = ts.next(v.lit());
+                    let n = ts.var_next_lit(v);
                     let va = slv.sat_value(n).unwrap();
                     let na = slv.sat_value_lit(n.var()).unwrap();
                     sim[v].push(va);
@@ -120,7 +120,7 @@ impl Scorr {
             slv.add_clause(&block);
         }
         slv.use_phase_saving = false;
-        let domain: Vec<_> = self.ts.latch().map(|l| self.ts.next(l.lit()).var()).collect();
+        let domain: Vec<_> = self.ts.latch().map(|l| self.ts.var_next_lit(l).var()).collect();
 
         for from in 0..init[Var::CONST].len() {
             let assump = assign(init, from, &consider);
@@ -134,7 +134,7 @@ impl Scorr {
                 sim[Var::CONST].push(false);
                 let mut block = LitVec::new();
                 for &v in &consider {
-                    let n = self.ts.next(v.lit());
+                    let n = self.ts.var_next_lit(v);
                     let va = slv.sat_value(n).unwrap();
                     let na = slv.sat_value_lit(n.var()).unwrap();
                     sim[v].push(va);

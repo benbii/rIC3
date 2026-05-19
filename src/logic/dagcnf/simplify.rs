@@ -1,15 +1,10 @@
 use super::DagCnf;
-use crate::RseedSet as HashSet;
-use crate::nckvec::NckVec;
 use crate::{
-    LitMap, LitOrdVec, LitVec, LitVvec, Var, VarAssign, VarRange, lemmas_subsume_simplify,
-    occur::Occurs,
+    Lbool, Lit, LitMap, LitOrdVec, LitVec, LitVvec, RseedSet as HashSet,
+    Var, VarAssign, VarRange, lemmas_subsume_simplify, nckvec::NckVec, occur::Occurs
 };
 use log::debug;
-use std::{
-    iter::once,
-    time::{Duration, Instant},
-};
+use std::{iter::once, time::{Duration, Instant}};
 
 struct AccidentalHeap {
     heap: Vec<Var>,
@@ -460,10 +455,11 @@ impl DagCnfSimplify {
                 })
                 .collect();
             if self.frozen.contains(&v)
-                && let Some(vl) = self.value.vl(v)
+                && let val = self.value.var(v)
+                && val != Lbool::NONE
             {
                 cnf.clear();
-                cnf.push(LitVec::from(vl));
+                cnf.push(LitVec::from(Lit::new(v, val.is_true())));
             }
             dagcnf.add_rel(v, &cnf);
         }

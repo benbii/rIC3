@@ -30,14 +30,14 @@ impl LocalAbs {
             refine.extend(ts.constraint.iter().map(|l| l.var()))
         }
         if !abs_trans {
-            refine.extend(ts.latch().map(|l| ts.next(l.lit()).var()));
+            refine.extend(ts.latch().map(|l| ts.var_next_lit(l).var()));
         }
         let mut uts = TransysUnroll::new(ts);
         let mut opt = HashMap::default();
         let mut connect = None;
         if abs_trans {
             for v in uts.ts.latch() {
-                let n = uts.ts.next(v.lit());
+                let n = uts.ts.var_next_lit(v);
                 if let std::collections::hash_map::Entry::Vacant(e) = opt.entry(n.var()) {
                     uts.max_var += 1;
                     e.insert(uts.max_var);

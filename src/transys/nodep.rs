@@ -41,6 +41,11 @@ impl NoDepTransys {
     }
 
     #[inline]
+    pub fn var_next_lit(&self, var: Var) -> Lit {
+        *self.next.get(&var).unwrap()
+    }
+
+    #[inline]
     pub fn init(&self, latch: Var) -> Option<Lit> {
         self.init.get(&latch).copied()
     }
@@ -57,7 +62,7 @@ impl NoDepTransys {
 
     #[inline]
     pub fn var_next(&self, var: Var) -> Var {
-        self.next(var.lit()).var()
+        self.var_next_lit(var).var()
     }
 
     pub fn inits(&self) -> LitVvec {
@@ -260,7 +265,7 @@ impl Transys {
     pub fn remove_dep(self) -> NoDepTransys {
         let mut next = HashMap::default();
         for &l in self.latch.iter() {
-            next.insert(l, self.next(l.lit()));
+            next.insert(l, self.var_next_lit(l));
         }
         let mut init = HashMap::default();
         for &v in self.input.iter().chain(self.latch.iter()) {

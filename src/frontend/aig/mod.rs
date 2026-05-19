@@ -43,7 +43,7 @@ impl From<&Transys> for Aig {
         }
         let map_lit = |l: Lit| map[&l.var()].not_if(!l.polarity());
         for l in ts.latch.iter() {
-            let next = map_lit(ts.next(l.lit()));
+            let next = map_lit(ts.var_next_lit(*l));
             let init = ts.init(*l).map(map_lit);
             aig.add_latch(map[l].node_id(), next, init);
         }

@@ -197,7 +197,7 @@ impl Engine for Kind {
                 OptionU32::NONE => return None,
                 raw => *raw,
             };
-            Some(Lit::new(Var(raw >> 1), raw & 1 == 0))
+            Some(Lit(raw))
         };
         let mut bads = proof.bad.clone();
         let mut constrains = proof.constraint.clone();
@@ -220,7 +220,7 @@ impl Engine for Kind {
                 let ml = map(l);
                 latchs.push(ml);
                 next.reserve(ml);
-                next[ml] = OptionU32::some(lmap(ts.next(l.lit())).into());
+                next[ml] = OptionU32::some(lmap(ts.var_next_lit(l)).into());
                 if let Some(i) = ts.init(l) {
                     inits.reserve(ml);
                     inits[ml] = OptionU32::some(lmap(i).into());

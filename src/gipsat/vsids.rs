@@ -305,7 +305,7 @@ impl DagCnfSolver {
     #[inline]
     pub fn decide(&mut self) -> bool {
         while let Some(decide) = self.vsids.pop() {
-            if self.value.v(decide.lit()).is_none() {
+            if self.value.var(decide).is_none() {
                 let decide = if !self.use_phase_saving || self.phase_saving[decide].is_none() {
                     Lit::new(decide, self.rng.random_bool(0.5))
                 } else {

@@ -33,7 +33,7 @@ impl Transys {
         }
         while let Some(v) = queue.pop() {
             if self.is_latch(v) {
-                let n = self.next(v.lit());
+                let n = self.var_next_lit(v);
                 let nv = n.var();
                 if !mark.contains(&nv) {
                     mark.insert(nv);
@@ -93,7 +93,7 @@ impl Transys {
             if let Some(i) = self.init(*l) {
                 additional.push(i.var());
             }
-            additional.push(self.next(l.lit()).var());
+            additional.push(self.var_next_lit(*l).var());
         }
         let domain_map = self.rel.rearrange(additional);
         let map_lit = |l: Lit| Lit::new(domain_map[l.var()], l.polarity());
@@ -111,7 +111,7 @@ impl Transys {
         for &l in old_latch.iter() {
             let ml = domain_map[l];
             next.reserve(ml);
-            next[ml] = OptionU32::some(map_lit(self.next(l.lit())).into());
+            next[ml] = OptionU32::some(map_lit(self.var_next_lit(l)).into());
         }
         self.input = self.input.iter().map(|v| domain_map[*v]).collect();
         self.latch = self.latch.iter().map(|v| domain_map[*v]).collect();

@@ -16,7 +16,7 @@ impl Transys {
         let mut eqns = Vec::new();
         for (l, nl) in self.latch().zip(nls.iter()) {
             eqs.push(l2s.rel.new_xnor(l.lit(), nl.lit()));
-            eqns.push(l2s.rel.new_xnor(self.next(l.lit()), nl.lit()));
+            eqns.push(l2s.rel.new_xnor(self.var_next_lit(l), nl.lit()));
         }
         let eq = l2s.rel.new_and(eqs);
         let eqn = l2s.rel.new_and(eqns);

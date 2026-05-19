@@ -170,7 +170,7 @@ impl TransysUnroll {
             ts.add_latch(
                 l,
                 self.ts.init(l),
-                self.lit_next(self.ts.next(l.lit()), self.num_unroll),
+                self.lit_next(self.ts.var_next_lit(l), self.num_unroll),
             );
         }
         ts

@@ -80,7 +80,7 @@ impl DerefMut for Domain {
 impl DagCnfSolver {
     pub fn add_domain(&mut self, var: Var, deps: bool) {
         assert!(self.highest_level() == 0);
-        if !self.value.v(var.lit()).is_none() {
+        if !self.value.var(var).is_none() {
             return;
         }
         self.domain.reset();
@@ -126,7 +126,7 @@ impl DagCnfSolver {
         let mut now = 0;
         while now < self.domain.fixed {
             let d = self.domain.domain[now];
-            if self.value.v(d.lit()).is_none() {
+            if self.value.var(d).is_none() {
                 self.vsids.push(d);
                 now += 1;
             } else {
@@ -145,7 +145,7 @@ impl DagCnfSolver {
         if !self.prepared_vsids && !self.temporary_domain {
             self.prepared_vsids = true;
             for d in self.domain.domain.iter() {
-                if self.value.v(d.lit()).is_none() {
+                if self.value.var(*d).is_none() {
                     self.vsids.push(*d);
                 }
             }

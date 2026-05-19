@@ -64,7 +64,13 @@ impl Transys {
     pub fn next(&self, lit: Lit) -> Lit {
         debug_assert!(self.next[lit.var()].is_some());
         let raw: u32 = *self.next[lit.var()] ^ (!lit.polarity() as u32);
-        Lit::new(Var(raw >> 1), raw & 1 == 0)
+        Lit(raw)
+    }
+
+    #[inline]
+    pub fn var_next_lit(&self, var: Var) -> Lit {
+        debug_assert!(self.next[var].is_some());
+        Lit(*self.next[var])
     }
 
     #[inline]
@@ -77,7 +83,7 @@ impl Transys {
             OptionU32::NONE => return None,
             raw => *raw,
         };
-        Some(Lit::new(Var(raw >> 1), raw & 1 == 0))
+        Some(Lit(raw))
     }
 
     #[inline]
@@ -92,7 +98,8 @@ impl Transys {
 
     #[inline]
     pub fn var_next(&self, var: Var) -> Var {
-        self.next(var.lit()).var()
+        debug_assert!(self.next[var].is_some());
+        Var(*self.next[var] >> 1)
     }
 
     pub fn lits_next<'a>(&self, lits: impl IntoIterator<Item = &'a Lit>) -> LitVec {

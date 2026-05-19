@@ -303,7 +303,7 @@ impl BitblastMap {
         let map_lit = |l: Lit| map[&l.var()].not_if(!l.polarity());
         for (l, n) in new_latch {
             let init = ts.init(l).map(map_lit);
-            let next = map_lit(ts.next(l.lit()));
+            let next = map_lit(ts.var_next_lit(l));
             res.add_latch(n, init, next);
         }
         for &b in ts.bad.iter() {

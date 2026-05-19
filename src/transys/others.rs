@@ -19,7 +19,7 @@ impl Transys {
             if let Some(i) = self.init(*l) {
                 frozens.push(i.var());
             }
-            frozens.push(self.next(l.lit()).var());
+            frozens.push(self.var_next_lit(*l).var());
         }
         frozens
     }
@@ -48,7 +48,7 @@ impl Transys {
             if ml <= begin {
                 continue;
             }
-            self.add_latch(ml, other.init(*l).map(lmap), lmap(other.next(l.lit())));
+            self.add_latch(ml, other.init(*l).map(lmap), lmap(other.var_next_lit(*l)));
         }
         for v in VarRange::new_inclusive(Var::CONST, other.max_var()) {
             let mv = vmap[&v];
@@ -134,7 +134,7 @@ impl Transys {
         for &l in old_latch.iter() {
             let ml = map(l);
             next.reserve(ml);
-            next[ml] = OptionU32::some(self.next(l.lit()).map_var(map).into());
+            next[ml] = OptionU32::some(self.var_next_lit(l).map_var(map).into());
         }
         self.input
             .iter_mut()
@@ -190,7 +190,7 @@ impl Transys {
             }
         }
         for &l in self.latch.iter() {
-            let n = self.next(l.lit());
+            let n = self.var_next_lit(l);
             let n = map.map_lit(n).unwrap_or(n);
             next.reserve(l);
             next[l] = OptionU32::some(n.into());

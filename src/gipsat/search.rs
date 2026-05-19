@@ -55,7 +55,7 @@ impl DagCnfSolver {
                 self.vsids.enable_bucket = false;
                 self.vsids.heap.clear();
                 for d in self.domain.iter() {
-                    if self.value.v(d.lit()).is_none() {
+                    if self.value.var(*d).is_none() {
                         self.vsids.push(*d);
                     }
                 }
