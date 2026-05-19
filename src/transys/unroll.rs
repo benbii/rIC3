@@ -163,7 +163,6 @@ impl TransysUnroll {
             input,
             bad,
             constraint,
-            justice: Default::default(),
             rel,
             ..Default::default()
         };
@@ -196,7 +195,6 @@ impl TransysUnroll {
             input: self.ts.input.clone(),
             bad: self.ts.bad.clone(),
             constraint: self.ts.constraint.clone(),
-            justice: Default::default(),
             rel,
             ..Default::default()
         };
@@ -237,7 +235,6 @@ impl TransysUnroll {
             input,
             bad,
             constraint,
-            justice: Default::default(),
             rel,
             ..Default::default()
         };
