@@ -33,7 +33,9 @@ impl DagCnfSolver {
             if vsids {
                 self.vsids.push(bt.var());
             }
-            self.phase_saving[bt] = Lbool::from(bt.polarity());
+            if self.use_phase_saving {
+                self.phase_saving[bt] = Lbool::from(bt.polarity());
+            }
         }
         self.propagated = self.pos_in_trail[level];
         self.pos_in_trail.truncate(level);

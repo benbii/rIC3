@@ -10,8 +10,7 @@ pub mod preproc_serde;
 mod refactor;
 pub mod scorr;
 mod simp;
-#[path = "toy-scorr.rs"]
-pub mod toy_scorr;
+pub mod toy_corr;
 pub mod unroll;
 
 use crate::{RseedMap as HashMap, RseedSet as HashSet};

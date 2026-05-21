@@ -48,7 +48,7 @@ pub(crate) fn cli_main() -> anyhow::Result<i32> {
         Commands::Check { chk, cfg } => check::check(chk, cfg),
         Commands::Preprocess { pp } => preprocess::preprocess(pp),
         Commands::ToyScorr { cfg } => {
-            let _ = transys::toy_scorr::toy_scorr(cfg.model, cfg.output);
+            let _ = transys::toy_corr::toy_corr(cfg.model);
             Ok(0)
         }
     }

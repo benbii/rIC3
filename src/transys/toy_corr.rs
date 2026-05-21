@@ -1,9 +1,5 @@
 use crate::{
-    aig::Aig,
-    frontend::{aig::AigFrontend, Frontend},
-    gipsat::DagCnfSolver,
-    transys::{certify::Restore, Transys},
-    Lit,
+    Btor, Lit, aig::Aig, frontend::{Frontend, aig::AigFrontend, btor::BtorFrontend}, gipsat::DagCnfSolver, transys::{Transys, certify::Restore}
 };
 use ahash::HashMap;
 use logicrs::bitvec::BitVec;
@@ -11,15 +7,11 @@ use logicrs::{satif::Satif, LitVec, Var, VarLMap, VarMap};
 use rand::{rngs::StdRng, SeedableRng};
 use std::{iter::zip, path::PathBuf};
 
-pub fn toy_scorr(model: PathBuf, _output: PathBuf) -> (Transys, Restore) {
-    let model = model.canonicalize().unwrap();
-    let mut ts = AigFrontend::new(Aig::from_file(&model)).ts();
+pub fn toy_scorr(mut ts: Transys, mut rst: Restore) -> (Transys, Restore) {
     println!("original ts: {}", ts.statistic());
-    let mut rst = Restore::new(&ts);
     ts.simplify(&mut rst);
     println!("trivial simplified ts: {}", ts.statistic());
-
-    // Step 0: run simulation once
+    // run constraint-aware simulation
     // seed exactly one init state
     let mut sim: VarMap<BitVec> = VarMap::new_with(ts.max_var());
     let mut slv = DagCnfSolver::new(&ts.rel);
@@ -114,13 +106,15 @@ pub fn toy_scorr(model: PathBuf, _output: PathBuf) -> (Transys, Restore) {
         // 2: build solver
         let mut rel = ts.rel.clone();
         rel.replace(&replace);
-        let mut slv = DagCnfSolver::new(&rel);
+        let mut ind_slv = DagCnfSolver::new(&rel);
         // safer to pass constraint unit-clauses through mapper as well
         for c in ts.constraint().map(|c| replace.map_lit(c).unwrap_or(c)) {
-            slv.add_clause(&[c]);
+            ind_slv.add_clause(&[c]);
         }
-        slv.rng = rng;
-        slv.use_phase_saving = false;
+        ind_slv.rng = rng;
+        let mut sim_slv = ind_slv.clone();
+        ind_slv.use_phase_saving = false;
+        sim_slv.use_phase_saving = false;
         let nxt_maybe: Vec<Lit> = maybe.iter().map(|c| ts.next(c.lit())).collect();
         let domain: Vec<Var> = nxt_maybe
             .iter()
@@ -143,25 +137,58 @@ pub fn toy_scorr(model: PathBuf, _output: PathBuf) -> (Transys, Restore) {
                 let yn = ts.next(y);
                 let xn = replace.map_lit(xn).unwrap_or(xn);
                 let yn = replace.map_lit(yn).unwrap_or(yn);
-                if !slv.solve_with_domain(&LitVec::from([xn, !yn]), &domain)
-                    && !slv.solve_with_domain(&LitVec::from([!xn, yn]), &domain)
-                {
-                    continue; // x == y under current assumption :D
+                if xn == yn { continue; }
+
+                if !ind_slv.solve(&LitVec::from([xn, !yn])) {
+                    ind_slv.add_clause(&[!xn, yn]);
+                    sim_slv.add_clause(&[!xn, yn]);
+                    if !ind_slv.solve(&LitVec::from([!xn, yn])) {
+                        ind_slv.add_clause(&[xn, !yn]);
+                        sim_slv.add_clause(&[xn, !yn]);
+                        continue; // x == y under current assumption :D
+                    }
                 }
+
+                let mut assump: LitVec = ts
+                    .input()
+                    .chain(ts.latch())
+                    .filter_map(|v| ind_slv.sat_value_lit(v))
+                    .map(|l| replace.map_lit(l).unwrap_or(l))
+                    .collect();
+                assump.push(ind_slv.sat_value_lit(xn.var()).unwrap());
+                assump.push(ind_slv.sat_value_lit(yn.var()).unwrap());
+                assump.sort();
+                assump.dedup();
+                assert!(sim_slv.solve_with_domain(&assump, &domain));
                 sim[Var::CONST].push(false);
-                // if sim[Var::CONST].len() % 128 == 0 {
-                    // println!("{} patterns", sim[Var::CONST].len());
-                // }
                 for (l, ln) in zip(maybe.iter(), nxt_maybe.iter()) {
                     let ln = replace.map_lit(*ln).unwrap_or(*ln);
-                    sim[*l].push(slv.sat_value(ln).unwrap());
+                    sim[*l].push(sim_slv.sat_value(ln).unwrap());
                 }
             }
         }
 
-        rng = slv.rng; // so that solver rng does not restart with 0
+        rng = ind_slv.rng; // so that solver rng does not restart with 0
     }
     ts.replace(&replace, &mut rst);
+    ts.simplify(&mut rst);
     println!("toy scorr'd ts: {}", ts.statistic());
     return (ts, rst);
+}
+
+pub fn toy_corr(model: PathBuf) -> (Transys, Restore) {
+    let model = model.canonicalize().unwrap();
+    let ts = match model.extension() {
+        Some(ext) if (ext == "aig") || (ext == "aag") => {
+            AigFrontend::new(Aig::from_file(&model)).ts()
+        }
+        Some(ext) if (ext == "btor") || (ext == "btor2") => {
+            BtorFrontend::new(Btor::from_file(&model)).ts()
+        }
+        _ => panic!("unknown model file extention")
+    };
+    let rst = Restore::new(&ts);
+    // let (ts, rst) = toy_scorr(ts, rst);
+    // toy_ccorr(ts, rst)
+    toy_scorr(ts, rst)
 }
