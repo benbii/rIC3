@@ -102,18 +102,23 @@ impl BitVec {
 
     // If the last 2 words tell lhs != rhs.not_if(inv) then true.
     // Should be useful in both updated `scorr` and `frts`
-    pub fn ne_coarse(&self, rhs: &Self, inv: bool) -> bool {
+    pub fn ne_inv(&self, rhs: &Self, inv: bool) -> bool {
         debug_assert!(self.len() == rhs.len());
-        debug_assert!(!self.is_empty());
+        if self.is_empty() {
+            return false;
+        }
         let at = self.bits.len() - 1;
         let mask = (1u64 << self.last_len) - 1;
-        let l = self.bits[at] & mask;
-        let r = if inv { rhs.bits[at] ^ u64::MAX } else { rhs.bits[at] };
-        if l != r & mask { return true; }
-        if at == 0 { return false; }
-        let l = self.bits[at - 1];
-        let r = if inv { rhs.bits[at - 1] ^ u64::MAX } else { rhs.bits[at - 1] };
-        l != r
+        let xor = if inv { u64::MAX } else { 0u64 };
+        if (self.bits[at] & mask) != ((rhs.bits[at] ^ xor) & mask) {
+            return true;
+        }
+        for i in (0..at).rev() {
+            if self.bits[i] != rhs.bits[i] ^ xor {
+                return true;
+            }
+        }
+        false
     }
 
     pub fn push(&mut self, bit: bool) {

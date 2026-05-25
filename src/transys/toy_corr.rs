@@ -1,5 +1,5 @@
 use crate::{
-    Btor, Lit, aig::Aig, frontend::{Frontend, aig::AigFrontend, btor::BtorFrontend}, gipsat::DagCnfSolver, transys::{Transys, certify::Restore}
+    Btor, Lit, VarRange, aig::Aig, frontend::{Frontend, aig::AigFrontend, btor::BtorFrontend}, gipsat::DagCnfSolver, transys::{Transys, certify::Restore}
 };
 use ahash::HashMap;
 use logicrs::bitvec::BitVec;
@@ -129,7 +129,7 @@ pub fn toy_scorr(mut ts: Transys, mut rst: Restore) -> (Transys, Restore) {
                 // 4: Extract one total current-frame witness from the quotiented SAT model.
                 // If in current outer loop round some SAT traces already discern the two, just stop
                 // checking them. The comparison is incomplete, but 64~128 traces is decent enough.
-                if sim[x.var()].ne_coarse(&sim[y.var()], x.polarity() != y.polarity()) {
+                if sim[x.var()].ne_inv(&sim[y.var()], x.polarity() != y.polarity()) {
                     continue;
                 }
                 let xn = if x.var().is_constant() { x } else { ts.next(x) };
@@ -176,6 +176,108 @@ pub fn toy_scorr(mut ts: Transys, mut rst: Restore) -> (Transys, Restore) {
     return (ts, rst);
 }
 
+pub fn toy_ccorr(mut ts: Transys, mut rst: Restore) -> (Transys, Restore) {
+    ts.topsort(&mut rst);
+    let mut rng = StdRng::seed_from_u64(9876543210);
+    let mut sim = VarMap::new_with(ts.max_var());
+    // 65536 init patterns, with 1 additional pattern per SAT counterexample.
+    // Var::CONST is represented by the positive literal of var 0, i.e. false.
+    sim[Var::CONST] = BitVec::from_elem(65536, false);
+    for v in VarRange::new_inclusive(Var::new(1), ts.max_var()) {
+        sim[v] = if ts.rel.is_leaf(v) {
+            BitVec::new_rand(65536 / BitVec::WORD_SIZE, &mut rng)
+        } else {
+            BitVec::from_elem(65536, false)
+        }
+    };
+    // bit-parallel simulation of these patterns
+    for v in VarRange::new_inclusive(Var(1), ts.max_var()) {
+        if ts.rel.is_leaf(v) { continue; }
+        for rel in &ts.rel[v] {
+            let mut r = if rel[0].polarity() {
+                sim[rel[0].var()].clone()
+            } else {
+                !&sim[rel[0].var()]
+            };
+            let mut vl = rel[0];
+            for &l in &rel[1..] {
+                if l.var() == v { vl = l; }
+                if l.polarity() { r |= &sim[l.var()] } else { r |= &!&sim[l.var()] };
+            }
+            if vl.polarity() { sim[v] |= &!&r; } else { sim[v] &= &r; }
+        }
+    }
+
+    // combinational sweep doesn't benefit from multi-round over-assumption refinement loop
+    // so just build it once here lol.
+    let mut cand: HashMap<BitVec, LitVec> = HashMap::default();
+    for v in VarRange::new_inclusive(Var(0), ts.max_var()) {
+        // HELP: what to do with latches, next states etc?
+        let l = v.lit();
+        if let Some(c) = cand.get_mut(&sim[v]) {
+            c.push(l);
+        } else if let Some(c) = cand.get_mut(&!&sim[v]) {
+            c.push(!l);
+        } else {
+            cand.insert(sim[v].clone(), LitVec::from([l]));
+        }
+    }
+    cand.retain(|_, eqc| eqc.len() > 1);
+    let maybe: Vec<Var> = cand.values().flatten().map(|x| x.var()).collect();
+    sim.iter_mut().for_each(|x| x.clear());
+    let mut replace = VarLMap::new();
+
+    let rel = ts.rel.clone();
+    let mut ind_slv = DagCnfSolver::new(&rel);
+    ind_slv.rng = rng;
+    let mut sim_slv = ind_slv.clone();
+    ind_slv.use_phase_saving = false;
+    sim_slv.use_phase_saving = false;
+    println!("{} cand classes", cand.len());
+    for eqc in cand.values() {
+        for (i, x) in eqc.iter().copied().enumerate() {
+            if replace.contains_key(&x.var()) { continue; }
+            for &y in eqc.iter().skip(i + 1) {
+                if replace.contains_key(&y.var()) { continue; }
+                // simplify model every 5000 or 2000 replaces here?
+                debug_assert!(x != y);
+                // ne_coarse serves as "class refinement during sweep"
+                if sim[x.var()].ne_inv(&sim[y.var()], x.polarity() != y.polarity()) {
+                    continue;
+                }
+
+                if !ind_slv.solve(&LitVec::from([x, !y])) {
+                    ind_slv.add_clause(&[!x, y]);
+                    sim_slv.add_clause(&[!x, y]);
+                    if !ind_slv.solve(&LitVec::from([!x, y])) {
+                        ind_slv.add_clause(&[x, !y]);
+                        sim_slv.add_clause(&[x, !y]);
+                        replace.insert_lit(y, x);
+                        continue; // x == y under current assumption :D
+                    }
+                }
+
+                // in comb sweep the assump is for speed only:
+                // replay through whole CNF using clues provided by ind_slv
+                let assump: LitVec = VarRange::new_inclusive(Var(1), ts.max_var())
+                    .filter_map(|v| ind_slv.sat_value_lit(v)).collect();
+                debug_assert_ne!(ind_slv.sat_value(x), ind_slv.sat_value(y));
+                assert!(sim_slv.solve_with_domain(&assump, &maybe));
+                // Var::CONST is already in maybe (if any var could equal to CONST)
+                for v in maybe.iter() {
+                    sim[*v].push(sim_slv.sat_value(v.lit()).unwrap());
+                }
+            }
+        }
+        println!("{} replaced, {} patterns", replace.len(), sim[Var::CONST].len());
+    }
+
+    ts.replace(&replace, &mut rst);
+    ts.simplify(&mut rst);
+    println!("toy fraig'd ts: {}", ts.statistic());
+    (ts, rst)
+}
+
 pub fn toy_corr(model: PathBuf) -> (Transys, Restore) {
     let model = model.canonicalize().unwrap();
     let ts = match model.extension() {
@@ -188,7 +290,7 @@ pub fn toy_corr(model: PathBuf) -> (Transys, Restore) {
         _ => panic!("unknown model file extention")
     };
     let rst = Restore::new(&ts);
-    // let (ts, rst) = toy_scorr(ts, rst);
-    // toy_ccorr(ts, rst)
-    toy_scorr(ts, rst)
+    let (ts, rst) = toy_scorr(ts, rst);
+    toy_ccorr(ts, rst)
+    // toy_scorr(ts, rst)
 }
