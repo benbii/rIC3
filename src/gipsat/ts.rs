@@ -57,7 +57,7 @@ impl TransysSolver {
         if strengthen {
             constraint.push(LitVec::from_iter(cube.iter().map(|l| !*l)));
         }
-        !self.dcs.solve_with_constraint(&assump, constraint.clone())
+        !self.dcs.solve_with_constraint(&assump, &constraint)
     }
 
     pub fn inductive(&mut self, cube: &[Lit], strengthen: bool) -> bool {
@@ -137,7 +137,7 @@ impl Satif for TransysSolver {
     }
 
     #[inline]
-    fn solve_with_constraint(&mut self, assumps: &[Lit], constraint: Vec<LitVec>) -> bool {
+    fn solve_with_constraint(&mut self, assumps: &[Lit], constraint: &[LitVec]) -> bool {
         self.dcs.solve_with_constraint(assumps, constraint)
     }
 

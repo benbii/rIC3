@@ -1,5 +1,5 @@
 use super::DagCnfSolver;
-use logicrs::{DagCnf, Lit, Var, VarAssign, VarSet};
+use logicrs::{DagCnf, Lit, LitVec, Var, VarAssign, VarSet};
 use std::ops::{Deref, DerefMut};
 
 #[derive(Clone)]
@@ -28,15 +28,23 @@ impl Domain {
 
     pub fn enable_local(
         &mut self,
-        domain: impl Iterator<Item = Var>,
+        domain: &[Var],
+        assump: &[Lit],
+        constraint: &[LitVec],
         dc: &DagCnf,
         _value: &VarAssign,
     ) {
         self.reset();
-        for r in domain {
-            // if value.v(r.lit()).is_none() {
+        for &r in domain {
             self.domain.insert(r);
-            // }
+        }
+        for l in assump {
+            self.domain.insert(l.var());
+        }
+        for c in constraint {
+            for l in c.iter() {
+                self.domain.insert(l.var());
+            }
         }
         let mut now = self.fixed;
         while now < self.domain.len() {
@@ -108,8 +116,9 @@ impl DagCnfSolver {
     pub fn set_domain(&mut self, domain: impl IntoIterator<Item = Lit>) {
         self.reset();
         self.temporary_domain = true;
+        let domain: Vec<_> = domain.into_iter().map(|l| l.var()).collect();
         self.domain
-            .enable_local(domain.into_iter().map(|l| l.var()), &self.dc, &self.value);
+            .enable_local(&domain, &[], &[], &self.dc, &self.value);
         assert!(!self.domain.has(self.constrain_act));
         self.domain.insert(self.constrain_act);
         self.vsids.enable_bucket = true;

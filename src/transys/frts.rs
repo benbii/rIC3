@@ -125,7 +125,7 @@ impl FrTs {
             trace!("frts: checking var {m} with lit {v}");
             match self.solver.solve_with_restart_limit(
                 &[],
-                vec![LitVec::from([m, lv]), LitVec::from([!m, !lv])],
+                &[LitVec::from([m, lv]), LitVec::from([!m, !lv])],
                 1,
             ) {
                 Some(true) => {}

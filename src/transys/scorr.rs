@@ -86,10 +86,7 @@ impl Scorr {
                 if sim[Var::CONST].len() >= num_word * BitVec::WORD_SIZE {
                     return;
                 }
-                if !slv
-                    .solve_with_param(&assump, vec![], domain.iter().copied(), Some(5))
-                    .is_some_and(|r| r)
-                {
+                if !slv.solve_full(&assump, &[], domain, 5).is_some_and(|r| r) {
                     return;
                 }
                 sim[Var::CONST].push(false);
@@ -151,7 +148,7 @@ impl Scorr {
     pub fn check_scorr(&mut self, x: Lit, y: Lit) -> bool {
         if self
             .init_slv
-            .solve_with_restart_limit(&[], vec![LitVec::from([x, y]), LitVec::from([!x, !y])], 10)
+            .solve_with_restart_limit(&[], &[LitVec::from([x, y]), LitVec::from([!x, !y])], 10)
             .is_none_or(|r| r)
         {
             return false;
@@ -165,7 +162,7 @@ impl Scorr {
         self.ind_slv
             .solve_with_restart_limit(
                 &[],
-                vec![
+                &[
                     LitVec::from([x, !y]),
                     LitVec::from([!x, y]),
                     LitVec::from([xn, yn]),

@@ -41,16 +41,10 @@ impl DagCnfSolver {
         self.pos_in_trail.truncate(level);
     }
 
-    pub fn search_with_restart(
-        &mut self,
-        assumption: &[Lit],
-        limit: Option<usize>,
-    ) -> Option<bool> {
+    pub fn search_with_restart(&mut self, assumption: &[Lit], restart_limit: u32) -> Option<bool> {
         let mut restarts = 0;
         loop {
-            if let Some(limit) = limit
-                && restarts >= limit as u32
-            {
+            if restarts >= restart_limit {
                 return None;
             }
             if restarts > 10 && self.vsids.enable_bucket {

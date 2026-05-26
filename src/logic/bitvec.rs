@@ -27,6 +27,8 @@ impl BitVec {
         }
         let mut bits = NckVec::new_rand(num_word, rng);
         bits.push(0);
+        bits[0] &= u64::MAX - 1;
+        bits[0] |= 2u64;
         Self {
             bits,
             last_len: 0,

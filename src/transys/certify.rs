@@ -140,7 +140,7 @@ impl BlWitness {
             }
             cls.extend(last_target);
             cls = !cls;
-            assert!(!slv.solve_with_constraint(&assump, vec![cls]));
+            assert!(!slv.solve_with_constraint(&assump, &[cls]));
             self.state[k].retain(|l| slv.unsat_has(*l));
             last_target = ts.lits_next(&self.state[k]);
         }
