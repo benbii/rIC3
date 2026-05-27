@@ -2,7 +2,6 @@ use super::{
     DagCnfSolver,
     cdb::{CREF_NONE, CRef},
 };
-use log::trace;
 use logicrs::nckvec::NckVec;
 use logicrs::{Lbool, LitOrdVec, LitVec, VarMap};
 use std::mem::take;
@@ -34,21 +33,21 @@ impl DagCnfSolver {
         }
         if self.simplify.last_num_assign < self.trail.len() {
             debug_assert!(self.highest_level() == 0);
-            let mut simplified = 0;
+            // let mut simplified = 0;
             let lemmas = take(&mut self.cdb.lemmas);
-            simplified += lemmas.len();
+            // simplified += lemmas.len();
             self.cdb.lemmas = self.simplify_satisfied_clauses(lemmas);
-            simplified -= self.cdb.lemmas.len();
+            // simplified -= self.cdb.lemmas.len();
             let learnt = take(&mut self.cdb.learnt);
-            simplified += learnt.len();
+            // simplified += learnt.len();
             self.cdb.learnt = self.simplify_satisfied_clauses(learnt);
-            simplified -= self.cdb.learnt.len();
+            // simplified -= self.cdb.learnt.len();
             let trans = take(&mut self.cdb.trans);
-            simplified += trans.len();
+            // simplified += trans.len();
             self.cdb.trans = self.simplify_satisfied_clauses(trans);
-            simplified -= self.cdb.trans.len();
+            // simplified -= self.cdb.trans.len();
             self.simplify.last_num_assign = self.trail.len();
-            trace!("gipsat simplifies {simplified} statisfied clauses");
+            // trace!("gipsat simplifies {simplified} statisfied clauses");
         }
         if self.simplify.last_num_lemma + 1000 < self.cdb.lemmas.len() {
             let lemmas = take(&mut self.cdb.lemmas);

@@ -2,13 +2,59 @@ use crate::{
     Btor, Lit, VarRange, aig::Aig, frontend::{Frontend, aig::AigFrontend, btor::BtorFrontend}, gipsat::DagCnfSolver, transys::{Transys, certify::Restore}
 };
 use ahash::HashMap;
-use log::{debug, info, warn};
+use log::{debug, info, trace, warn};
 use logicrs::bitvec::BitVec;
 use logicrs::{satif::Satif, LitVec, Var, VarLMap, VarMap};
 use rand::{rngs::StdRng, SeedableRng};
 use std::{iter::zip, path::PathBuf};
 
+fn q(
+    ind_slv: &mut DagCnfSolver,
+    sim_slv: &mut DagCnfSolver,
+    lim: u32, x: Lit, y: Lit
+) -> Option<bool> {
+    if x == y { return Some(false); }
+    let bad = if let Some (c) = x.try_constant() {
+        if let Some(cc) = y.try_constant() {
+            return Some(c != cc);
+        }
+        Some(y.not_if(c))
+    } else if let Some(c) = y.try_constant() {
+        Some(x.not_if(c))
+    } else { None };
+
+    if let Some(bad) = bad {
+        let o = ind_slv.solve_full(&[bad], &[], &[], lim);
+        if o == Some(false) {
+            ind_slv.add_clause(&[!bad]);
+            sim_slv.add_clause(&[!bad]);
+            trace!("{x}=={y}");
+        } else if o.is_none() {
+            trace!("{x}-?{y}"); // string content is imprecise; don't care
+        }
+        return o;
+    }
+
+    let mut o = ind_slv.solve_full(&[x, !y], &[], &[], lim);
+    if o == Some(false) {
+        ind_slv.add_clause(&[!x, y]);
+        sim_slv.add_clause(&[!x, y]);
+        o = ind_slv.solve_full(&[!x, y], &[], &[], lim);
+        if o == Some(false) {
+            ind_slv.add_clause(&[x, !y]);
+            sim_slv.add_clause(&[x, !y]);
+            trace!("{x}<->{y}");
+        } else if o.is_none() {
+            trace!("{y}-?{x}");
+        }
+    } else if o.is_none() {
+        trace!("{x}-?{y}");
+    }
+    o
+}
+
 pub fn toy_scorr(mut ts: Transys, mut rst: Restore) -> (Transys, Restore) {
+    trace!("toy");
     info!("original ts: {}", ts.statistic());
     ts.simplify(&mut rst);
     info!("trivial simplified ts: {}", ts.statistic());
@@ -42,7 +88,7 @@ pub fn toy_scorr(mut ts: Transys, mut rst: Restore) -> (Transys, Restore) {
     let next_lits: Vec<Lit> = ts.latch.iter().map(|&v| ts.next(v.lit())).collect();
     let domain: Vec<Var> = next_lits.iter().map(|l| l.var()).collect();
     let mut stack = vec![0usize];
-    while sim[Var::CONST].len() < 64 {
+    while sim[Var::CONST].len() < 100 {
         let Some(&from) = stack.last() else { break; };
         let assump = ts.latch.iter().map(|&v| v.lit().not_if(!sim[v].get(from)));
         let assump: LitVec = assump.collect();
@@ -71,6 +117,7 @@ pub fn toy_scorr(mut ts: Transys, mut rst: Restore) -> (Transys, Restore) {
         stack.push(to);
     }
     if sim[Var::CONST].len() < 3 {
+        ts.simplify(&mut rst); // somehow double simplification works sometimes
         return (ts, rst); // too few valid states; bail out
     }
 
@@ -79,6 +126,7 @@ pub fn toy_scorr(mut ts: Transys, mut rst: Restore) -> (Transys, Restore) {
     maybe.sort(); // so that small ID becomes class representitive
     let mut replace = VarLMap::new();
     let mut prevround_simsz = usize::MAX;
+    let mut fail: VarMap<bool> = VarMap::new_with(ts.max_var());
     // A SAT pushing sim trace length **will always** split classes further because in the trace
     // x != y, causing the class containing x and y to split, so progress are always made
     while prevround_simsz != sim[Var::CONST].len() {
@@ -90,7 +138,7 @@ pub fn toy_scorr(mut ts: Transys, mut rst: Restore) -> (Transys, Restore) {
             sim[Var::CONST].clone(),
             LitVec::from([Lit::constant(false)]),
         );
-        for &v in maybe.iter() {
+        for &v in maybe.iter() { // failed latches won't appear here
             let l = v.lit();
             if let Some(c) = cand.get_mut(&sim[v]) {
                 c.push(l);
@@ -115,6 +163,7 @@ pub fn toy_scorr(mut ts: Transys, mut rst: Restore) -> (Transys, Restore) {
             true
         });
         maybe.retain(|v| !sim[*v].is_empty());
+        debug!("{prevround_simsz} patterns, {} eqv classes", cand.len());
 
         // 2: build solver
         let mut rel = ts.rel.clone();
@@ -128,17 +177,20 @@ pub fn toy_scorr(mut ts: Transys, mut rst: Restore) -> (Transys, Restore) {
         let mut sim_slv = ind_slv.clone();
         ind_slv.use_phase_saving = false;
         sim_slv.use_phase_saving = false;
-        let nxt_maybe: Vec<Lit> = maybe.iter().map(|c| ts.next(c.lit())).collect();
-        let domain: Vec<Var> = nxt_maybe
-            .iter()
-            .map(|l| replace.map_lit(*l).unwrap_or(*l).var())
-            .collect();
-        info!("{prevround_simsz} patterns, {} eqv classes", cand.len());
 
         // 3: sweep on x != y
+        // could experiment: break 'next_class to here on failure?
         for eqc in cand.values() {
+            // could experiment more here; how often do we refine `maybe`?
+            let nxt_maybe: Vec<Lit> = maybe.iter().map(|c| ts.next(c.lit())).collect();
+            let domain: Vec<Var> = nxt_maybe
+                .iter()
+                .map(|l| replace.map_lit(*l).unwrap_or(*l).var())
+                .collect();
+
             let x = eqc[0];
             for &y in eqc.iter().skip(1) {
+                assert!(!fail[y.var()]);
                 // 4: Extract one total current-frame witness from the quotiented SAT model.
                 // If in current outer loop round some SAT traces already discern the two, just stop
                 // checking them. The comparison is incomplete, but 64~128 traces is decent enough.
@@ -150,18 +202,19 @@ pub fn toy_scorr(mut ts: Transys, mut rst: Restore) -> (Transys, Restore) {
                 let yn = ts.next(y);
                 let xn = replace.map_lit(xn).unwrap_or(xn);
                 let yn = replace.map_lit(yn).unwrap_or(yn);
-                if xn == yn { continue; }
 
-                if !ind_slv.solve(&LitVec::from([xn, !yn])) {
-                    ind_slv.add_clause(&[!xn, yn]);
-                    sim_slv.add_clause(&[!xn, yn]);
-                    if !ind_slv.solve(&LitVec::from([!xn, yn])) {
-                        ind_slv.add_clause(&[xn, !yn]);
-                        sim_slv.add_clause(&[xn, !yn]);
-                        continue; // x == y under current assumption :D
-                    }
+                match q(&mut ind_slv, &mut sim_slv, 10, xn, yn) {
+                    None => {
+                        fail[y] = true;
+                        prevround_simsz = 0;
+                        continue;
+                    },
+                    Some(false) => {
+                        replace.insert_lit(y, x);
+                        continue;
+                    },
+                    Some(true) => {},
                 }
-
                 let mut assump: LitVec = ts
                     .input()
                     .chain(ts.latch())
@@ -179,6 +232,7 @@ pub fn toy_scorr(mut ts: Transys, mut rst: Restore) -> (Transys, Restore) {
                     sim[*l].push(sim_slv.sat_value(ln).unwrap());
                 }
             }
+            maybe.retain(|x| !fail[*x]);
         }
 
         rng = ind_slv.rng; // so that solver rng does not restart with 0
@@ -225,7 +279,7 @@ pub fn toy_ccorr(mut ts: Transys, mut rst: Restore) -> (Transys, Restore) {
     // so just build it once here lol.
     let mut cand: HashMap<BitVec, LitVec> = HashMap::default();
     for v in VarRange::new_inclusive(Var(0), ts.max_var()) {
-        // HELP: what to do with latches, next states etc?
+        if !v.is_constant() && ts.rel.is_leaf(v) { continue; }
         let l = v.lit();
         if let Some(c) = cand.get_mut(&sim[v]) {
             c.push(l);
@@ -252,8 +306,8 @@ pub fn toy_ccorr(mut ts: Transys, mut rst: Restore) -> (Transys, Restore) {
     for (ci, eqc) in cand.values().enumerate() {
         for (xi, x) in eqc.iter().copied().enumerate() {
             if replace.contains_key(&x.var()) { continue; }
-            for (yi, &y) in eqc.iter().enumerate().skip(xi + 1) {
-                debug_assert!(x != y);
+            for &y in eqc.iter().skip(xi + 1) {
+                debug_assert!(x.var() != y.var());
                 if replace.contains_key(&y.var()) { continue; }
                 // simplify model every 5000 or 2000 replaces here?
                 // ne_inv serves as "class refinement during sweep"
@@ -264,33 +318,17 @@ pub fn toy_ccorr(mut ts: Transys, mut rst: Restore) -> (Transys, Restore) {
                     continue;
                 }
 
-                match ind_slv.solve_full(&[x, !y], &[], &[], 1) {
+                match q(&mut ind_slv, &mut sim_slv, 10, x, y) {
                     None => {
-                        debug!("XImplyY died; class {ci} xIdx {xi} yIdx {yi}");
-                        fail[x.var()] += 1; fail[y.var()] += 1;
+                        fail[y.var()] += 1; // continue this class
+                        continue;
+                    },
+                    Some(false) => {
+                        replace.insert_lit(y, x);
                         continue;
                     },
                     Some(true) => {},
-                    _ => {
-                        ind_slv.add_clause(&[!x, y]);
-                        sim_slv.add_clause(&[!x, y]);
-                        match ind_slv.solve_full(&[!x, y], &[], &[], 1) {
-                            None => {
-                                debug!("YImplyX died; class {ci} xIdx {xi} yIdx {yi}");
-                                fail[x.var()] += 1; fail[y.var()] += 1;
-                                continue;
-                            },
-                            Some(true) => {},
-                            _ => {
-                                ind_slv.add_clause(&[x, !y]);
-                                sim_slv.add_clause(&[x, !y]);
-                                replace.insert_lit(y, x);
-                                continue; // x == y under current assumption :D
-                            }
-                        }
-                    }
                 }
-
                 // in comb sweep the assump is for speed only:
                 // replay through whole CNF using clues provided by ind_slv
                 let assump: LitVec = VarRange::new_inclusive(Var(1), ts.max_var())
@@ -303,7 +341,7 @@ pub fn toy_ccorr(mut ts: Transys, mut rst: Restore) -> (Transys, Restore) {
                 }
             }
         }
-        debug!("{ci}, {} replaced, {} patterns", replace.len(), sim[Var::CONST].len());
+        trace!("{ci}, {} replaced, {} patterns", replace.len(), sim[Var::CONST].len());
     }
 
     ts.replace(&replace, &mut rst);

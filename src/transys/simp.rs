@@ -113,17 +113,13 @@ impl Transys {
 
     pub fn simplify(&mut self, rst: &mut Restore) {
         self.coi_refine(rst);
-        info!("coi refine run A: {}", self.statistic());
         let frozens = self.frozens();
         self.rel = self.rel.simplify(frozens.iter().copied());
-        info!("simplify: {}", self.statistic());
         self.coi_refine(rst);
-        info!("coi refine run B: {}", self.statistic());
         self.constraint.retain(|l| !l.is_constant(true));
         self.constraint.sort();
         self.constraint.dedup();
         self.rearrange(rst);
-        info!("rearrange: {}", self.statistic());
     }
 
     pub fn preproc(mut ts: Self, cfg: &PreprocConfig, mut rst: Restore) -> (Self, Restore) {
