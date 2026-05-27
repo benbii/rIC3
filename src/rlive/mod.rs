@@ -1,13 +1,12 @@
 use crate::{
     BlWitness, Engine, McResult, McWitness,
-    config::{EngineConfig, PreprocConfig},
+    config::EngineConfig,
     ic3::{IC3, IC3Config},
-    transys::{Transys, certify::Restore, preproc_serde::PreprocModel},
+    transys::{Transys, certify::Restore},
 };
-use clap::{Args, Parser};
+use clap::Parser;
 use log::{LevelFilter, debug, error, warn};
 use logicrs::{Lit, LitOrdVec, LitVec, Var};
-use serde::{Deserialize, Serialize};
 use std::mem::take;
 
 pub struct Rlive {
@@ -19,12 +18,6 @@ pub struct Rlive {
     witness: Vec<BlWitness>,
     shoals: Vec<LitVec>,
     rst: Restore,
-}
-
-#[derive(Args, Clone, Debug, Serialize, Deserialize)]
-pub struct RliveConfig {
-    #[command(flatten)]
-    pub preproc: PreprocConfig,
 }
 
 impl Rlive {
@@ -81,7 +74,8 @@ impl Rlive {
             assert!(l.var() != self.base_var);
             rts.init.insert(l.var(), Lit::constant(l.polarity()));
         }
-        let mut ic3 = IC3::new(self.rcfg.clone(), rts);
+        let rst = Restore::new(&rts);
+        let mut ic3 = IC3::new(self.rcfg.clone(), rts.clone(), rts, rst);
         let prev_level = log::max_level();
         log::set_max_level(LevelFilter::Warn);
         let res = ic3.check();
@@ -119,33 +113,13 @@ impl Rlive {
 }
 
 impl Rlive {
-    pub fn new(cfg: RliveConfig, mut ts: Transys) -> Self {
+    pub fn new(mut ts: Transys, rst: Restore) -> Self {
         warn!("rlive is unstable, use with caution");
         if ts.justice.is_empty() {
             error!("rlive requires justice property");
             panic!();
         }
-        let mut rst = Restore::new(&ts);
-        let mut loaded_preproc = false;
-        if let Some(load_path) = &cfg.preproc.load_preproc {
-            match PreprocModel::load(load_path) {
-                Ok(model) => {
-                    ts = model.ts;
-                    rst = model.rst;
-                    loaded_preproc = true;
-                    if cfg.preproc.fake_preproc_wait {
-                        std::thread::sleep(std::time::Duration::from_secs(model.preproc_time_secs));
-                    }
-                }
-                Err(err) => {
-                    error!("Load preproc model {:?} failed: {:?}", load_path, err);
-                }
-            }
-        }
         ts.normalize_justice();
-        if cfg.preproc.preproc && !loaded_preproc {
-            ts.simplify(&mut rst);
-        }
         assert!(ts.justice.len() == 1);
         let base_var = ts.new_var();
         ts.add_latch(base_var, Some(Lit::constant(false)), Lit::constant(true));
@@ -156,9 +130,8 @@ impl Rlive {
         let bvc = rts.rel.new_imply(!base_var.lit(), rts.bad[0]);
         rts.constraint.push(bvc);
         rts.bad = LitVec::from(rts.rel.new_and([rts.bad[0], base_var.lit()]));
-        let rcfg =
-            EngineConfig::parse_from("ic3 --no-pred-prop --full-bad --no-preproc".split(' '));
-        let rcfg = rcfg.into_ic3().unwrap();
+        let mut rcfg = EngineConfig::parse_from(["", "ic3"]).into_ic3().unwrap();
+        rcfg.pred_prop = false;
         Self {
             ts,
             rcfg: rcfg.clone(),
@@ -177,7 +150,8 @@ impl Engine for Rlive {
         loop {
             let mut ts = self.ts.clone();
             ts.bad = take(&mut ts.justice);
-            let mut ic3 = IC3::new(self.rcfg.clone(), ts);
+            let rst = Restore::new(&ts);
+            let mut ic3 = IC3::new(self.rcfg.clone(), ts.clone(), ts, rst);
             let prev_level = log::max_level();
             log::set_max_level(LevelFilter::Warn);
             let res = ic3.check();

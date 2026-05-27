@@ -2,7 +2,7 @@ use crate::{
     Btor, Lit, VarRange, aig::Aig, frontend::{Frontend, aig::AigFrontend, btor::BtorFrontend}, gipsat::DagCnfSolver, transys::{Transys, certify::Restore}
 };
 use ahash::HashMap;
-use log::{debug, info, trace, warn};
+use log::{debug, info, warn};
 use logicrs::bitvec::BitVec;
 use logicrs::{satif::Satif, LitVec, Var, VarLMap, VarMap};
 use rand::{rngs::StdRng, SeedableRng};
@@ -303,7 +303,7 @@ pub fn toy_ccorr(mut ts: Transys, mut rst: Restore) -> (Transys, Restore) {
                 }
             }
         }
-        trace!("{ci}, {} replaced, {} patterns", replace.len(), sim[Var::CONST].len());
+        debug!("{ci}, {} replaced, {} patterns", replace.len(), sim[Var::CONST].len());
     }
 
     ts.replace(&replace, &mut rst);

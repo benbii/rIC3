@@ -1,23 +1,23 @@
 use crate::{
     BlProof, BlWitness, Engine, McProof, McResult, McWitness,
-    config::{EngineConfig, PreprocConfig},
+    config::EngineConfig,
     gipsat::{SolverStatistic, TransysSolver},
     ic3::{block::BlockResult, localabs::LocalAbs, predprop::PredProp},
     transys::{
-        Transys, TransysCtx, certify::Restore, lift::TsLift, preproc_serde::PreprocModel,
+        Transys, TransysCtx, certify::Restore, lift::TsLift,
         unroll::TransysUnroll,
     },
 };
 use activity::Activity;
 use clap::{ArgAction, Args, Parser};
 use frame::{Frame, Frames};
-use log::{debug, info, trace};
+use log::{debug, error, info, trace};
 use logicrs::{Lit, LitOrdVec, LitVec, LitVvec, satif::Satif};
 use proofoblig::{ProofObligation, ProofObligationQueue};
 use rand::{SeedableRng, rngs::StdRng};
 use serde::{Deserialize, Serialize};
 use stat::Statistic;
-use std::{num::NonZeroU64, time::Instant};
+use std::time::Instant;
 
 mod activity;
 mod auxv;
@@ -33,17 +33,12 @@ mod stat;
 
 #[derive(Args, Clone, Debug, Serialize, Deserialize)]
 pub struct IC3Config {
-    /// Property ID. If not specified, all properties are checked.
-    #[arg(long = "prop")]
-    pub prop: Option<usize>,
     /// Random seed
     #[arg(long, default_value_t = 0)]
     pub rseed: u64,
     /// Time limit in seconds
-    #[arg(long)]
-    pub time_limit: Option<NonZeroU64>,
-    #[command(flatten)]
-    pub preproc: PreprocConfig,
+    #[arg(long, default_value_t = u64::MAX)]
+    pub time_limit: u64,
     /// dynamic generalization
     #[arg(long = "dynamic", default_value_t = false)]
     pub dynamic: bool,
@@ -77,9 +72,9 @@ pub struct IC3Config {
     /// predicate property
     #[arg(long = "pred-prop", default_value_t = false)]
     pub pred_prop: bool,
-    /// Local proof (internal parameter)
-    #[arg(skip)]
-    pub local_proof: bool,
+    /// Local proof (buggy)
+    #[arg(long = "local-proof", default_value_t = usize::MAX)]
+    pub local_proof: usize,
     // stream infinity-frame lemmas as DIMACS-like clauses (append mode)
     // #[arg(long = "inv-dump")]
     // pub inv_dump: Option<PathBuf>,
@@ -106,8 +101,7 @@ pub struct IC3 {
     rst: Restore,
     predprop: Option<PredProp>,
     rng: StdRng,
-    time_limit: Option<NonZeroU64>,
-    prop: usize,
+    time_limit: u64,
     default_mic: mic::DropVarParameter,
     inn: bool,
     abs_cst: bool,
@@ -155,7 +149,7 @@ impl IC3 {
 }
 
 impl IC3 {
-    pub fn new(mut cfg: IC3Config, mut ts: Transys) -> Self {
+    pub fn new(cfg: IC3Config, mut ts: Transys, ots: Transys, mut rst: Restore) -> Self {
         // validate config
         if cfg.dynamic && cfg.drop_po {
             panic!("cannot enable both dynamic and drop-po");
@@ -163,29 +157,9 @@ impl IC3 {
         if cfg.inn && (cfg.abs_cst || cfg.abs_trans) {
             panic!("cannot enable both inn and (abs_cst or abs_trans)");
         }
-        if cfg.local_proof {
-            cfg.pred_prop = true;
-            if cfg.prop.is_none() {
-                panic!("A property ID must be specified for local proof.");
-            }
-        }
-        let prop = cfg.prop.unwrap_or(0);
 
-        let ots = ts.clone();
-        if cfg.prop.is_some() && !cfg.local_proof {
-            ts.bad = LitVec::from(ts.bad[prop]);
-        }
         let rng = StdRng::seed_from_u64(cfg.rseed);
         let statistic = Statistic::default();
-        let (model, loaded) = PreprocModel::load_or_preproc(ts, &cfg.preproc);
-        let (mut ts, mut rst) = (model.ts, model.rst);
-        if loaded && cfg.prop.is_some() && !cfg.local_proof {
-            ts.bad = LitVec::from(ts.bad[prop]);
-        }
-        if cfg.prop.is_none() && ts.bad.len() > 1 {
-            let bad = std::mem::take(&mut ts.bad);
-            ts.bad = LitVec::from(ts.rel.new_or(bad));
-        }
         ts.remove_gate_init(&mut rst);
         let mut uts = TransysUnroll::new(&ts);
         uts.unroll(true);
@@ -194,7 +168,13 @@ impl IC3 {
         }
         let predprop = cfg
             .pred_prop
-            .then(|| PredProp::new(uts.clone(), cfg.local_proof.then_some(prop), cfg.inn));
+            .then(|| PredProp::new(uts, cfg.local_proof, cfg.inn));
+        if cfg.local_proof < ts.bad.len() {
+            ts.bad = LitVec::from(ts.bad[cfg.local_proof]);
+        }
+        if ts.bad.len() != 1 {
+            error!("{} props in single IC3! Loaded wrong preprocessed model?", ts.bad.len());
+        }
         let tsctx = Box::new(ts.ctx());
         let activity = Activity::new(&tsctx);
         let frame = Frames::new(&tsctx);
@@ -217,7 +197,6 @@ impl IC3 {
             predprop,
             rng,
             time_limit: cfg.time_limit,
-            prop,
             default_mic: if cfg.ctg {
                 mic::DropVarParameter::new(cfg.ctg_limit, cfg.ctg_max, 1)
             } else {
@@ -251,9 +230,7 @@ impl Engine for IC3 {
         let mut last_sec = 0;
         loop {
             let now_sec = self.statistic.time.time().as_secs();
-            if let Some(limit) = self.time_limit
-                && now_sec > limit.get()
-            {
+            if now_sec > self.time_limit {
                 return McResult::Unknown(Some(self.level()));
             }
             if now_sec - last_sec >= 10 {

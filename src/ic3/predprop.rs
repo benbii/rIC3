@@ -17,14 +17,14 @@ pub struct PredProp {
 }
 
 impl PredProp {
-    pub fn new(uts: TransysUnroll, local_proof: Option<usize>, inn: bool) -> Self {
+    pub fn new(uts: TransysUnroll, local_proof: usize, inn: bool) -> Self {
         let mut bts = if inn {
             uts.internal_signals_with_full_prime()
         } else {
             uts.compile()
         };
-        if let Some(lp) = local_proof {
-            bts.bad = LitVec::from([bts.bad[lp]]);
+        if local_proof < bts.bad.len() {
+            bts.bad = LitVec::from([bts.bad[local_proof]]);
         }
         bts.constraint.extend(!&uts.ts.bad);
         let tsctx = Box::new(bts.ctx());
@@ -59,12 +59,11 @@ impl IC3 {
             return true;
         }
         let bad = self.tsctx.bad.clone();
-        let id = self.prop;
         let mut slv = TransysSolver::new(&self.tsctx);
         for init in self.tsctx.init.clone() {
             slv.add_clause(&init);
         }
-        if slv.solve(&[self.tsctx.bad[id]]) {
+        if slv.solve(&[self.tsctx.bad[0]]) {
             let (input, bad) = slv.trivial_pred();
             self.add_obligation(ProofObligation::new(
                 0,

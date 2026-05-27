@@ -126,8 +126,7 @@ impl Transys {
         info!("rearrange: {}", self.statistic());
     }
 
-    pub fn preproc(&self, cfg: &PreprocConfig, mut rst: Restore) -> (Self, Restore) {
-        let mut ts = self.clone();
+    pub fn preproc(mut ts: Self, cfg: &PreprocConfig, mut rst: Restore) -> (Self, Restore) {
         if cfg.preproc {
             ts.simplify(&mut rst);
             if cfg.scorr {

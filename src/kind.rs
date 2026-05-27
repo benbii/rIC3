@@ -1,8 +1,8 @@
 use crate::{
     BlProof, Engine, McProof, McResult, McWitness,
     cadical::CaDiCaL,
-    config::{EngineConfig, PreprocConfig},
-    transys::{Transys, certify::Restore, nodep::NoDepTransysUnroll, preproc_serde::PreprocModel},
+    config::EngineConfig,
+    transys::{Transys, certify::Restore, nodep::NoDepTransysUnroll},
 };
 use clap::{Args, Parser};
 use log::{error, info};
@@ -11,23 +11,18 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Args, Clone, Debug, Serialize, Deserialize)]
 pub struct KindConfig {
-    /// Property ID. If not specified, all properties are checked.
-    #[arg(long = "prop")]
-    pub prop: Option<usize>,
     /// Max bound to check
     #[arg(long = "end", default_value_t = usize::MAX)]
     pub end: usize,
-    #[command(flatten)]
-    pub preproc: PreprocConfig,
     /// Simple path constraint
     #[arg(long = "simple-path", default_value_t = false)]
     pub simple_path: bool,
     /// Skip BMC
     #[arg(long = "skip-bmc", default_value_t = false)]
     pub skip_bmc: bool,
-    /// Local proof (internal parameter)
-    #[arg(skip)]
-    pub local_proof: bool,
+    /// Local proof
+    #[arg(long = "local-proof", default_value_t = usize::MAX)]
+    pub local_proof: usize,
 }
 
 impl Default for KindConfig {
@@ -50,24 +45,11 @@ pub struct Kind {
 }
 
 impl Kind {
-    pub fn new(cfg: KindConfig, mut ts: Transys) -> Self {
-        if cfg.local_proof {
+    pub fn new(cfg: KindConfig, mut ts: Transys, ots: Transys, mut rst: Restore) -> Self {
+        if cfg.local_proof < ts.bad.len() {
             panic!("local proof KInd not supported");
         }
 
-        let ots = ts.clone();
-        if let Some(prop) = cfg.prop {
-            ts.bad = LitVec::from(ts.bad[prop]);
-        }
-        let (model, loaded) = PreprocModel::load_or_preproc(ts, &cfg.preproc);
-        let (mut ts, mut rst) = (model.ts, model.rst);
-        // dumb to test twice, but needed so bad prop set correctly
-        // on both load success and load failure
-        if loaded && let Some(prop) = cfg.prop {
-            ts.bad = LitVec::from(ts.bad[prop]);
-        }
-
-        // K-Ind specific additional preprocessing after general load_or_preproc
         ts.remove_gate_init(&mut rst);
         let mut ts = ts.remove_dep();
         // assume constraints
@@ -75,17 +57,15 @@ impl Kind {
         for c in std::mem::take(&mut ts.constraint) {
             ts.rel.add_clause(&[c]);
         }
-        if cfg.preproc.preproc {
-            ts.simplify(&mut rst); // restored from master branch
-        }
+        ts.simplify(&mut rst); // restored from master branch
         // compress bads
-        if cfg.prop.is_none() && ts.bad.len() > 1 {
+        if ts.bad.len() > 1 {
             let bad = std::mem::take(&mut ts.bad);
             ts.bad = LitVec::from(ts.rel.new_or(bad));
         }
         let uts = NoDepTransysUnroll::new(&ts);
         Self {
-            bad_prop_id: cfg.prop.unwrap_or(0),
+            bad_prop_id: 0,
             uts,
             skip_bmc: cfg.skip_bmc,
             end: cfg.end,

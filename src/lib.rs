@@ -400,15 +400,8 @@ impl Display for Lit {
 pub use btor::Btor;
 
 use crate::{
-    config::EngineConfig,
-    transys::{
-        Transys,
-        certify::{BlProof, BlWitness},
-    },
-    wltransys::{
-        WlTransys,
-        certify::{WlProof, WlWitness},
-    },
+    transys::certify::{BlProof, BlWitness},
+    wltransys::certify::{WlProof, WlWitness}
 };
 use enum_as_inner::EnumAsInner;
 use std::ops::BitOr;
@@ -464,32 +457,9 @@ pub enum McWitness {
 
 pub trait Engine {
     fn check(&mut self) -> McResult;
-
     fn statistic(&mut self) {}
-
     fn proof(&mut self) -> McProof {
-        panic!("unsupport proof");
+        panic!("proof unsupported");
     }
-
-    fn witness(&mut self) -> McWitness {
-        panic!("unsupport witness");
-    }
-}
-
-pub fn create_bl_engine(cfg: EngineConfig, ts: Transys) -> Box<dyn Engine> {
-    match cfg {
-        EngineConfig::IC3(cfg) => Box::new(ic3::IC3::new(cfg, ts)),
-        EngineConfig::Kind(cfg) => Box::new(kind::Kind::new(cfg, ts)),
-        EngineConfig::BMC(cfg) => Box::new(bmc::BMC::new(cfg, ts)),
-        EngineConfig::Rlive(cfg) => Box::new(rlive::Rlive::new(cfg, ts)),
-        _ => unreachable!(),
-    }
-}
-
-pub fn create_wl_engine(cfg: EngineConfig, ts: WlTransys) -> Box<dyn Engine> {
-    match cfg {
-        EngineConfig::WlBMC(cfg) => Box::new(wlbmc::WlBMC::new(cfg, ts)),
-        EngineConfig::WlKind(cfg) => Box::new(wlkind::WlKind::new(cfg, ts)),
-        _ => unreachable!(),
-    }
+    fn witness(&mut self) -> McWitness;
 }
