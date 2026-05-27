@@ -134,8 +134,7 @@ impl Transys {
         self.rearrange(rst);
     }
 
-    pub fn preproc(&self, cfg: &PreprocConfig, mut rst: Restore) -> (Self, Restore) {
-        let mut ts = self.clone();
+    pub fn preproc(mut ts: Self, cfg: &PreprocConfig, mut rst: Restore) -> (Self, Restore) {
         if cfg.preproc {
             ts.simplify(&mut rst);
             info!("trivial simplified ts: {}", ts.statistic());

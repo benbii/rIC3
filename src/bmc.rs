@@ -2,8 +2,8 @@ use crate::cadical::CaDiCaL;
 use crate::kissat::Kissat;
 use crate::{
     Engine, McResult, McWitness,
-    config::{EngineConfig, PreprocConfig},
-    transys::{Transys, certify::Restore, nodep::NoDepTransysUnroll, preproc_serde::PreprocModel},
+    config::EngineConfig,
+    transys::{Transys, certify::Restore, nodep::NoDepTransysUnroll},
 };
 use clap::{Args, Parser};
 use log::info;
@@ -13,8 +13,6 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Args, Clone, Debug, Serialize, Deserialize)]
 pub struct BMCConfig {
-    #[command(flatten)]
-    pub preproc: PreprocConfig,
     /// Start bound
     #[arg(long = "start", default_value_t = 0)]
     pub start: usize,
@@ -57,11 +55,8 @@ pub struct BMC {
 }
 
 impl BMC {
-    pub fn new(cfg: BMCConfig, ts: Transys) -> Self {
-        let ots = ts.clone();
+    pub fn new(cfg: BMCConfig, mut ts: Transys, ots: Transys, mut rst: Restore) -> Self {
         let mut rng = StdRng::seed_from_u64(cfg.rseed);
-        let (model, _loaded) = PreprocModel::load_or_preproc(ts, &cfg.preproc);
-        let (mut ts, mut rst) = (model.ts, model.rst);
         if ts.bad.len() > 1 {
             let bad = std::mem::take(&mut ts.bad);
             ts.bad = LitVec::from(ts.rel.new_or(bad));
@@ -70,9 +65,7 @@ impl BMC {
         for c in std::mem::take(&mut ts.constraint) {
             ts.rel.add_clause(&[c]);
         }
-        if cfg.preproc.preproc {
-            ts.simplify(&mut rst);
-        }
+        ts.simplify(&mut rst);
         let uts = NoDepTransysUnroll::new(&ts);
         let solver = if cfg.kissat {
             let mut s = Kissat::new();

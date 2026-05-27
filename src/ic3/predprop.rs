@@ -16,14 +16,14 @@ pub struct PredProp {
 }
 
 impl PredProp {
-    pub fn new(uts: TransysUnroll, local_proof: Option<usize>, inn: bool) -> Self {
+    pub fn new(uts: TransysUnroll, local_proof: usize, inn: bool) -> Self {
         let mut bts = if inn {
             uts.internal_signals_with_full_prime()
         } else {
             uts.compile()
         };
-        if let Some(lp) = local_proof {
-            bts.bad = LitVec::from([bts.bad[lp]]);
+        if local_proof < bts.bad.len() {
+            bts.bad = LitVec::from([bts.bad[local_proof]]);
         }
         bts.constraint.extend(!&uts.ts.bad);
         let slv = new_transys_solver(&bts);
@@ -55,12 +55,11 @@ impl IC3 {
             return true;
         }
         let bad = self.ts.bad.clone();
-        let id = self.prop;
         let mut slv = new_transys_solver(&self.ts);
         for init in self.ts.inits() {
             slv.add_clause(&init);
         }
-        if slv.solve(&[self.ts.bad[id]]) {
+        if slv.solve(&[self.ts.bad[0]]) {
             let mut input = LitVec::new();
             for i in self.ts.input() {
                 if let Some(v) = slv.sat_value_lit(i) {

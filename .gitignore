@@ -3,5 +3,6 @@ build/
 ric3proj/
 .local/
 *.preproc
+tools/run-info
 
 /deps/logicrs/

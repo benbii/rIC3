@@ -216,38 +216,25 @@ impl Frontend for AigFrontend {
     }
 
     fn certify(&mut self, model: &Path, cert: &Path) -> bool {
-        certifaiger_check(model, cert)
-    }
-}
-
-pub fn certifaiger_check<M: AsRef<Path>, C: AsRef<Path>>(model: M, certificate: C) -> bool {
-    let certificate = certificate.as_ref();
-    let output = Command::new("docker")
-        .args([
-            "run",
-            "--rm",
-            "--pull=never",
-            "-v",
-            &format!("{}:{}", model.as_ref().display(), model.as_ref().display()),
-            "-v",
-            &format!("{}:{}", certificate.display(), certificate.display()),
-            "ghcr.io/gipsyh/certifaiger",
-        ])
-        .arg(model.as_ref())
-        .arg(certificate)
-        .output()
-        .unwrap();
-    if output.status.success() {
-        true
-    } else {
-        debug!("{}", String::from_utf8_lossy(&output.stdout));
-        debug!("{}", String::from_utf8_lossy(&output.stderr));
-        match output.status.code() {
-            Some(1) => (),
-            _ => error!(
-                "certifaiger maybe not avaliable, please `docker pull ghcr.io/gipsyh/certifaiger:latest`"
-            ),
+        let output = Command::new("docker")
+            .args([
+                "run", "--rm", "--pull=never", "-v",
+                &format!("{}:{}", model.display(), model.display()),
+                "-v",
+                &format!("{}:{}", cert.display(), cert.display()),
+                "ghcr.io/gipsyh/certifaiger",
+            ])
+            .arg(model)
+            .arg(cert)
+            .output()
+            .unwrap();
+        if !output.status.success() {
+            debug!("{}", String::from_utf8_lossy(&output.stdout));
+            debug!("{}", String::from_utf8_lossy(&output.stderr));
+            if output.status.code() != Some(1) {
+                error!("certifaiger not avaliable, please `docker pull ghcr.io/gipsyh/certifaiger:latest`");
+            }
         }
-        false
+        output.status.success()
     }
 }

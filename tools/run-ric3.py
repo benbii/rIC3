@@ -42,8 +42,8 @@ bmc65 = [solver, "check", "TESTCASE", "bmc", "--kissat", "--step", "65", "--rsee
 bmc_dyn = [solver, "check", "TESTCASE", "bmc", "--kissat", "--dyn-step", "--rseed", "15"]
 ic3_basic = [solver, "check", "TESTCASE", "ic3", "--rseed", "1"]
 ic3_no_ctg = [
-  solver, "check", "TESTCASE", "ic3", "--ctg=false", "--frts=false",
-  "--scorr=false", "--drop-po=false", "--rseed", "2",
+  solver, "check", "TESTCASE", "--frts=false", "--scorr=false",
+  "ic3", "--ctg=false", "--drop-po=false", "--rseed", "2",
 ]
 ic3_no_drop = [
   solver, "check", "TESTCASE", "ic3", "--drop-po=false",
