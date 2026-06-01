@@ -1,23 +1,20 @@
 use crate::{
-    Btor, Lit, VarRange, aig::Aig, frontend::{Frontend, aig::AigFrontend, btor::BtorFrontend}, gipsat::DagCnfSolver, transys::{Transys, certify::Restore}
+    aig::Aig,
+    frontend::{Frontend, aig::AigFrontend, btor::BtorFrontend},
+    gipsat::DagCnfSolver,
+    transys::{Transys, certify::Restore},
+    Btor, Lit,
 };
 use ahash::HashMap;
-use log::{debug, info, trace, warn};
+use log::{debug, info};
 use logicrs::bitvec::BitVec;
 use logicrs::{satif::Satif, LitVec, Var, VarLMap, VarMap};
 use rand::{rngs::StdRng, SeedableRng};
 use std::{iter::zip, path::PathBuf};
 
-fn q(
-    ind_slv: &mut DagCnfSolver,
-    sim_slv: &mut DagCnfSolver,
-    lim: u32, x: Lit, y: Lit
-) -> Option<bool> {
+fn q(ind_slv: &mut DagCnfSolver, lim: u32, x: Lit, y: Lit) -> Option<bool> {
     if x == y { return Some(false); }
     let bad = if let Some (c) = x.try_constant() {
-        if let Some(cc) = y.try_constant() {
-            return Some(c != cc);
-        }
         Some(y.not_if(c))
     } else if let Some(c) = y.try_constant() {
         Some(x.not_if(c))
@@ -25,12 +22,8 @@ fn q(
 
     if let Some(bad) = bad {
         let o = ind_slv.solve_full(&[bad], &[], &[], lim);
-        if o == Some(false) {
+        if o == Some(false) && bad != Lit::constant(false) {
             ind_slv.add_clause(&[!bad]);
-            sim_slv.add_clause(&[!bad]);
-            trace!("{x}=={y}");
-        } else if o.is_none() {
-            trace!("{x}-?{y}"); // string content is imprecise; don't care
         }
         return o;
     }
@@ -38,46 +31,37 @@ fn q(
     let mut o = ind_slv.solve_full(&[x, !y], &[], &[], lim);
     if o == Some(false) {
         ind_slv.add_clause(&[!x, y]);
-        sim_slv.add_clause(&[!x, y]);
         o = ind_slv.solve_full(&[!x, y], &[], &[], lim);
         if o == Some(false) {
             ind_slv.add_clause(&[x, !y]);
-            sim_slv.add_clause(&[x, !y]);
-            trace!("{x}<->{y}");
-        } else if o.is_none() {
-            trace!("{y}-?{x}");
         }
-    } else if o.is_none() {
-        trace!("{x}-?{y}");
     }
     o
 }
 
 pub fn toy_scorr(mut ts: Transys, mut rst: Restore) -> (Transys, Restore) {
-    trace!("toy");
     info!("original ts: {}", ts.statistic());
     ts.simplify(&mut rst);
     info!("trivial simplified ts: {}", ts.statistic());
     // run constraint-aware simulation
-    // seed exactly one init state
+    // seed multiple init states
     let mut sim: VarMap<BitVec> = VarMap::new_with(ts.max_var());
-    let mut slv = DagCnfSolver::new(&ts.rel);
+    let mut init_slv = DagCnfSolver::new(&ts.rel);
+    init_slv.use_phase_saving = false;
     for cls in ts.constraint() {
-        slv.add_clause(&[cls]);
+        init_slv.add_clause(&[cls]);
     }
-    ts.load_init(&mut slv);
-    for &v in &ts.latch {
-        if ts.init(v).is_none() {
-            slv.add_clause(&[!v.lit()]);
+    ts.load_init(&mut init_slv);
+    while sim[Var::CONST].len() < 10 {
+        if !init_slv.solve_with_domain(&[Lit::constant(true)], &ts.latch) {
+            break;
+        }
+        sim[Var::CONST].push(false);
+        for &v in &ts.latch {
+            sim[v].push(init_slv.sat_value(v.lit()).unwrap());
         }
     }
-    if !slv.solve_with_domain(&[Lit::constant(true)], &ts.latch) {
-        return (ts, rst); // not a single state satisfying init; bail out
-    }
-    sim[Var::CONST].push(false);
-    for &v in &ts.latch {
-        sim[v].push(slv.sat_value(v.lit()).unwrap());
-    }
+    let mut stack = Vec::from_iter(0..sim[Var::CONST].len());
 
     // generate the rest of patterns by transition solving, not load_init
     let mut slv = DagCnfSolver::new(&ts.rel);
@@ -87,20 +71,18 @@ pub fn toy_scorr(mut ts: Transys, mut rst: Restore) -> (Transys, Restore) {
     }
     let next_lits: Vec<Lit> = ts.latch.iter().map(|&v| ts.next(v.lit())).collect();
     let domain: Vec<Var> = next_lits.iter().map(|l| l.var()).collect();
-    let mut stack = vec![0usize];
-    while sim[Var::CONST].len() < 100 {
-        let Some(&from) = stack.last() else { break; };
+    while sim[Var::CONST].len() < 100 && let Some(&from) = stack.last() {
         let assump = ts.latch.iter().map(|&v| v.lit().not_if(!sim[v].get(from)));
         let assump: LitVec = assump.collect();
         match slv.solve_full(&assump, &[], &domain, 5) {
             Some(true) => {}
             Some(false) => {
-                warn!("rt sim exhausted at len {} from {from}", sim[Var::CONST].len());
+                debug!("rt sim exhausted at len {} from {from}", sim[Var::CONST].len());
                 stack.pop();
                 continue;
             }
             None => {
-                warn!("rt sim restart-limited at len {} from {from}", sim[Var::CONST].len());
+                debug!("rt sim restart-limited at len {} from {from}", sim[Var::CONST].len());
                 stack.pop();
                 continue;
             }
@@ -168,15 +150,20 @@ pub fn toy_scorr(mut ts: Transys, mut rst: Restore) -> (Transys, Restore) {
         // 2: build solver
         let mut rel = ts.rel.clone();
         rel.replace(&replace);
+        let mut init_slv = DagCnfSolver::new(&ts.rel);
         let mut ind_slv = DagCnfSolver::new(&rel);
+        ts.load_init(&mut init_slv);
+        for c in ts.constraint() {
+            init_slv.add_clause(&[c]);
+        }
         // safer to pass constraint unit-clauses through mapper as well
         for c in ts.constraint().map(|c| replace.map_lit(c).unwrap_or(c)) {
             ind_slv.add_clause(&[c]);
         }
+        init_slv.rng = rng.clone();
         ind_slv.rng = rng;
-        let mut sim_slv = ind_slv.clone();
+        init_slv.use_phase_saving = false;
         ind_slv.use_phase_saving = false;
-        sim_slv.use_phase_saving = false;
 
         // 3: sweep on x != y
         // could experiment: break 'next_class to here on failure?
@@ -203,34 +190,55 @@ pub fn toy_scorr(mut ts: Transys, mut rst: Restore) -> (Transys, Restore) {
                 let xn = replace.map_lit(xn).unwrap_or(xn);
                 let yn = replace.map_lit(yn).unwrap_or(yn);
 
-                match q(&mut ind_slv, &mut sim_slv, 10, xn, yn) {
+                match q(&mut init_slv, 10, x, y) {
                     None => {
                         fail[y] = true;
                         prevround_simsz = 0;
                         continue;
                     },
-                    Some(false) => {
-                        replace.insert_lit(y, x);
+                    Some(false) => {},
+                    Some(true) => {
+                        let mut assump: LitVec = ts
+                            .input()
+                            .chain(ts.latch())
+                            .filter_map(|v| init_slv.sat_value_lit(v))
+                            .collect();
+                        assump.sort();
+                        assump.dedup();
+                        assert!(init_slv.solve_with_domain(&assump, &maybe));
+                        sim[Var::CONST].push(false);
+                        for &l in maybe.iter() {
+                            sim[l].push(init_slv.sat_value(l.lit()).unwrap());
+                        }
                         continue;
                     },
-                    Some(true) => {},
                 }
-                let mut assump: LitVec = ts
-                    .input()
-                    .chain(ts.latch())
-                    .filter_map(|v| ind_slv.sat_value_lit(v))
-                    .map(|l| replace.map_lit(l).unwrap_or(l))
-                    .collect();
-                assump.push(ind_slv.sat_value_lit(xn.var()).unwrap());
-                assump.push(ind_slv.sat_value_lit(yn.var()).unwrap());
-                assump.sort();
-                assump.dedup();
-                assert!(sim_slv.solve_with_domain(&assump, &domain));
-                sim[Var::CONST].push(false);
-                for (l, ln) in zip(maybe.iter(), nxt_maybe.iter()) {
-                    let ln = replace.map_lit(*ln).unwrap_or(*ln);
-                    sim[*l].push(sim_slv.sat_value(ln).unwrap());
+                match q(&mut ind_slv, 10, xn, yn) {
+                    None => {
+                        fail[y] = true;
+                        prevround_simsz = 0;
+                    },
+                    Some(false) => replace.insert_lit(y, x),
+                    Some(true) => {
+                        let mut assump: LitVec = ts
+                            .input()
+                            .chain(ts.latch())
+                            .filter_map(|v| ind_slv.sat_value_lit(v))
+                            .map(|l| replace.map_lit(l).unwrap_or(l))
+                            .collect();
+                        assump.push(ind_slv.sat_value_lit(xn.var()).unwrap());
+                        assump.push(ind_slv.sat_value_lit(yn.var()).unwrap());
+                        assump.sort();
+                        assump.dedup();
+                        assert!(ind_slv.solve_with_domain(&assump, &domain));
+                        sim[Var::CONST].push(false);
+                        for (l, ln) in zip(maybe.iter(), nxt_maybe.iter()) {
+                            let ln = replace.map_lit(*ln).unwrap_or(*ln);
+                            sim[*l].push(ind_slv.sat_value(ln).unwrap());
+                        }
+                    },
                 }
+
             }
             maybe.retain(|x| !fail[*x]);
         }
@@ -243,7 +251,7 @@ pub fn toy_scorr(mut ts: Transys, mut rst: Restore) -> (Transys, Restore) {
     return (ts, rst);
 }
 
-pub fn toy_ccorr(mut ts: Transys, mut rst: Restore) -> (Transys, Restore) {
+/* pub fn toy_ccorr(mut ts: Transys, mut rst: Restore) -> (Transys, Restore) {
     ts.topsort(&mut rst);
     let mut rng = StdRng::seed_from_u64(9876543210);
     let mut sim = VarMap::new_with(ts.max_var());
@@ -348,7 +356,7 @@ pub fn toy_ccorr(mut ts: Transys, mut rst: Restore) -> (Transys, Restore) {
     ts.simplify(&mut rst);
     info!("toy fraig'd ts: {}", ts.statistic());
     (ts, rst)
-}
+} */
 
 pub fn toy_corr(model: PathBuf) -> (Transys, Restore) {
     let model = model.canonicalize().unwrap();
@@ -362,7 +370,7 @@ pub fn toy_corr(model: PathBuf) -> (Transys, Restore) {
         _ => panic!("unknown model file extention")
     };
     let rst = Restore::new(&ts);
-    let (ts, rst) = toy_scorr(ts, rst);
-    toy_ccorr(ts, rst)
-    // toy_scorr(ts, rst)
+    // let (ts, rst) = toy_scorr(ts, rst);
+    // toy_ccorr(ts, rst)
+    toy_scorr(ts, rst)
 }

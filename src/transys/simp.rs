@@ -1,7 +1,7 @@
 use super::Transys;
 use crate::{
     config::PreprocConfig,
-    transys::{certify::Restore, frts::FrTs, scorr::Scorr},
+    transys::{certify::Restore, frts::FrTs, toy_corr::toy_scorr},
 };
 use crate::RseedSet as HashSet;
 use log::{debug, info};
@@ -124,10 +124,10 @@ impl Transys {
 
     pub fn preproc(mut ts: Self, cfg: &PreprocConfig, mut rst: Restore) -> (Self, Restore) {
         if cfg.preproc {
-            ts.simplify(&mut rst);
             if cfg.scorr {
-                let scorr = Scorr::new(ts, cfg, rst);
-                (ts, rst) = scorr.scorr();
+                (ts, rst) = toy_scorr(ts, rst);
+            } else {
+                ts.simplify(&mut rst);
             }
             if cfg.frts {
                 let frts = FrTs::new(ts, cfg, rst);
