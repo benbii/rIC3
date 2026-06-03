@@ -39,21 +39,25 @@ fn q(ind_slv: &mut DagCnfSolver, lim: u32, x: Lit, y: Lit) -> Option<bool> {
     o
 }
 
-pub fn toy_scorr(mut ts: Transys, mut rst: Restore) -> (Transys, Restore) {
+pub fn toy_scorr(mut ts: Transys, mut rst: Restore, zero: bool) -> (Transys, Restore) {
     info!("original ts: {}", ts.statistic());
     ts.simplify(&mut rst);
     info!("trivial simplified ts: {}", ts.statistic());
-    // run constraint-aware simulation
-    // seed multiple init states
+    // run constraint-aware simulation; seed multiple init states first
     let mut sim: VarMap<BitVec> = VarMap::new_with(ts.max_var());
     let mut init_slv = DagCnfSolver::new(&ts.rel);
     init_slv.use_phase_saving = false;
     for cls in ts.constraint() {
         init_slv.add_clause(&[cls]);
     }
+    for &v in &ts.latch {
+        if zero && ts.init(v).is_none() {
+            init_slv.add_clause(&[!v.lit()]);
+        }
+    }
     ts.load_init(&mut init_slv);
-    while sim[Var::CONST].len() < 10 {
-        if !init_slv.solve_with_domain(&[Lit::constant(true)], &ts.latch) {
+    while sim[Var::CONST].len() < if zero { 2 } else { 10 } {
+        if init_slv.solve_full(&[Lit::constant(true)], &[], &ts.latch, 5) != Some(true) {
             break;
         }
         sim[Var::CONST].push(false);
@@ -190,7 +194,8 @@ pub fn toy_scorr(mut ts: Transys, mut rst: Restore) -> (Transys, Restore) {
                 let xn = replace.map_lit(xn).unwrap_or(xn);
                 let yn = replace.map_lit(yn).unwrap_or(yn);
 
-                match q(&mut init_slv, 10, x, y) {
+                // no init check needed if on init all latches have fixed value
+                match if zero { Some(false) } else { q(&mut init_slv, 10, x, y) } {
                     None => {
                         fail[y] = true;
                         prevround_simsz = 0;
@@ -213,6 +218,7 @@ pub fn toy_scorr(mut ts: Transys, mut rst: Restore) -> (Transys, Restore) {
                         continue;
                     },
                 }
+
                 match q(&mut ind_slv, 10, xn, yn) {
                     None => {
                         fail[y] = true;
@@ -372,5 +378,5 @@ pub fn toy_corr(model: PathBuf) -> (Transys, Restore) {
     let rst = Restore::new(&ts);
     // let (ts, rst) = toy_scorr(ts, rst);
     // toy_ccorr(ts, rst)
-    toy_scorr(ts, rst)
+    toy_scorr(ts, rst, false)
 }

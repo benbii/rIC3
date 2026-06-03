@@ -125,7 +125,7 @@ impl Transys {
     pub fn preproc(mut ts: Self, cfg: &PreprocConfig, mut rst: Restore) -> (Self, Restore) {
         if cfg.preproc {
             if cfg.scorr {
-                (ts, rst) = toy_scorr(ts, rst);
+                (ts, rst) = toy_scorr(ts, rst, false);
             } else {
                 ts.simplify(&mut rst);
             }
