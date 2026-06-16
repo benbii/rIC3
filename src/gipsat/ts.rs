@@ -20,7 +20,7 @@ pub fn inductive_with_constrain(
     if strengthen {
         constraint.push(LitVec::from_iter(cube.iter().map(|l| !*l)));
     }
-    !slv.solve_with_constraint(&assump, constraint)
+    !slv.solve_with_constraint(&assump, &constraint)
 }
 
 pub fn inductive(slv: &mut DagCnfSolver, ts: &Transys, cube: &[Lit], strengthen: bool) -> bool {

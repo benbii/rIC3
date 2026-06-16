@@ -1,6 +1,5 @@
 use super::DagCnfSolver;
 use bitfield_struct::bitfield;
-use log::trace;
 use logicrs::nckvec::NckVec;
 use logicrs::{Lit, LitVec};
 use std::{
@@ -283,10 +282,6 @@ impl ClauseDB {
     pub fn decay(&mut self) {
         self.act_inc *= 1.0 / Self::DECAY
     }
-
-    pub fn num_learnt(&self) -> usize {
-        self.learnt.len()
-    }
 }
 
 impl Default for ClauseDB {
@@ -335,7 +330,6 @@ impl DagCnfSolver {
         if (full && self.cdb.learnt.len() * 15 > self.cdb.trans.len())
             || self.cdb.learnt.len() > self.cdb.trans.len()
         {
-            let onum_learnt = self.cdb.num_learnt();
             self.cdb.learnt.sort_unstable_by(|a, b| {
                 self.cdb
                     .allocator
@@ -354,11 +348,6 @@ impl DagCnfSolver {
                     self.cdb.learnt.push(l);
                 }
             }
-            trace!(
-                "gipsat reduced learnt clauses from {} to {}",
-                onum_learnt,
-                self.cdb.num_learnt()
-            );
             self.garbage_collect();
         }
     }

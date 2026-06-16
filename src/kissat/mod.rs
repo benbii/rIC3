@@ -64,11 +64,11 @@ impl Satif for Kissat {
         }
     }
 
-    fn solve_with_constraint(&mut self, assumps: &[Lit], constraint: Vec<LitVec>) -> bool {
+    fn solve_with_constraint(&mut self, assumps: &[Lit], constraint: &[LitVec]) -> bool {
         self.try_solve(assumps, constraint).unwrap()
     }
 
-    fn try_solve(&mut self, assumps: &[Lit], constraint: Vec<LitVec>) -> Option<bool> {
+    fn try_solve(&mut self, assumps: &[Lit], constraint: &[LitVec]) -> Option<bool> {
         debug_assert!(assumps.is_empty());
         debug_assert!(constraint.is_empty());
         match unsafe { kissat_solve(self.solver) } {

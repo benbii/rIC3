@@ -40,7 +40,7 @@ impl Scorr {
     fn init_simulation(&self, num_word: usize) -> VarMap<BitVec> {
         let mut slv = DagCnfSolver::new(&self.ts.rel);
         for cls in self.ts.constraint() {
-            slv.add_clause(&cls.cube());
+            slv.add_clause(&[cls]);
         }
         self.ts.load_init(&mut slv);
         let mut sim: VarMap<BitVec> = VarMap::new_with(self.ts.max_var());
@@ -86,10 +86,7 @@ impl Scorr {
                 if sim[Var::CONST].len() >= num_word * BitVec::WORD_SIZE {
                     return;
                 }
-                if !slv
-                    .solve_with_param(&assump, vec![], domain.iter().copied(), Some(5))
-                    .is_some_and(|r| r)
-                {
+                if !slv.solve_full(&assump, &[], domain, 5).is_some_and(|r| r) {
                     return;
                 }
                 sim[Var::CONST].push(false);
@@ -112,7 +109,7 @@ impl Scorr {
         sim.reserve(self.ts.max_var());
         let mut slv = DagCnfSolver::new(&self.ts.rel);
         for cls in self.ts.constraint() {
-            slv.add_clause(&cls.cube());
+            slv.add_clause(&[cls]);
         }
         for i in 0..init[Var::CONST].len() {
             let block = !assign(init, i, &consider);
@@ -128,7 +125,7 @@ impl Scorr {
                 if sim[Var::CONST].len() >= num_word * BitVec::WORD_SIZE {
                     return sim;
                 }
-                if !slv.solve_with_domain(&assump, domain.iter().copied()) {
+                if !slv.solve_with_domain(&assump, &domain) {
                     break;
                 }
                 sim[Var::CONST].push(false);
@@ -151,7 +148,7 @@ impl Scorr {
     fn check_scorr(&mut self, x: Lit, y: Lit) -> bool {
         if self
             .init_slv
-            .solve_with_restart_limit(&[], vec![LitVec::from([x, y]), LitVec::from([!x, !y])], 10)
+            .solve_with_restart_limit(&[], &[LitVec::from([x, y]), LitVec::from([!x, !y])], 10)
             .is_none_or(|r| r)
         {
             return false;
@@ -165,7 +162,7 @@ impl Scorr {
         self.ind_slv
             .solve_with_restart_limit(
                 &[],
-                vec![
+                &[
                     LitVec::from([x, !y]),
                     LitVec::from([!x, y]),
                     LitVec::from([xn, yn]),

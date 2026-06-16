@@ -21,30 +21,26 @@ impl BitVec {
         Self::default()
     }
 
-    #[inline]
     pub fn new_rand(num_word: usize, rng: &mut StdRng) -> Self {
         if num_word == 0 {
             return Self::default();
         }
+        let mut bits = NckVec::new_rand(num_word, rng);
+        bits.push(0);
         Self {
-            bits: NckVec::new_rand(num_word, rng),
-            last_len: 64,
+            bits,
+            last_len: 0,
         }
     }
 
-    #[inline]
     pub fn from_elem(len: usize, val: bool) -> Self {
         if len == 0 {
             return Self::default();
         }
         let v = if val { u64::MAX } else { 0 };
         let mut bits = NckVec::from(vec![v; len / Self::WORD_SIZE]);
-        let mut last_len = len & Self::WORD_SIZE_MASK;
-        if last_len == 0 {
-            last_len = 64;
-        } else {
-            bits.push(if val { (1 << last_len) - 1 } else { 0 });
-        }
+        let last_len = len & Self::WORD_SIZE_MASK;
+        bits.push(if val { (1u64 << last_len) - 1 } else { 0 });
         Self { bits, last_len }
     }
 
@@ -64,22 +60,16 @@ impl BitVec {
     }
 
     #[inline]
-    fn word_len(&self) -> usize {
-        let mut res = self.bits.len();
-        if self.last_len == 0 {
-            res -= 1
-        }
-        res
-    }
-
-    #[inline]
     pub fn is_empty(&self) -> bool {
-        self.len() == 0
+        debug_assert!(self.bits.len() >= 1);
+        self.bits.len() == 1 && self.last_len == 0
     }
 
     #[inline]
     pub fn clear(&mut self) {
-        *self = Self::default();
+        self.bits.clear();
+        self.bits.push(0);
+        self.last_len = 0;
     }
 
     #[inline]
@@ -104,34 +94,46 @@ impl BitVec {
         }
     }
 
-    #[inline]
-    fn last_word_mut(&mut self) -> &mut u64 {
-        unsafe { self.bits.last_mut().unwrap_unchecked() }
-    }
-
-    #[inline]
     fn mask_last(&mut self) {
-        if self.last_len == 64 {
-            return;
-        }
-        let mask = (1 << self.last_len) - 1;
-        *self.last_word_mut() &= mask;
+        let last = unsafe { self.bits.last_mut().unwrap_unchecked() };
+        let mask = (1u64 << self.last_len) - 1;
+        *last &= mask;
     }
 
-    #[inline]
-    pub fn push(&mut self, bit: bool) {
-        if self.last_len == 64 {
-            self.bits.push(0);
-            self.last_len = 0;
+    // If the last 2 words tell lhs != rhs.not_if(inv) then true.
+    // Should be useful in both updated `scorr` and `frts`
+    pub fn ne_inv(&self, rhs: &Self, inv: bool) -> bool {
+        debug_assert!(self.len() == rhs.len());
+        if self.is_empty() {
+            return false;
         }
+        let at = self.bits.len() - 1;
+        let mask = (1u64 << self.last_len) - 1;
+        let xor = if inv { u64::MAX } else { 0u64 };
+        if (self.bits[at] & mask) != ((rhs.bits[at] ^ xor) & mask) {
+            return true;
+        }
+        for i in (0..at).rev() {
+            if self.bits[i] != rhs.bits[i] ^ xor {
+                return true;
+            }
+        }
+        false
+    }
+
+    pub fn push(&mut self, bit: bool) {
         let mask = 1 << self.last_len;
-        let x = self.last_word_mut();
+        let x = unsafe { self.bits.last_mut().unwrap_unchecked() };
         if bit {
             *x |= mask;
         } else {
             *x &= !mask;
         }
         self.last_len += 1;
+        if self.last_len == 64 {
+            self.bits.push(0);
+            self.last_len = 0;
+        }
     }
 
     #[inline]
@@ -153,46 +155,21 @@ impl BitVec {
         r
     }
 
-    #[inline]
     pub fn is_zero(&self) -> bool {
-        debug_assert!(!self.is_empty());
-        for i in 0..self.word_len() {
-            if self.bits[i] != 0 {
-                return false;
-            }
-        }
-        true
+        self.bits.iter().all(|x| *x == 0)
     }
 
-    #[inline]
     pub fn is_one(&self) -> bool {
-        debug_assert!(!self.is_empty());
         if self.bits[0] != 1u64 {
             return false;
         }
-        for i in 1..self.word_len() {
-            if self.bits[i] != 0 {
-                return false;
-            }
-        }
-        true
+        self.bits.iter().skip(1).all(|x| *x == 0)
     }
 
-    #[inline]
     pub fn is_ones(&self) -> bool {
         debug_assert!(!self.is_empty());
-        let wl = self.word_len();
-        for i in 0..wl - 1 {
-            if self.bits[i] != u64::MAX {
-                return false;
-            }
-        }
-        let mask = if self.last_len == 64 {
-            u64::MAX
-        } else {
-            (1u64 << self.last_len) - 1
-        };
-        self.bits[wl - 1] == mask
+        let (last, full_words) = self.bits.split_last().unwrap();
+        full_words.iter().all(|&word| word == u64::MAX) && *last == (1u64 << self.last_len) - 1
     }
 
     pub fn iter(&self) -> Iter<'_> {
@@ -205,11 +182,7 @@ impl BitVec {
 
     #[inline]
     pub fn bool(&self) -> bool {
-        if self.len() == 1 {
-            self.get(0)
-        } else {
-            panic!();
-        }
+        self.get(0)
     }
 }
 
@@ -283,15 +256,7 @@ impl Default for BitVec {
 impl PartialEq for BitVec {
     #[inline]
     fn eq(&self, other: &Self) -> bool {
-        if self.len() != other.len() {
-            return false;
-        }
-        for i in 0..self.word_len() {
-            if self.bits[i] != other.bits[i] {
-                return false;
-            }
-        }
-        true
+        self.last_len == other.last_len && self.bits.as_slice() == other.bits.as_slice()
     }
 }
 
@@ -300,10 +265,10 @@ impl Eq for BitVec {}
 impl Hash for BitVec {
     #[inline]
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        for &bit in self.bits.iter().take(self.word_len()) {
+        for &bit in self.bits.iter() {
             bit.hash(state);
         }
-        (self.last_len & Self::WORD_SIZE_MASK).hash(state);
+        self.last_len.hash(state);
     }
 }
 
@@ -508,9 +473,12 @@ impl fmt::LowerHex for BitVec {
         if self.is_zero() {
             return write!(f, "0");
         }
-        let wl = self.word_len();
-        write!(f, "{:x}", self.bits[wl - 1])?;
-        for i in (0..wl - 1).rev() {
+        let mut last = self.bits.len() - 1;
+        if self.last_len == 0 {
+            last -= 1;
+        }
+        write!(f, "{:x}", self.bits[last])?;
+        for i in (0..last).rev() {
             write!(f, "{:016x}", self.bits[i])?;
         }
         Ok(())
@@ -526,9 +494,12 @@ impl fmt::UpperHex for BitVec {
         if self.is_zero() {
             return write!(f, "0");
         }
-        let wl = self.word_len();
-        write!(f, "{:X}", self.bits[wl - 1])?;
-        for i in (0..wl - 1).rev() {
+        let mut last = self.bits.len() - 1;
+        if self.last_len == 0 {
+            last -= 1;
+        }
+        write!(f, "{:X}", self.bits[last])?;
+        for i in (0..last).rev() {
             write!(f, "{:016X}", self.bits[i])?;
         }
         Ok(())
@@ -559,6 +530,10 @@ mod tests {
     fn test1() {
         let bv = BitVec::from_elem(0, true);
         assert!(bv.is_empty());
+        let mut bv = BitVec::default();
+        assert!(bv.is_empty());
+        bv.push(false);
+        assert!(!bv.is_empty());
     }
 
     #[test]
@@ -662,6 +637,25 @@ mod tests {
         s.insert(a);
         s.insert(b);
         assert!(s.len() == 1);
+    }
+
+    #[test]
+    fn test_push_word_boundary() {
+        let mut bv = BitVec::new();
+        for _ in 0..64 {
+            bv.push(true);
+        }
+        assert_eq!(bv.len(), 64);
+        assert_eq!(bv.last_len, 0);
+        assert_eq!(bv.bits.len(), 2);
+        assert_eq!(bv.bits[0], u64::MAX);
+        assert_eq!(bv.bits[1], 0u64);
+
+        bv.push(true);
+        assert_eq!(bv.len(), 65);
+        assert_eq!(bv.last_len, 1);
+        assert_eq!(bv.bits.len(), 2);
+        assert_eq!(bv.bits[1], 1u64);
     }
 
     #[test]

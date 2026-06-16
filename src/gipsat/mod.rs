@@ -22,7 +22,6 @@ use propagate::Watchers;
 use rand::{SeedableRng, rngs::StdRng};
 use simplify::Simplify;
 pub use statistic::SolverStatistic;
-use std::iter::empty;
 use std::time::Instant;
 pub use ts::*;
 use vsids::Vsids;
@@ -161,15 +160,17 @@ impl DagCnfSolver {
 
     fn new_round(
         &mut self,
-        domain: impl Iterator<Item = Var>,
-        constraint: Vec<LitVec>,
+        domain: &[Var],
+        assump: &[Lit],
+        constraint: &[LitVec],
         bucket: bool,
     ) -> bool {
         self.backtrack(0, self.temporary_domain);
         self.clean_temporary();
         self.prepared_vsids = false;
 
-        for mut c in constraint {
+        for c in constraint {
+            let mut c = LitVec::from(c);
             c.push(!self.constrain_act.lit());
             if let Some(c) = self.simplify_clause(&c) {
                 assert!(!c.is_empty());
@@ -181,7 +182,7 @@ impl DagCnfSolver {
         }
 
         if !self.temporary_domain {
-            self.domain.enable_local(domain, &self.dc, &self.value);
+            self.domain.enable_local(domain, assump, constraint, &self.dc, &self.value);
             assert!(!self.domain.has(self.constrain_act));
             self.domain.insert(self.constrain_act);
             if bucket {
@@ -197,12 +198,12 @@ impl DagCnfSolver {
         true
     }
 
-    pub fn solve_with_param(
+    pub fn solve_full(
         &mut self,
         assump: &[Lit],
-        constraint: Vec<LitVec>,
-        domain: impl Iterator<Item = Var>,
-        limit: Option<usize>,
+        constraint: &[LitVec],
+        domain: &[Var],
+        restart_limit: u32,
     ) -> Option<bool> {
         self.assump = assump.into();
         if self.trivial_unsat {
@@ -218,33 +219,23 @@ impl DagCnfSolver {
             self.statistic.avg_solve_time += start.elapsed();
             return Some(false);
         }
-        let assump = if !constraint.is_empty() {
+        let search_assump = if !constraint.is_empty() {
             assumption = LitVec::new();
             assumption.push(self.constrain_act.lit());
             assumption.extend_from_slice(assump);
-            let mut cc = Vec::new();
-            for c in constraint.iter() {
-                for l in c.iter() {
-                    cc.push(*l);
-                }
-            }
-            if !self.new_round(
-                domain.chain(assump.iter().chain(cc.iter()).map(|l| l.var())),
-                constraint,
-                true,
-            ) {
+            if !self.new_round(domain, assump, constraint, true) {
                 self.unsat_core.clear();
                 self.statistic.avg_solve_time += start.elapsed();
                 return Some(false);
             };
             &assumption
         } else {
-            assert!(self.new_round(domain.chain(assump.iter().map(|l| l.var())), vec![], true));
+            assert!(self.new_round(domain, assump, &[], true));
             assump
         };
         self.clean_learnt(true);
         self.simplify();
-        let res = self.search_with_restart(assump, limit);
+        let res = self.search_with_restart(search_assump, restart_limit);
         self.statistic.avg_solve_time += start.elapsed();
         res
     }
@@ -252,19 +243,14 @@ impl DagCnfSolver {
     pub fn solve_with_restart_limit(
         &mut self,
         assumps: &[Lit],
-        constraint: Vec<LitVec>,
-        limit: usize,
+        constraint: &[LitVec],
+        limit: u32,
     ) -> Option<bool> {
-        self.solve_with_param(assumps, constraint, empty::<Var>(), Some(limit))
+        self.solve_full(assumps, constraint, &[], limit)
     }
 
-    pub fn solve_with_domain(
-        &mut self,
-        assumps: &[Lit],
-        domain: impl Iterator<Item = Var>,
-    ) -> bool {
-        self.solve_with_param(assumps, vec![], domain, None)
-            .unwrap()
+    pub fn solve_with_domain(&mut self, assumps: &[Lit], domain: &[Var]) -> bool {
+        self.solve_full(assumps, &[], domain, u32::MAX).unwrap()
     }
 
     #[inline]
@@ -279,7 +265,7 @@ impl DagCnfSolver {
         consequent: &[Lit],
     ) -> Option<LitVec> {
         let assump = LitVec::from_iter(assump.iter().chain(premise.iter()).copied());
-        if self.solve_with_constraint(&assump, vec![LitVec::from(consequent)]) {
+        if self.solve_with_constraint(&assump, &[LitVec::from(consequent)]) {
             return None;
         }
         Some(
@@ -326,13 +312,11 @@ impl Satif for DagCnfSolver {
     }
 
     fn solve(&mut self, assumps: &[Lit]) -> bool {
-        self.solve_with_param(assumps, vec![], empty::<Var>(), None)
-            .unwrap()
+        self.solve_full(assumps, &[], &[], u32::MAX).unwrap()
     }
 
-    fn solve_with_constraint(&mut self, assumps: &[Lit], constraint: Vec<LitVec>) -> bool {
-        self.solve_with_param(assumps, constraint, empty::<Var>(), None)
-            .unwrap()
+    fn solve_with_constraint(&mut self, assumps: &[Lit], constraint: &[LitVec]) -> bool {
+        self.solve_full(assumps, constraint, &[], u32::MAX).unwrap()
     }
 
     #[inline]

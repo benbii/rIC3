@@ -133,9 +133,7 @@ impl Transys {
         self.constraint.dedup();
         self.rearrange(rst);
     }
-}
 
-impl Transys {
     pub fn preproc(&self, cfg: &PreprocConfig, mut rst: Restore) -> (Self, Restore) {
         let mut ts = self.clone();
         if cfg.preproc {
