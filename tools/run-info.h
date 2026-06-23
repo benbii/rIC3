@@ -6,6 +6,7 @@
 #include <assert.h>
 #include <fcntl.h>
 #include <pthread.h>
+#include <stdbool.h>
 #include <stdint.h>
 #include <stdatomic.h>
 #include <stdio.h>
@@ -41,15 +42,15 @@ void run_sig_handler(int sig);
 void run_setup_handler(void);
 void run_one(struct RunInfo* info);
 void* run_one_pthread(void* _a);
-void run_print(const struct RunInfo *info, FILE* file, _Bool oneline);
+void run_print(const struct RunInfo *info, FILE* file, bool oneline);
 
 void run_group(struct RunInfo info[], size_t n, FILE *logsmall, FILE *logbig);
 void* run_group_pthread(void* _a);
 const char *run_from_str(struct RunInfo *info, const char *str);
 const char *run_group_from_str(struct RunInfo *info, size_t *nr_run,
-                               const char *str);
+                               const char *str, const char* chkpt, size_t chkpt_sz);
 const char *run_group_ez(const char *grpstr, size_t grpsz, atomic_long *slotcnt,
-                         size_t timelim, size_t memlim, FILE *small,
-                         FILE *large, size_t maxnuma);
+                         size_t timelim, size_t memlim, FILE *small, FILE *large,
+                         size_t maxnuma, const char* chkpt, size_t chkpt_sz);
 
 #endif

@@ -3,6 +3,7 @@
 #include <poll.h>
 #include <signal.h>
 #include <stdatomic.h>
+#include <stdio.h>
 #include <sys/timerfd.h>
 #include <sys/wait.h>
 
@@ -214,7 +215,7 @@ void* run_one_pthread(void* _a) {
   return NULL;
 }
 
-void run_print(const struct RunInfo *info, FILE* file, _Bool oneline) {
+void run_print(const struct RunInfo *info, FILE* file, bool oneline) {
   // static pthread_mutex_t mtx = PTHREAD_MUTEX_INITIALIZER;
   if (!file) return;
   flockfile(file);
@@ -318,12 +319,20 @@ const char *run_from_str(struct RunInfo *info, const char *str) {
 // returns pointer to the char after "\0\0\0"
 // `info` must outlive `str`
 const char *run_group_from_str(struct RunInfo *info, size_t *nr_run,
-                               const char *str) {
+                               const char *str, const char *chkpt, size_t chkpt_sz) {
   size_t cap = *nr_run, n = 0;
   while (*str) {
     if (n == cap) {*nr_run = cap + 1; return str;}
-    str = run_from_str(info + n, str);
-    ++n;
+    const char *strend = run_from_str(info + n, str);
+    const size_t strsz = strend - str - 1;
+    char cmd[strsz];
+    memcpy(cmd, str, strsz);
+    for (size_t i = 0; i < strend - str; ++i)
+      if (cmd[i] == '\0') cmd[i] = ' ';
+    if (chkpt && memmem(chkpt, chkpt_sz, cmd, strsz))
+      free(info[n].argv);
+    else ++n;
+    str = strend;
   }
   *nr_run = n;
   return str + 1;
@@ -331,8 +340,8 @@ const char *run_group_from_str(struct RunInfo *info, size_t *nr_run,
 
 // from config to running, no fuss
 const char *run_group_ez(const char *grpstr, size_t sz, atomic_long *slotcnt,
-                         size_t timelim, size_t memlim, FILE *small,
-                         FILE *large, size_t maxnuma) {
+                         size_t timelim, size_t memlim, FILE *small, FILE *large,
+                         size_t maxnuma, const char* chkpt, size_t chkpt_sz) {
   const char *grpend = memmem(grpstr, sz, "\0\0", 3);
   if (grpend == NULL) return NULL;
   grpend += 3;
@@ -344,15 +353,12 @@ const char *run_group_ez(const char *grpstr, size_t sz, atomic_long *slotcnt,
       malloc(16 * sizeof(struct RunInfo) + sizeof(struct RunGroupPthread));
   assert(g);
   size_t nprg = 16;
-  const char *parsed_end = run_group_from_str(g->info, &nprg, argbuf);
-  // Refuse any group > 16 commands; TODO: make limit configurable
-  if (nprg == 0 || nprg > 16 || parsed_end != argbuf + (grpend - grpstr)) {
-    size_t nfree = nprg > 16 ? 16 : nprg;
-    for (size_t i = 0; i < nfree; ++i)
-      free(g->info[i].argv);
-    free(argbuf), free(g);
-    return grpend;
-  }
+  const char *parsed_end = run_group_from_str(g->info, &nprg, argbuf, chkpt, chkpt_sz);
+  // Only run the first 16 commands; TODO: make limit configurable
+  if (nprg > 16)
+    parsed_end = argbuf + (grpend - grpstr);
+  assert(parsed_end == argbuf + (grpend - grpstr));
+  if (nprg == 0) return grpend;
 
   for (size_t i = 0; i < nprg; ++i) {
     g->info[i].timelim = timelim;

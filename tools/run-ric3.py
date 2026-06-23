@@ -88,6 +88,17 @@ ic3_commands = [
   ic3_pred_prop,
   ic3_inn, ic3_inn_ctp, ic3_inn_no_ctg, ic3_inn_dyn,
 ]
+ctg_duel_base = [solver, "check", "TESTCASE", "ic3", "--drop-po=false"]
+ctg_duel_commands = [
+  ctg_duel_base + ["--ctg=false", "--rseed", "2101"],
+  ctg_duel_base + ["--ctg-max", "5", "--ctg-limit", "15", "--rseed", "2102"],
+  ctg_duel_base + ["--dynamic", "--rseed", "2103"],
+  ctg_duel_base + ["--mab", "--rseed", "2104"],
+  ctg_duel_base + ["--inn", "--ctg=false", "--rseed", "2111"],
+  ctg_duel_base + ["--inn", "--ctg-max", "5", "--ctg-limit", "15", "--rseed", "2112"],
+  ctg_duel_base + ["--inn", "--dynamic", "--rseed", "2113"],
+  ctg_duel_base + ["--inn", "--mab", "--rseed", "2114"],
+]
 kind_commands = [kind, kind_simple]
 ic3_basic = ic3_basic[:-1]
 ic3_basic_commands = [
@@ -111,6 +122,10 @@ elif args.preset == "ic3Only":
   cfg = [[cmd] for cmd in ic3_commands]
 elif args.preset in ("ic3Only-portfolio", "ic3Only-ptfl"):
   cfg = [ic3_commands]
+elif args.preset in ("ctgDuel", "ctg-duel"):
+  cfg = [[cmd] for cmd in ctg_duel_commands]
+elif args.preset in ("ctgDuel-portfolio", "ctgDuel-ptfl", "ctg-duel-portfolio", "ctg-duel-ptfl"):
+  cfg = [ctg_duel_commands]
 elif args.preset == "kind":
   cfg = [[cmd] for cmd in kind_commands]
 elif args.preset in ("kind-portfolio", "kind-ptfl"):

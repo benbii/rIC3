@@ -2,7 +2,7 @@ use crate::{
     BlProof, BlWitness, Engine, McProof, McResult, McWitness,
     config::EngineConfig,
     gipsat::{DagCnfSolver, SolverStatistic, new_transys_solver},
-    ic3::{block::BlockResult, localabs::LocalAbs, predprop::PredProp},
+    ic3::{block::BlockResult, localabs::LocalAbs, mab::CtgMab, predprop::PredProp},
     transys::{Transys, certify::Restore, lift::TsLift, unroll::TransysUnroll},
 };
 use activity::Activity;
@@ -20,6 +20,7 @@ mod activity;
 mod block;
 mod frame;
 mod localabs;
+mod mab;
 mod mic;
 mod predprop;
 mod proofoblig;
@@ -38,6 +39,15 @@ pub struct IC3Config {
     /// dynamic generalization
     #[arg(long = "dynamic", default_value_t = false)]
     pub dynamic: bool,
+    /// contextual-MAB (LinUCB) adaptive generalization (A-IC3)
+    #[arg(long = "mab", default_value_t = false)]
+    pub mab: bool,
+    /// LinUCB exploration parameter alpha
+    #[arg(long = "mab-alpha", default_value_t = 1.0)]
+    pub mab_alpha: f64,
+    /// LinUCB regularization parameter lambda
+    #[arg(long = "mab-lambda", default_value_t = 0.1)]
+    pub mab_lambda: f64,
     /// counterexample to generalization
     #[arg(long = "ctg", action = ArgAction::Set, default_value_t = true)]
     pub ctg: bool,
@@ -95,6 +105,7 @@ pub struct IC3 {
     ots: Transys,
     rst: Restore,
     predprop: Option<PredProp>,
+    mab: Option<CtgMab>,
     rng: StdRng,
     time_limit: u64,
     default_mic: mic::DropVarParameter,
@@ -145,8 +156,14 @@ impl IC3 {
 impl IC3 {
     pub fn new(cfg: IC3Config, mut ts: Transys, ots: Transys, mut rst: Restore) -> Self {
         // validate config
+        if cfg.dynamic && cfg.mab {
+            panic!("cannot enable both dynamic and mab");
+        }
         if cfg.dynamic && cfg.drop_po {
             panic!("cannot enable both dynamic and drop-po");
+        }
+        if cfg.mab && cfg.drop_po {
+            panic!("cannot enable both mab and drop-po");
         }
         if cfg.inn && (cfg.abs_cst || cfg.abs_trans) {
             panic!("cannot enable both inn and (abs_cst or abs_trans)");
@@ -163,11 +180,15 @@ impl IC3 {
         let predprop = cfg
             .pred_prop
             .then(|| PredProp::new(uts, cfg.local_proof, cfg.inn));
+        let mab = cfg.mab.then(|| CtgMab::new(cfg.mab_alpha, cfg.mab_lambda));
         if cfg.local_proof < ts.bad.len() {
             ts.bad = LitVec::from(ts.bad[cfg.local_proof]);
         }
         if ts.bad.len() != 1 {
-            error!("{} props in single IC3! Loaded wrong preprocessed model?", ts.bad.len());
+            error!(
+                "{} props in single IC3! Loaded wrong preprocessed model?",
+                ts.bad.len()
+            );
         }
         let activity = Activity::new(&ts);
         let frame = Frames::new(&ts);
@@ -187,6 +208,7 @@ impl IC3 {
             ots,
             rst,
             predprop,
+            mab,
             rng,
             time_limit: cfg.time_limit,
             default_mic: if cfg.ctg {

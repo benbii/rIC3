@@ -1,4 +1,5 @@
 use crate::gipsat::{inductive, inductive_core};
+use crate::ic3::mab::balanced_params;
 use crate::ic3::{IC3, mic::DropVarParameter, proofoblig::ProofObligation};
 use log::debug;
 use logicrs::{LitOrdVec, LitVec, satif::Satif};
@@ -24,36 +25,9 @@ impl IC3 {
         (self.level() + 1, cube)
     }
 
-    fn generalize(
-        &mut self,
-        mut po: ProofObligation,
-        core_cube: &LitVec,
-        parameter: DropVarParameter,
-    ) -> bool {
-        let Some(mut mic) =
-            inductive_core(&mut self.solvers[po.frame - 1], &self.ts, core_cube)
-        else {
-            po.frame += 1;
-            self.add_obligation(po.clone());
-            return self.add_lemma(po.frame - 1, po.state.as_litvec().clone(), false, Some(po));
-        };
-        mic = self.mic(po.frame, mic, &[], parameter);
-        let (frame, mic) = self.push_lemma(po.frame, mic);
-        self.statistic.avg_po_cube_len += po.state.len();
-        po.push_to(frame);
-        self.add_obligation(po.clone());
-        if self.add_lemma(frame - 1, mic.clone(), false, Some(po)) {
-            return true;
-        }
-        false
-    }
-
     pub fn block(&mut self) -> BlockResult {
         while let Some(mut po) = self.obligations.pop(self.level()) {
-            const CTG_THRESHOLD: f64 = 10.0;
-            const EXCTG_THRESHOLD: f64 = 40.0;
             const MAX_ACT_BEFORE_DROP: f64 = 20.0;
-
             // intersects with init; failed if on frame 0
             if self.ts.cube_subsume_init(&po.state) {
                 if self.abs_cst || self.abs_trans {
@@ -103,31 +77,38 @@ impl IC3 {
                 continue;
             }
 
-            let parameter = if self.dynamic && po.next.is_none() {
-                Default::default()
-            } else if self.dynamic {
-                let n = po.next.as_mut().unwrap();
-                let mut act = n.act;
-                if let Some(nn) = n.next.as_mut() {
-                    act = act.max(nn.act);
-                    if let Some(nnn) = nn.next.as_mut() {
-                        act = act.max(nnn.act);
-                    }
-                }
-                let (limit, max, level) = match act {
-                    EXCTG_THRESHOLD.. => (
-                        ((act - EXCTG_THRESHOLD).powf(0.45) * 2.0 + 5.0).round() as usize,
-                        5,
-                        1,
-                    ),
-                    ..CTG_THRESHOLD => (0, 0, 0),
-                    _ => (1, (act - CTG_THRESHOLD) as usize / 10 + 2, 1),
-                };
-                DropVarParameter::new(limit, max, level)
+            let lvl = self.level();
+            let mut mab_input = None;
+            let (parameter, arm) = if self.dynamic {
+                (balanced_params(&po, 0.45), 0)
+            } else if let Some(mab) = &mut self.mab {
+                mab_input = Some(mab.encode(lvl, &self.frame, &po));
+                mab.infer(mab_input.as_ref().unwrap(), &po)
             } else {
-                self.default_mic
+                (self.default_mic, 0)
             };
-            if self.generalize(po, &ordered_cube, parameter) {
+
+            let lemma = if let Some(mut mic) =
+                inductive_core(&mut self.solvers[po.frame - 1], &self.ts, &ordered_cube)
+            {
+                let old_sz = mic.len();
+                mic = self.mic(po.frame, mic, &[], parameter);
+                let (frame, mic) = self.push_lemma(po.frame, mic);
+                if let Some(input) = &mab_input {
+                    let mab = self.mab.as_mut().unwrap();
+                    let rew = mab.reward(&po, old_sz, mic.len(), frame, arm, lvl);
+                    mab.train(arm, input, rew);
+                }
+                self.statistic.avg_po_cube_len += po.state.len();
+                po.push_to(frame);
+                debug_assert_eq!(frame, po.frame);
+                mic
+            } else {
+                po.frame += 1;
+                po.state.as_litvec().clone()
+            };
+            self.add_obligation(po.clone());
+            if self.add_lemma(po.frame - 1, lemma, false, Some(po)) {
                 return BlockResult::Proved;
             }
             debug!("{}", self.frame.statistic(false));
@@ -162,12 +143,8 @@ impl IC3 {
                 constraint.to_vec(),
             );
             if blocked {
-                let mut mic = inductive_core(
-                    &mut self.solvers[frame - 1],
-                    &self.ts,
-                    &ordered_cube,
-                )
-                .unwrap();
+                let mut mic =
+                    inductive_core(&mut self.solvers[frame - 1], &self.ts, &ordered_cube).unwrap();
                 mic = self.mic(frame, mic, constraint, parameter);
                 let (frame, mic) = self.push_lemma(frame, mic);
                 self.add_lemma(frame - 1, mic, false, None);

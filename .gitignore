@@ -4,5 +4,5 @@ ric3proj/
 .local/
 *.preproc
 tools/run-info
-
+__pycache__
 /deps/logicrs/

@@ -45,7 +45,7 @@ int run_local_main(int argc, const char* argv[]) {
     else if (strcmp(argv[i], "-m") == 0)
       memlim = atol(argv[i + 1]);
     else if (strcmp(argv[i], "-l") == 0)
-      small = fopen(argv[i + 1], "a");
+      small = fopen(argv[i + 1], "a+");
     else if (strcmp(argv[i], "-L") == 0)
       large = fopen(argv[i + 1], "a");
     else
@@ -67,6 +67,16 @@ int run_local_main(int argc, const char* argv[]) {
   if (memmem(str, st.st_size, "\0\0\0", 4) != NULL)
     exit(fputs("4 consecutive \\0 found\n", stderr));
 
+  long chkpt_sz = 0; char* chkpt = NULL;
+  if (small) {
+    fseek(small, 0, SEEK_END);
+    chkpt_sz = ftell(small);
+    if (chkpt_sz < 0) chkpt_sz = 0;
+    fseek(small, 0, SEEK_SET);
+    chkpt = malloc(chkpt_sz);
+    fread(chkpt, chkpt_sz, 1, small);
+  }
+
   atomic_long slotcnt[maxnuma + 1];
   for (size_t i = 0; i <= maxnuma; ++i)
     atomic_init(slotcnt + i, 0);
@@ -82,7 +92,7 @@ int run_local_main(int argc, const char* argv[]) {
     while (atomic_load_explicit(slotcnt, memory_order_relaxed) <= 0)
       usleep(500000); // 500ms negligible in long running tasks
     const char *next = run_group_ez(p, str + st.st_size - p, slotcnt,
-                                    timelim, memlim, small, large, maxnuma);
+                                    timelim, memlim, small, large, maxnuma, chkpt, chkpt_sz);
     if (next == NULL)
       exit(fputs("malformed task file\n", stderr));
     p = next;
@@ -110,7 +120,7 @@ int run_daemon_main(int argc, const char* argv[]) {
     else if (strcmp(argv[i], "-m") == 0)
       memlim = atol(argv[i + 1]);
     else if (strcmp(argv[i], "-l") == 0)
-      small = fopen(argv[i + 1], "a");
+      small = fopen(argv[i + 1], "a+");
     else if (strcmp(argv[i], "-L") == 0)
       large = fopen(argv[i + 1], "a");
     else if (strcmp(argv[i], "-a") == 0)
@@ -137,6 +147,16 @@ int run_daemon_main(int argc, const char* argv[]) {
   if (gai != 0)
     return fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(gai));
   // leak the result lol
+
+  long chkpt_sz = 0; char* chkpt = NULL;
+  if (small) {
+    fseek(small, 0, SEEK_END);
+    chkpt_sz = ftell(small);
+    if (chkpt_sz < 0) chkpt_sz = 0;
+    fseek(small, 0, SEEK_SET);
+    chkpt = malloc(chkpt_sz);
+    fread(chkpt, chkpt_sz, 1, small);
+  }
 
   while (1) {
     for (rp = res; rp != NULL; rp = rp->ai_next) {
@@ -176,7 +196,7 @@ int run_daemon_main(int argc, const char* argv[]) {
 
       while (1) {
         const char* p = run_group_ez(groupstr_buf, groupstr_size, slotcnt,
-                                     timelim, memlim, small, large, maxnuma);
+                                     timelim, memlim, small, large, maxnuma, chkpt, chkpt_sz);
         if (p == NULL)
           break;
         groupstr_size -= p - groupstr_buf;
