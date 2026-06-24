@@ -79,14 +79,13 @@ impl Scorr {
             consider: &[Var],
             domain: &[Var],
             num_word: usize,
-            from: usize,
+            assump: &[Lit],
         ) {
-            let assump = assign(sim, from, consider);
             loop {
                 if sim[Var::CONST].len() >= num_word * BitVec::WORD_SIZE {
                     return;
                 }
-                if !slv.solve_full(&assump, &[], domain, 5).is_some_and(|r| r) {
+                if !slv.solve_full(assump, &[], domain, 5).is_some_and(|r| r) {
                     return;
                 }
                 sim[Var::CONST].push(false);
@@ -99,7 +98,8 @@ impl Scorr {
                     block.push(!na);
                 }
                 slv.add_clause(&block);
-                dfs(ts, sim, slv, consider, domain, num_word, sim[Var::CONST].len() - 1);
+                let assump = assign(sim, sim[Var::CONST].len() - 1, consider);
+                dfs(ts, sim, slv, consider, domain, num_word, &assump);
             }
         }
 
@@ -121,26 +121,7 @@ impl Scorr {
 
         for from in 0..init[Var::CONST].len() {
             let assump = assign(init, from, &consider);
-            loop {
-                if sim[Var::CONST].len() >= num_word * BitVec::WORD_SIZE {
-                    return sim;
-                }
-                if !slv.solve_with_domain(&assump, &domain) {
-                    break;
-                }
-                sim[Var::CONST].push(false);
-                let mut block = LitVec::new();
-                for &v in &consider {
-                    let n = self.ts.var_next_lit(v);
-                    let va = slv.sat_value(n).unwrap();
-                    let na = slv.sat_value_lit(n.var()).unwrap();
-                    sim[v].push(va);
-                    block.push(!na);
-                }
-                slv.add_clause(&block);
-                let from = sim[Var::CONST].len() - 1;
-                dfs(&self.ts, &mut sim, &mut slv, &consider, &domain, num_word, from);
-            }
+            dfs(&self.ts, &mut sim, &mut slv, &consider, &domain, num_word, &assump);
         }
         sim
     }
@@ -180,6 +161,11 @@ impl Scorr {
             return (self.ts, self.rst);
         }
         let mut rt = self.rt_simulation(&init, 10);
+        if rt[Var::CONST].is_empty() {
+            info!("scorr: empty reachable simulation");
+            // Somehow, a simplification here is beneficial lol
+            return (self.ts, self.rst);
+        }
         debug!(
             "scorr: init simulation size: {}, rt simulation size: {}",
             init[Var::CONST].len(),

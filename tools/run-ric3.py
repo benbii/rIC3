@@ -7,7 +7,6 @@ import tempfile
 from datetime import datetime
 from pathlib import Path
 
-
 parser = argparse.ArgumentParser()
 parser.add_argument("-i", "--inputdir", required=True)
 parser.add_argument("-w", "--workers", type=int, default=os.cpu_count() or 1)
@@ -25,7 +24,7 @@ args = parser.parse_args()
 
 script_dir = Path(__file__).resolve().parent
 run_info = Path(args.run_info).resolve() if args.run_info else script_dir / "run-info"
-inputdir = Path(args.inputdir).resolve()
+inputdir = Path(args.inputdir)
 ymdHMS = datetime.now().strftime("%y%m%d%H%M%S")
 log_basename = Path(args.log_basename if args.log_basename else f"{ymdHMS}-{args.preset}").resolve()
 logsmall = Path(str(log_basename) + ".txt")
@@ -37,9 +36,9 @@ if solver is None:
 # Each command template is argv without the testcase. TESTCASE is inserted after
 # "check" for ric3 presets and inside the ABC -c string for ABC presets below.
 bmc1 = [solver, "check", "TESTCASE", "bmc", "--step", "1", "--rseed", "12"]
-bmc10 = [solver, "check", "TESTCASE", "bmc", "--kissat", "--step", "10", "--rseed", "13"]
-bmc65 = [solver, "check", "TESTCASE", "bmc", "--kissat", "--step", "65", "--rseed", "14"]
-bmc_dyn = [solver, "check", "TESTCASE", "bmc", "--kissat", "--dyn-step", "--rseed", "15"]
+bmc10 = [solver, "check", "TESTCASE", "bmc", "--step", "10", "--rseed", "13"]
+bmc65 = [solver, "check", "TESTCASE", "bmc", "--step", "65", "--rseed", "14"]
+bmc_dyn = [solver, "check", "TESTCASE", "bmc", "--dyn-step", "--rseed", "15"]
 ic3_basic = [solver, "check", "TESTCASE", "ic3", "--rseed", "1"]
 ic3_no_ctg = [
   solver, "check", "TESTCASE", "--frts=false", "--scorr=false",
@@ -65,8 +64,8 @@ ic3_inn_dyn = [
   solver, "check", "TESTCASE", "ic3", "--inn", "--dynamic",
   "--drop-po=false", "--rseed", "11",
 ]
-kind = [solver, "check", "TESTCASE", "kind", "--rseed", "17"]
-kind_simple = [solver, "check", "TESTCASE", "kind", "--simple-path", "--rseed", "16"]
+kind = [solver, "check", "TESTCASE", "kind"]
+kind_simple = [solver, "check", "TESTCASE", "kind", "--simple-path"]
 
 all_commands = [
   bmc1, ic3_basic,
@@ -146,7 +145,7 @@ else:
 
 testcases = []
 for path in inputdir.rglob("*"):
-  if path.is_file() and path.suffix in (".aig", ".btor"):
+  if path.is_file() and path.suffix in (".aig", ".btor", ".aag", ".btor2"):
     testcases.append(path.resolve().as_posix())
 random.Random(12345678).shuffle(testcases)
 if len(testcases) == 0:

@@ -107,10 +107,13 @@ impl Engine for BMC {
                 }
                 let assump: LitVec = self.uts.lits_next(&self.uts.ts.bad, d).collect();
                 if c.solve(&assump) {
-                    info!("bmc found a counterexample at depth {d}");
+                    info!("bmc-cadical found a counterexample at depth {d}");
                     return McResult::Unsafe(d);
                 }
-                info!("bmc found no counterexample at exact depth {d}");
+                // 0, 1, 2, 3, 5, 7, 9, 11, 15, 19, 23, 27, 31, 39, 47, 55, 63, 79, 95...
+                if d^(d+1) > d>>2 {
+                    info!("cadical no cex at depth {d}");
+                }
             }
         } else if let S::K(k, rng) = &mut self.solver {
             for d in (self.start..=self.end).step_by(self.step) {
@@ -123,10 +126,12 @@ impl Engine for BMC {
                     k.add_clause(&[b]);
                 }
                 if k.solve(&[]) {
-                    info!("bmc found a counterexample at depth {d}");
+                    info!("bmc-kissat found a counterexample at depth {d}");
                     return McResult::Unsafe(d);
                 }
-                info!("bmc found no counterexample at exact depth {d}");
+                if d^(d+1) > d>>2 {
+                    info!("kissat no cex at depth {d}");
+                }
                 *k = Kissat::new();
                 k.set_seed(rng.random());
                 self.uts.ts.load_init(k);
