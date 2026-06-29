@@ -4,7 +4,6 @@ pub mod lift;
 mod live;
 pub mod nodep;
 mod others;
-mod refactor;
 pub mod scorr;
 mod simp;
 pub mod unroll;

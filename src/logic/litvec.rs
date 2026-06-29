@@ -1,10 +1,12 @@
-use crate::RseedSet as HashSet;
 use crate::{Lit, Var, VarAssign};
 use serde::{Deserialize, Serialize};
 use std::{
     cmp::Ordering,
     fmt::{self, Debug, Display},
-    ops::{Deref, DerefMut, Not},
+    ops::{
+        Deref, DerefMut, Index, IndexMut, Not, Range, RangeFrom, RangeFull, RangeInclusive,
+        RangeTo, RangeToInclusive,
+    },
     slice,
 };
 
@@ -117,7 +119,7 @@ impl LitVec {
     }
 
     #[inline]
-    pub fn ordered_subsume_execpt_one(&self, cube: &LitVec) -> (bool, Option<Lit>) {
+    pub fn ordered_subsume_except_one(&self, cube: &LitVec) -> (bool, Option<Lit>) {
         debug_assert!(self.is_sorted());
         debug_assert!(cube.is_sorted());
         let mut diff = None;
@@ -143,7 +145,7 @@ impl LitVec {
         (diff.is_none(), diff)
     }
 
-    #[inline]
+    /* unused functions
     pub fn intersection(&self, cube: &LitVec) -> LitVec {
         let x_lit_set = self.iter().collect::<HashSet<&Lit>>();
         let y_lit_set = cube.iter().collect::<HashSet<&Lit>>();
@@ -200,7 +202,7 @@ impl LitVec {
         }
         new.extend(y.iter().filter(|l| l.var() != v).copied());
         Some(new)
-    }
+    } */
 
     #[inline]
     pub fn ordered_resolvent(&self, other: &LitVec, v: Var) -> Option<LitVec> {
@@ -296,6 +298,63 @@ impl DerefMut for LitVec {
         &mut self.lits
     }
 }
+
+impl Index<usize> for LitVec {
+    type Output = Lit;
+
+    #[inline]
+    fn index(&self, index: usize) -> &Self::Output {
+        #[cfg(debug_assertions)]
+        {
+            &self.lits[index]
+        }
+        #[cfg(not(debug_assertions))]
+        unsafe {
+            self.lits.get_unchecked(index)
+        }
+    }
+}
+
+impl IndexMut<usize> for LitVec {
+    #[inline]
+    fn index_mut(&mut self, index: usize) -> &mut Self::Output {
+        #[cfg(debug_assertions)]
+        {
+            &mut self.lits[index]
+        }
+        #[cfg(not(debug_assertions))]
+        unsafe {
+            self.lits.get_unchecked_mut(index)
+        }
+    }
+}
+
+macro_rules! impl_litvec_range_index {
+    ($index:ty) => {
+        impl Index<$index> for LitVec {
+            type Output = [Lit];
+
+            #[inline]
+            fn index(&self, index: $index) -> &Self::Output {
+                &self.lits[index]
+            }
+        }
+
+        impl IndexMut<$index> for LitVec {
+            #[inline]
+            fn index_mut(&mut self, index: $index) -> &mut Self::Output {
+                &mut self.lits[index]
+            }
+        }
+    };
+}
+
+impl_litvec_range_index!(Range<usize>);
+impl_litvec_range_index!(RangeFrom<usize>);
+impl_litvec_range_index!(RangeFull);
+impl_litvec_range_index!(RangeInclusive<usize>);
+impl_litvec_range_index!(RangeTo<usize>);
+impl_litvec_range_index!(RangeToInclusive<usize>);
 
 impl PartialOrd for LitVec {
     #[inline]

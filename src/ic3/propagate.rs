@@ -80,7 +80,7 @@ impl IC3 {
                 if let Some(po) = &mut lemma.1 {
                     self.obligations.remove(po);
                 }
-                self.add_inf_lemma(lemma.0.as_litvec().clone());
+                self.add_inf_lemma(lemma.0);
                 // if !dump {
                 //     return true;
                 // }
@@ -126,7 +126,7 @@ impl IC3 {
                     if let Some(po) = &mut lemma.1 {
                         self.obligations.remove(po);
                     }
-                    self.add_inf_lemma(lemma.0.as_litvec().clone());
+                    self.add_inf_lemma(lemma.0);
                     // if !dump {
                     //     break;
                     // }

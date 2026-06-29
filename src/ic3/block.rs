@@ -119,7 +119,7 @@ impl IC3 {
     fn trivial_block_rec(
         &mut self,
         frame: usize,
-        lemma: LitOrdVec,
+        lemma: LitVec,
         constraint: &[LitVec],
         limit: &mut usize,
         parameter: DropVarParameter,
@@ -153,7 +153,7 @@ impl IC3 {
                 if *limit == 0 {
                     return false;
                 }
-                let model = LitOrdVec::new(self.get_pred(frame, false).0);
+                let model = self.get_pred(frame, false).0;
                 if !self.trivial_block_rec(frame - 1, model, constraint, limit, parameter) {
                     return false;
                 }
@@ -164,7 +164,7 @@ impl IC3 {
     pub fn trivial_block(
         &mut self,
         frame: usize,
-        lemma: LitOrdVec,
+        lemma: LitVec,
         constraint: &[LitVec],
         parameter: DropVarParameter,
     ) -> bool {

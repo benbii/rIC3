@@ -142,7 +142,7 @@ impl IC3 {
                 && !self.ts.cube_subsume_init(&model)
                 && self.trivial_block(
                     frame - 1,
-                    LitOrdVec::new(model.clone()),
+                    model.clone(),
                     &[!full.clone()],
                     parameter.sub_level(),
                 )
@@ -213,7 +213,7 @@ impl IC3 {
         if self.parent_lemma
             && let Some(parent) = self.frame.parent_lemma(&cube, frame)
         {
-            let parent = HashSet::from_iter(parent);
+            let parent = HashSet::from_iter(parent.as_litvec());
             cube.sort_by_key(|x| parent.contains(x));
         }
         let mut keep = HashSet::default();

@@ -1,7 +1,7 @@
 use super::DagCnf;
 use crate::{
     Lbool, Lit, LitMap, LitOrdVec, LitVec, LitVvec, RseedSet as HashSet,
-    Var, VarAssign, VarRange, lemmas_subsume_simplify, nckvec::NckVec, occur::Occurs
+    Var, VarAssign, VarRange, nckvec::NckVec, occur::Occurs
 };
 use log::debug;
 use std::{iter::once, time::{Duration, Instant}};
@@ -179,7 +179,7 @@ impl DagCnfSimplify {
         let Some(rel) = rel.ordered_simp(&self.value) else {
             return;
         };
-        let rel = LitOrdVec::new(rel);
+        let rel = LitOrdVec::ordered_new(rel);
         let n = rel.last();
         if rel.len() == 1 {
             assert!(!self.value.v(n).is_true());
@@ -351,7 +351,7 @@ impl DagCnfSimplify {
             if cj == ci {
                 continue;
             }
-            let (res, diff) = self.cdb[ci].0.subsume_execpt_one(&self.cdb[cj].0);
+            let (res, diff) = self.cdb[ci].0.subsume_except_one(&self.cdb[cj].0);
             if res {
                 self.cnf[self.cdb[cj].0.last()].retain(|&c| c != cj);
                 self.cdb[cj].1 = true;
@@ -369,7 +369,7 @@ impl DagCnfSimplify {
                     }
                     let mut cube = self.cdb[ci].0.as_litvec().clone();
                     cube.retain(|l| *l != diff);
-                    self.cdb[ci].0 = LitOrdVec::new(cube);
+                    self.cdb[ci].0 = LitOrdVec::ordered_new(cube);
                     self.cnf[self.cdb[cj].0.last()].retain(|&c| c != cj);
                     self.cdb[cj].1 = true;
                 } else if diff.var() == self.cdb[cj].0.last().var() {
@@ -379,7 +379,7 @@ impl DagCnfSimplify {
                     let mut cube = self.cdb[cj].0.as_litvec().clone();
                     assert!(cube.last() == self.cdb[cj].0.last());
                     cube.retain(|l| *l != !diff);
-                    self.cdb[cj].0 = LitOrdVec::new(cube);
+                    self.cdb[cj].0 = LitOrdVec::ordered_new(cube);
                 }
             }
         }
@@ -482,8 +482,42 @@ impl DagCnfSimplify {
 }
 
 fn clause_subsume_simplify(lemmas: LitVvec) -> LitVvec {
-    let lemmas: Vec<LitOrdVec> = lemmas.into_iter().map(LitOrdVec::new).collect();
-    let lemmas = lemmas_subsume_simplify(lemmas);
+    let mut lemmas: Vec<LitOrdVec> = lemmas.into_iter().map(LitOrdVec::new).collect();
+    lemmas.sort_by_key(|l| l.len());
+    let mut i = 0;
+    while i < lemmas.len() {
+        if lemmas[i].is_empty() {
+            i += 1;
+            continue;
+        }
+        let mut update = false;
+        for j in i + 1..lemmas.len() {
+            if lemmas[j].is_empty() {
+                continue;
+            }
+            let (res, diff) = lemmas[i].subsume_except_one(&lemmas[j]);
+            if res {
+                lemmas[j] = Default::default();
+                continue;
+            } else if let Some(diff) = diff {
+                if lemmas[i].len() == lemmas[j].len() {
+                    update = true;
+                    let mut cube = lemmas[i].as_litvec().clone();
+                    cube.retain(|l| *l != diff);
+                    lemmas[i] = LitOrdVec::ordered_new(cube);
+                    lemmas[j] = Default::default();
+                } else {
+                    let mut cube = lemmas[j].as_litvec().clone();
+                    cube.retain(|l| *l != !diff);
+                    lemmas[j] = LitOrdVec::ordered_new(cube);
+                }
+            }
+        }
+        if !update {
+            i += 1;
+        }
+    }
+    lemmas.retain(|l| !l.is_empty());
     lemmas
         .into_iter()
         .map(|l| LitVec::from(l.as_litvec().as_slice()))

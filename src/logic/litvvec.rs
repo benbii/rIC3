@@ -1,4 +1,4 @@
-use crate::{Lit, LitOrdVec, LitVec, lemmas_subsume_simplify};
+use crate::{Lit, LitVec};
 use serde::{Deserialize, Serialize};
 use std::{
     ops::{Deref, DerefMut},
@@ -81,14 +81,6 @@ impl LitVvec {
                 LitVec::from([!e, c, n]),
             ],
         }
-    }
-
-    pub fn subsume_simplify(&mut self) {
-        let res: Vec<_> = self.iter().map(|l| LitOrdVec::new(l.clone())).collect();
-        self.vec = lemmas_subsume_simplify(res)
-            .into_iter()
-            .map(|l| l.into_litvec())
-            .collect();
     }
 }
 

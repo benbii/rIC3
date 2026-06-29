@@ -15,7 +15,7 @@ pub struct Frames {
     frames: Vec<Frame>,
     pub inf: Frame,
     pub early: usize,
-    pub tmp_lit_set: LitSet,
+    tmp_lit_set: LitSet,
 }
 
 impl Frames {
@@ -183,8 +183,7 @@ impl IC3 {
         inv_found
     }
 
-    pub(super) fn add_inf_lemma(&mut self, lemma: LitVec) {
-        let lemma = LitOrdVec::new(lemma);
+    pub(super) fn add_inf_lemma(&mut self, lemma: LitOrdVec) {
         assert!(self.frame.trivial_contained(None, &lemma).is_none());
         let lastf = self.frame.last_mut().unwrap();
         let olen = lastf.len();

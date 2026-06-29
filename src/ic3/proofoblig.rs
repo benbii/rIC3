@@ -155,7 +155,7 @@ impl ProofObligationQueue {
             self.num.resize(po.frame + 1, 0);
         }
         self.num[po.frame] += 1;
-        trace!("add obligation: {}", po.state);
+        trace!("add obligation: {}", po.state.as_litvec());
         assert!(self.obligations.insert(po));
     }
 

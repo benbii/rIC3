@@ -124,7 +124,7 @@ impl DagCnfSolver {
                 if self.cdb.get(clauses[*subsumed].0).is_removed() {
                     continue;
                 }
-                let (res, diff) = lemma.subsume_execpt_one(&clauses[*subsumed].1);
+                let (res, diff) = lemma.subsume_except_one(&clauses[*subsumed].1);
                 if res {
                     self.detach_clause(clauses[*subsumed].0);
                     self.statistic.num_simplify_subsume += 1;
@@ -134,8 +134,9 @@ impl DagCnfSolver {
                         if lemma.len() > 2 {
                             self.detach_clause(clauses[*subsumed].0);
                             self.strengthen_clause(clauses[cls_idx].0, diff);
-                            let strengthen = self.cdb.get(clauses[cls_idx].0);
-                            clauses[cls_idx].1 = LitOrdVec::new(LitVec::from(strengthen.slice()));
+                            let mut strengthen = clauses[cls_idx].1.as_litvec().clone();
+                            strengthen.retain(|l| *l != diff);
+                            clauses[cls_idx].1 = LitOrdVec::ordered_new(strengthen);
                         } else {
                             // println!("{}", lemma);
                             // println!("{}", clauses[*subsumed].1);
@@ -143,8 +144,9 @@ impl DagCnfSolver {
                         }
                     } else {
                         self.strengthen_clause(clauses[*subsumed].0, !diff);
-                        let strengthen = self.cdb.get(clauses[*subsumed].0);
-                        clauses[*subsumed].1 = LitOrdVec::new(LitVec::from(strengthen.slice()));
+                        let mut strengthen = clauses[*subsumed].1.as_litvec().clone();
+                        strengthen.retain(|l| *l != !diff);
+                        clauses[*subsumed].1 = LitOrdVec::ordered_new(strengthen);
                     }
                 }
             }
