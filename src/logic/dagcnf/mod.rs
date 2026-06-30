@@ -1,5 +1,4 @@
 pub mod simplify;
-mod top;
 
 use crate::RseedSet as HashSet;
 use crate::{Lit, LitVec, LitVvec, Var, VarLMap, VarMap, VarRange, VarVMap};
@@ -91,13 +90,13 @@ impl DagCnf {
     pub fn add_rel(&mut self, n: Var, rel: &[LitVec]) {
         self.new_var_to(n);
         if n.is_constant() {
-            assert!(rel.eq(&[LitVec::from(Lit::constant(true))]));
+            debug_assert!(rel.eq(&[LitVec::from(Lit::constant(true))]));
             return;
         }
-        assert!(self.dep[n].is_empty() && self.cnf[n].is_empty());
+        debug_assert!(self.dep[n].is_empty() && self.cnf[n].is_empty());
         for mut r in rel.iter().cloned() {
             r.sort();
-            assert!(r.last().var() == n);
+            debug_assert!(r.last().var() == n);
             self.cnf[n].push(r);
         }
         self.dep[n] = deps(n, &self.cnf[n]);
@@ -287,16 +286,6 @@ impl DagCnf {
         }
         *self = res;
         domain_map
-    }
-
-    pub fn map(&self, map: impl Fn(Var) -> Var) -> Self {
-        assert!(map(Var::CONST) == Var::CONST);
-        let mut res = DagCnf::new();
-        for (v, rel) in self.iter() {
-            let new_cls: Vec<_> = rel.iter().map(|cls| cls.map(|l| l.map_var(&map))).collect();
-            res.add_rel(map(v), &new_cls);
-        }
-        res
     }
 
     pub fn replace(&mut self, map: &VarLMap) {

@@ -1,5 +1,7 @@
+use std::cmp::Ordering;
+
 use super::Transys;
-use crate::RseedMap as HashMap;
+use crate::{DagCnf, RseedMap as HashMap, VarVMap};
 use crate::transys::certify::Restore;
 use logicrs::{Lit, LitVec, OptionU32, Var, VarLMap, VarMap, VarRange};
 
@@ -119,36 +121,6 @@ impl Transys {
         }
     }
 
-    pub fn map(&mut self, map: impl Fn(Var) -> Var + Copy, rst: &mut Restore) {
-        let old_input = self.input.clone();
-        let old_latch = self.latch.clone();
-        let mut init = VarMap::new();
-        let mut next = VarMap::new();
-        for &v in old_input.iter().chain(old_latch.iter()) {
-            if let Some(i) = self.init(v) {
-                let mv = map(v);
-                init.reserve(mv);
-                init[mv] = OptionU32::some(i.map_var(map).into());
-            }
-        }
-        for &l in old_latch.iter() {
-            let ml = map(l);
-            next.reserve(ml);
-            next[ml] = OptionU32::some(self.var_next_lit(l).map_var(map).into());
-        }
-        self.input
-            .iter_mut()
-            .chain(self.latch.iter_mut())
-            .for_each(|v| *v = map(*v));
-        self.rel = self.rel.map(map);
-        self.init = init;
-        self.next = next;
-        self.bad = self.bad.map_var(map);
-        self.constraint = self.constraint.map_var(map);
-        self.justice = self.justice.map_var(map);
-        rst.map_var(&map);
-    }
-
     pub fn replace(&mut self, map: &VarLMap, rst: &mut Restore) {
         for (&x, &y) in map.iter() {
             if self.is_latch(x)
@@ -204,8 +176,77 @@ impl Transys {
     }
 
     pub fn topsort(&mut self, rst: &mut Restore) {
-        let (_, m) = self.rel.topsort();
-        let m = m.inverse();
-        self.map(|v| m[v], rst);
+        let mut level = VarMap::new_with(self.rel.max_var());
+        for v in self.rel.var_iter() {
+            level[v] = self
+                .rel
+                .dep(v)
+                .iter()
+                .map(|&d| level[d])
+                .max()
+                .map(|l: usize| l + 1)
+                .unwrap_or_default();
+        }
+
+        let mut deps = Vec::new();
+        for v in self.rel.var_iter_woc() {
+            let mut d: LitVec = self.rel.dep(v).iter().map(|v| v.lit()).collect();
+            d.sort();
+            deps.push((d, v));
+        }
+        deps.sort_by(|a, b| match level[a.1].cmp(&level[b.1]) {
+            Ordering::Equal => a.0.cmp(&b.0),
+            o => o,
+        });
+
+        let mut map = VarVMap::new();
+        map.insert(Var::CONST, Var::CONST);
+        for ((_, old), new) in deps.into_iter().zip(self.rel.var_iter_woc()) {
+            map.insert(old, new);
+        }
+
+        // Apply the topsort permutation to the transition relation and every
+        // Transys side table that stores variables or literals.
+        let old_input = self.input.clone();
+        let old_latch = self.latch.clone();
+
+        let mut rel = DagCnf::new();
+        rel.new_var_to(self.rel.max_var());
+        for (old, old_rel) in self.rel.iter() {
+            if old.is_constant() || old_rel.is_empty() {
+                continue;
+            }
+            let new_rel: Vec<_> = old_rel
+                .iter()
+                .map(|cls| cls.map(|l| l.map_var(|v| map[v])))
+                .collect();
+            rel.add_rel(map[old], &new_rel);
+        }
+
+        let mut init = VarMap::new();
+        for &v in old_input.iter().chain(old_latch.iter()) {
+            if let Some(i) = self.init(v) {
+                let mv = map[v];
+                init.reserve(mv);
+                init[mv] = OptionU32::some(i.map_var(|v| map[v]).into());
+            }
+        }
+
+        let mut next = VarMap::new();
+        for &l in old_latch.iter() {
+            let ml = map[l];
+            next.reserve(ml);
+            next[ml] = OptionU32::some(self.var_next_lit(l).map_var(|v| map[v]).into());
+        }
+
+        self.input = old_input.iter().map(|&v| map[v]).collect();
+        self.latch = old_latch.iter().map(|&v| map[v]).collect();
+        self.rel = rel;
+        self.init = init;
+        self.next = next;
+        self.bad = self.bad.map_var(|v| map[v]);
+        self.constraint = self.constraint.map_var(|v| map[v]);
+        self.justice = self.justice.map_var(|v| map[v]);
+        rst.map_var(&|v| map[v]);
     }
 }
