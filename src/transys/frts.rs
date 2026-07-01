@@ -1,4 +1,4 @@
-use crate::{RseedMap as HashMap, RseedSet as HashSet};
+use crate::RseedMap as HashMap;
 use crate::{
     config::PreprocConfig,
     gipsat::DagCnfSolver,
@@ -27,26 +27,18 @@ impl FrTs {
         let mut rng = StdRng::seed_from_u64(0);
         let mut sim = VarMap::new_with(ts.max_var());
         sim[Var::CONST] = BitVec::from_elem(NUM_WORD * BitVec::WORD_SIZE, false);
-        let mut leafs = HashSet::default();
         for v in VarRange::new_inclusive(Var(1), ts.max_var()) {
-            if ts.rel.is_leaf(v) {
-                loop {
-                    let x = BitVec::new_rand(NUM_WORD, &mut rng);
-                    if !leafs.contains(&x) {
-                        leafs.insert(x.clone());
-                        sim[v] = x;
-                        break;
-                    }
-                }
+            if ts.rel.clauses_of_var(v).is_empty() {
+                sim[v] = BitVec::new_rand(NUM_WORD, &mut rng);
                 continue;
             }
             sim[v] = BitVec::from_elem(NUM_WORD * BitVec::WORD_SIZE, false);
         }
         for v in VarRange::new_inclusive(Var(1), ts.max_var()) {
-            if ts.rel.is_leaf(v) {
+            if ts.rel.clauses_of_var(v).is_empty() {
                 continue;
             }
-            for rel in &ts.rel[v] {
+            for rel in ts.rel.clauses_of_var(v) {
                 let mut r = if rel[0].polarity() {
                     sim[rel[0].var()].clone()
                 } else {
@@ -70,9 +62,10 @@ impl FrTs {
                 }
             }
         }
+
         let mut map = VarLMap::new();
         let mut simval: HashMap<BitVec, Lit> = HashMap::default();
-        for v in ts.rel.var_iter() {
+        for v in VarRange::new_inclusive(Var::CONST, ts.rel.max_var()) {
             let lv = v.lit();
             let slv = if lv.polarity() {
                 sim[lv.var()].clone()
@@ -120,7 +113,7 @@ impl FrTs {
                 info!("frts: timeout");
                 break;
             }
-            if ts.rel.is_leaf(v) {
+            if ts.rel.clauses_of_var(v).is_empty() {
                 v += 1;
                 continue;
             }
@@ -137,10 +130,10 @@ impl FrTs {
             ) {
                 Some(true) => {}
                 Some(false) => {
-                    debug!("frts: {v} -> {m}");
+                    debug!("{v} -> {m}");
                     replace.insert_lit(lv, m);
                     solver.add_eq(lv, m);
-                    if replace.len().is_multiple_of(5000) {
+                    if replace.len().is_multiple_of(2000) {
                         drop(solver);
                         ts.replace(&replace, &mut rst);
                         ts.coi_refine(&mut rst);
@@ -152,7 +145,7 @@ impl FrTs {
                         simp.bve_simplify();
                         ts.rel = Arc::new(simp.finalize());
                         solver = DagCnfSolver::new(Arc::clone(&ts.rel));
-                        info!("frts ts simplified to: {}", ts.statistic());
+                        info!("{} simps: {}", replace.len(), ts.statistic());
                     }
                 }
                 None => {

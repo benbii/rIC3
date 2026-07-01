@@ -1,6 +1,6 @@
 use crate::RseedMap as HashMap;
 use crate::transys::{Transys, unroll::TransysUnroll};
-use logicrs::{Lit, LitVec, LitVvec, Var, VarVMap, satif::Satif};
+use logicrs::{Lit, LitVec, Var, VarVMap, satif::Satif};
 
 #[derive(Clone, Debug, Default)]
 pub struct BlWitness {
@@ -241,8 +241,8 @@ impl Restore {
         }
     }
 
-    pub fn eq_invariant(&self) -> LitVvec {
-        let mut res = LitVvec::new();
+    pub fn eq_invariant(&self) -> Vec<LitVec> {
+        let mut res = Vec::new();
         for (v, eq) in self.eqmap.iter() {
             for &e in eq.iter() {
                 res.push(LitVec::from([v.lit(), !e]));

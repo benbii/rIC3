@@ -87,7 +87,7 @@ impl DagCnfSolver {
         while solver.num_var() < dc_ref.num_var() {
             solver.new_var();
         }
-        for cls in dc_ref.clause() {
+        for cls in dc_ref.all_clauses() {
             solver.add_clause_inner(cls, ClauseKind::Trans);
         }
         assert!(solver.propagate() == CREF_NONE);
@@ -183,7 +183,8 @@ impl DagCnfSolver {
         }
 
         if !self.temporary_domain {
-            self.domain.enable_local(domain, assump, constraint, &self.dc, &self.value);
+            self.domain
+                .enable_local(domain, assump, constraint, &self.dc, &self.value);
             assert!(!self.domain.has(self.constrain_act));
             self.domain.insert(self.constrain_act);
             if bucket {

@@ -26,11 +26,10 @@ impl BitVec {
             return Self::default();
         }
         let mut bits = NckVec::new_rand(num_word, rng);
+        bits[0] &= 1u64 ^ u64::MAX; // all 0
+        bits[0] |= 2u64; // all 1
         bits.push(0);
-        Self {
-            bits,
-            last_len: 0,
-        }
+        Self { bits, last_len: 0 }
     }
 
     pub fn from_elem(len: usize, val: bool) -> Self {

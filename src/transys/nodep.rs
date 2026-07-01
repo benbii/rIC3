@@ -1,7 +1,7 @@
 use super::Transys;
 use crate::RseedMap as HashMap;
 use crate::transys::certify::{BlWitness, Restore};
-use logicrs::{Cnf, Lit, LitMap, LitVec, LitVvec, Var, VarRange, satif::Satif};
+use logicrs::{Cnf, Lit, LitMap, LitVec, Var, VarRange, satif::Satif};
 
 #[derive(Default, Debug, Clone)]
 pub struct NoDepTransys {
@@ -65,8 +65,8 @@ impl NoDepTransys {
         self.var_next_lit(var).var()
     }
 
-    pub fn inits(&self) -> LitVvec {
-        let mut cnf = LitVvec::new();
+    pub fn inits(&self) -> Vec<LitVec> {
+        let mut cnf = Vec::new();
         for l in self.latch() {
             if let Some(i) = self.init(l) {
                 if let Some(i) = i.try_constant() {

@@ -1,8 +1,8 @@
 use std::cmp::Ordering;
 
 use super::Transys;
-use crate::{DagCnf, RseedMap as HashMap, VarVMap};
 use crate::transys::certify::Restore;
+use crate::{DagCnf, RseedMap as HashMap, VarVMap};
 use logicrs::{Lit, LitVec, OptionU32, Var, VarLMap, VarMap, VarRange};
 
 impl Transys {
@@ -57,8 +57,9 @@ impl Transys {
             if mv <= begin {
                 continue;
             }
-            let rel: Vec<LitVec> = other.rel[v]
-                .iter()
+            let rel: Vec<LitVec> = other
+                .rel
+                .clauses_of_var(v)
                 .map(|cls| cls.iter().map(|l| lmap(*l)).collect())
                 .collect();
             self.rel_mut().add_rel(mv, &rel);
@@ -177,7 +178,7 @@ impl Transys {
 
     pub fn topsort(&mut self, rst: &mut Restore) {
         let mut level = VarMap::new_with(self.rel.max_var());
-        for v in self.rel.var_iter() {
+        for v in VarRange::new_inclusive(Var::CONST, self.rel.max_var()) {
             level[v] = self
                 .rel
                 .dep(v)
@@ -189,7 +190,7 @@ impl Transys {
         }
 
         let mut deps = Vec::new();
-        for v in self.rel.var_iter_woc() {
+        for v in VarRange::new_inclusive(Var(1), self.rel.max_var()) {
             let mut d: LitVec = self.rel.dep(v).iter().map(|v| v.lit()).collect();
             d.sort();
             deps.push((d, v));
@@ -201,7 +202,10 @@ impl Transys {
 
         let mut map = VarVMap::new();
         map.insert(Var::CONST, Var::CONST);
-        for ((_, old), new) in deps.into_iter().zip(self.rel.var_iter_woc()) {
+        for ((_, old), new) in deps
+            .into_iter()
+            .zip(VarRange::new_inclusive(Var(1), self.rel.max_var()))
+        {
             map.insert(old, new);
         }
 
@@ -212,13 +216,13 @@ impl Transys {
 
         let mut rel = DagCnf::new();
         rel.new_var_to(self.rel.max_var());
-        for (old, old_rel) in self.rel.iter() {
-            if old.is_constant() || old_rel.is_empty() {
+        for old in VarRange::new_inclusive(Var(1), self.rel.max_var()) {
+            let old_rel = self.rel.clauses_of_var(old);
+            if old_rel.is_empty() {
                 continue;
             }
             let new_rel: Vec<_> = old_rel
-                .iter()
-                .map(|cls| cls.map(|l| l.map_var(|v| map[v])))
+                .map(|cls| cls.iter().map(|l| l.map_var(|v| map[v])).collect())
                 .collect();
             rel.add_rel(map[old], &new_rel);
         }

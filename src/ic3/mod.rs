@@ -9,7 +9,7 @@ use activity::Activity;
 use clap::{ArgAction, Args, Parser};
 use frame::{Frame, Frames};
 use log::{debug, error, info, trace};
-use logicrs::{Lit, LitOrdVec, LitVec, LitVvec, satif::Satif};
+use logicrs::{Lit, LitOrdVec, LitVec, satif::Satif};
 use proofoblig::{ProofObligation, ProofObligationQueue};
 use rand::{SeedableRng, rngs::StdRng};
 use serde::{Deserialize, Serialize};
@@ -310,7 +310,7 @@ impl Engine for IC3 {
                 .migrate(&self.ts.rel, c.var(), &mut self.rst.bvmap);
             invariants.push(LitVec::from(!c));
         }
-        let mut invariants: LitVvec = invariants
+        let mut invariants: Vec<LitVec> = invariants
             .iter()
             .map(|l| LitVec::from_iter(l.iter().map(|l| self.rst.restore(*l))))
             .collect();

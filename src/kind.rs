@@ -6,7 +6,7 @@ use crate::{
 };
 use clap::{Args, Parser};
 use log::{error, info};
-use logicrs::{Lit, LitVec, LitVvec, OptionU32, Var, VarMap, VarRange, satif::Satif};
+use logicrs::{Lit, LitVec, OptionU32, Var, VarMap, VarRange, satif::Satif};
 use serde::{Deserialize, Serialize};
 
 #[derive(Args, Clone, Debug, Serialize, Deserialize)]
@@ -35,7 +35,7 @@ impl Default for KindConfig {
 pub struct Kind {
     uts: NoDepTransysUnroll,
     solver: CaDiCaL,
-    simple_path: Vec<LitVvec>,
+    simple_path: Vec<Vec<LitVec>>,
     ots: Transys,
     rst: Restore,
     bad_prop_id: usize,
@@ -101,7 +101,7 @@ impl Engine for Kind {
             self.uts.unroll();
             debug_assert_eq!(self.uts.num_unroll, k);
             if self.use_simple_path {
-                let mut sp = LitVvec::new();
+                let mut sp = Vec::new();
                 for i in 0..k {
                     let mut ors = LitVec::new();
                     let latch = self.uts.ts.latch.clone();
@@ -110,7 +110,10 @@ impl Engine for Kind {
                         let li = self.uts.lit_next(l, i);
                         let lj = self.uts.lit_next(l, k);
                         let n = self.uts.new_var().lit();
-                        sp.extend(LitVvec::cnf_xor(n, li, lj));
+                        sp.push(LitVec::from([!li, lj, n]));
+                        sp.push(LitVec::from([li, !lj, n]));
+                        sp.push(LitVec::from([li, lj, !n]));
+                        sp.push(LitVec::from([!li, !lj, !n]));
                         ors.push(n);
                     }
                     sp.push(ors);
@@ -190,7 +193,11 @@ impl Engine for Kind {
             proof.new_var_to(map(ts.max_var()));
             let lmap = |x: Lit| Lit::new(map(x.var()), x.polarity());
             for v in VarRange::new_inclusive(Var(1), ts.max_var()) {
-                let rel: Vec<LitVec> = ts.rel[v].iter().map(|cls| cls.map(lmap)).collect();
+                let rel: Vec<LitVec> = ts
+                    .rel
+                    .clauses_of_var(v)
+                    .map(|cls| cls.iter().map(|&l| lmap(l)).collect())
+                    .collect();
                 let mv = map(v);
                 proof.rel_mut().add_rel(mv, &rel);
             }

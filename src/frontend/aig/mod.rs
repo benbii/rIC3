@@ -6,7 +6,7 @@ use crate::{
     transys::Transys,
 };
 use log::{debug, error, warn};
-use logicrs::{Lbool, Lit, LitVec, Var, VarVMap};
+use logicrs::{Lbool, Lit, LitVec, Var, VarRange, VarVMap};
 use std::{fmt::Display, path::Path, process::Command, sync::Arc};
 
 impl From<&Transys> for Aig {
@@ -22,24 +22,26 @@ impl From<&Transys> for Aig {
             let t = aig.new_leaf_node();
             map.insert(f, AigEdge::new(t, false));
         }
-        for (v, rel) in ts.rel.iter() {
-            if ts.rel.has_rel(v) && !v.is_constant() {
-                assert!(!map.contains_key(&v));
-                let mut r = Vec::new();
-                for rel in rel {
-                    let last = rel.last();
-                    assert!(last.var() == v);
-                    if last.polarity() {
-                        let mut rel = !rel;
-                        rel.pop();
-                        r.push(aig.trivial_new_ands_node(
-                            rel.iter().map(|l| map[&l.var()].not_if(!l.polarity())),
-                        ));
-                    }
-                }
-                let n = aig.trivial_new_ors_node(r);
-                map.insert(v, n);
+        for v in VarRange::new_inclusive(Var(1), ts.rel.max_var()) {
+            let rel = ts.rel.clauses_of_var(v);
+            if rel.is_empty() {
+                continue;
             }
+            assert!(!map.contains_key(&v));
+            let mut r = Vec::new();
+            for rel in rel {
+                let last = *rel.last().unwrap();
+                assert!(last.var() == v);
+                if last.polarity() {
+                    let mut rel = !LitVec::from(rel);
+                    rel.pop();
+                    r.push(aig.trivial_new_ands_node(
+                        rel.iter().map(|l| map[&l.var()].not_if(!l.polarity())),
+                    ));
+                }
+            }
+            let n = aig.trivial_new_ors_node(r);
+            map.insert(v, n);
         }
         let map_lit = |l: Lit| map[&l.var()].not_if(!l.polarity());
         for l in ts.latch.iter() {
@@ -218,7 +220,10 @@ impl Frontend for AigFrontend {
     fn certify(&mut self, model: &Path, cert: &Path) -> bool {
         let output = Command::new("docker")
             .args([
-                "run", "--rm", "--pull=never", "-v",
+                "run",
+                "--rm",
+                "--pull=never",
+                "-v",
                 &format!("{}:{}", model.display(), model.display()),
                 "-v",
                 &format!("{}:{}", cert.display(), cert.display()),
@@ -232,7 +237,9 @@ impl Frontend for AigFrontend {
             debug!("{}", String::from_utf8_lossy(&output.stdout));
             debug!("{}", String::from_utf8_lossy(&output.stderr));
             if output.status.code() != Some(1) {
-                error!("certifaiger not avaliable, please `docker pull ghcr.io/gipsyh/certifaiger:latest`");
+                error!(
+                    "certifaiger not avaliable, please `docker pull ghcr.io/gipsyh/certifaiger:latest`"
+                );
             }
         }
         output.status.success()

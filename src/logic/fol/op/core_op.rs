@@ -2,7 +2,7 @@ use super::define::define_core_op;
 use super::simulate::*;
 use super::{DynOp, OpTrait, OptLevel, SimplifyCtx, Sort, Term, TermResult, TermVec};
 use crate::fol::op::define::define_core_fold_op;
-use crate::{DagCnf, Lit, LitVvec};
+use crate::{DagCnf, Lit};
 use std::slice;
 
 #[inline]
@@ -103,14 +103,14 @@ fn and_bitblast(terms: &[TermVec]) -> TermVec {
 }
 fn and_cnf_encode(dc: &mut DagCnf, terms: &[Lit]) -> Lit {
     let l = dc.new_var().lit();
-    dc.add_rel(l.var(), &LitVvec::cnf_and(l, terms));
+    dc.add_cnf_and(l, terms);
     l
 }
 
 define_core_fold_op!(Ands, cnf_encode: ands_cnf_encode, simulate: ands_simulate);
 fn ands_cnf_encode(dc: &mut DagCnf, terms: &[Lit]) -> Lit {
     let l = dc.new_var().lit();
-    dc.add_rel(l.var(), &LitVvec::cnf_and(l, terms));
+    dc.add_cnf_and(l, terms);
     l
 }
 
@@ -177,14 +177,14 @@ fn or_bitblast(terms: &[TermVec]) -> TermVec {
 }
 fn or_cnf_encode(dc: &mut DagCnf, terms: &[Lit]) -> Lit {
     let l = dc.new_var().lit();
-    dc.add_rel(l.var(), &LitVvec::cnf_or(l, terms));
+    dc.add_cnf_or(l, terms);
     l
 }
 
 define_core_fold_op!(Ors, cnf_encode: ors_cnf_encode, simulate: ors_simulate);
 fn ors_cnf_encode(dc: &mut DagCnf, terms: &[Lit]) -> Lit {
     let l = dc.new_var().lit();
-    dc.add_rel(l.var(), &LitVvec::cnf_or(l, terms));
+    dc.add_cnf_or(l, terms);
     l
 }
 
@@ -216,7 +216,7 @@ fn xor_bitblast(terms: &[TermVec]) -> TermVec {
 }
 fn xor_cnf_encode(dc: &mut DagCnf, terms: &[Lit]) -> Lit {
     let l = dc.new_var().lit();
-    dc.add_rel(l.var(), &LitVvec::cnf_xor(l, terms[0], terms[1]));
+    dc.add_cnf_xor(l, terms[0], terms[1]);
     l
 }
 
@@ -246,7 +246,7 @@ fn eq_bitblast(terms: &[TermVec]) -> TermVec {
 }
 fn eq_cnf_encode(dc: &mut DagCnf, terms: &[Lit]) -> Lit {
     let l = dc.new_var().lit();
-    dc.add_rel(l.var(), &LitVvec::cnf_xnor(l, terms[0], terms[1]));
+    dc.add_cnf_xnor(l, terms[0], terms[1]);
     l
 }
 
@@ -524,7 +524,7 @@ fn ite_bitblast(terms: &[TermVec]) -> TermVec {
 }
 fn ite_cnf_encode(dc: &mut DagCnf, terms: &[Lit]) -> Lit {
     let l = dc.new_var().lit();
-    dc.add_rel(l.var(), &LitVvec::cnf_ite(l, terms[0], terms[1], terms[2]));
+    dc.add_cnf_ite(l, terms[0], terms[1], terms[2]);
     l
 }
 

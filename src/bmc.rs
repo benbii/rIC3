@@ -111,7 +111,7 @@ impl Engine for BMC {
                     return McResult::Unsafe(d);
                 }
                 // 0, 1, 2, 3, 5, 7, 9, 11, 15, 19, 23, 27, 31, 39, 47, 55, 63, 79, 95...
-                if d^(d+1) > d>>2 {
+                if d ^ (d + 1) > d >> 2 {
                     info!("cadical no cex at depth {d}");
                 }
             }
@@ -129,7 +129,7 @@ impl Engine for BMC {
                     info!("bmc-kissat found a counterexample at depth {d}");
                     return McResult::Unsafe(d);
                 }
-                if d^(d+1) > d>>2 {
+                if d ^ (d + 1) > d >> 2 {
                     info!("kissat no cex at depth {d}");
                 }
                 *k = Kissat::new();

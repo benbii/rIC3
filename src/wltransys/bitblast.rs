@@ -9,7 +9,7 @@ use crate::{
 };
 use logicrs::bitvec::BitVec;
 use logicrs::{
-    DagCnf, Lbool, LboolVec, Lit, LitVec, Var,
+    DagCnf, Lbool, LboolVec, Lit, LitVec, Var, VarRange,
     fol::{
         BvTermValue, Sort, Term, TermValue, TermVec, Value,
         bitblast::{bitblast_terms, cnf_encode_terms},
@@ -281,24 +281,26 @@ impl BitblastMap {
                 map.insert(l, self.restore_var(l));
             }
         }
-        for (v, rel) in ts.rel.iter() {
-            if ts.rel.has_rel(v) && !v.is_constant() {
-                assert!(!map.contains_key(&v));
-                let mut r = Vec::new();
-                for rel in rel {
-                    let last = rel.last();
-                    assert!(last.var() == v);
-                    if last.polarity() {
-                        let mut rel = !rel;
-                        rel.pop();
-                        r.push(Term::new_ands(
-                            rel.iter().map(|l| map[&l.var()].not_if(!l.polarity())),
-                        ));
-                    }
-                }
-                let n = Term::new_ors(r);
-                map.insert(v, n);
+        for v in VarRange::new_inclusive(Var(1), ts.rel.max_var()) {
+            let rel = ts.rel.clauses_of_var(v);
+            if rel.is_empty() {
+                continue;
             }
+            assert!(!map.contains_key(&v));
+            let mut r = Vec::new();
+            for rel in rel {
+                let last = *rel.last().unwrap();
+                assert!(last.var() == v);
+                if last.polarity() {
+                    let mut rel = !LitVec::from(rel);
+                    rel.pop();
+                    r.push(Term::new_ands(
+                        rel.iter().map(|l| map[&l.var()].not_if(!l.polarity())),
+                    ));
+                }
+            }
+            let n = Term::new_ors(r);
+            map.insert(v, n);
         }
         let map_lit = |l: Lit| map[&l.var()].not_if(!l.polarity());
         for (l, n) in new_latch {

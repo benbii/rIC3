@@ -43,9 +43,8 @@ impl IC3 {
                     if !self.ts.cube_subsume_init(&ctp)
                         && inductive(&mut self.solvers[frame_idx - 1], &self.ts, &ctp, true)
                     {
-                        let core =
-                            inductive_core(&mut self.solvers[frame_idx - 1], &self.ts, &ctp)
-                                .unwrap();
+                        let core = inductive_core(&mut self.solvers[frame_idx - 1], &self.ts, &ctp)
+                            .unwrap();
                         let mic = self.mic(frame_idx, core, &[], Default::default());
                         if self.add_lemma(frame_idx, mic, false, None) {
                             return true;

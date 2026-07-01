@@ -6,7 +6,7 @@ use crate::{
 };
 use crate::{RseedMap as HashMap, RseedSet as HashSet};
 use log::{debug, info};
-use logicrs::{LitVec, LitVvec, Var, satif::Satif};
+use logicrs::{LitVec, Var, satif::Satif};
 use rand::seq::SliceRandom;
 
 pub struct LocalAbs {
@@ -16,8 +16,8 @@ pub struct LocalAbs {
     kslv: usize,
     opt: HashMap<Var, Var>,
     opt_rev: HashMap<Var, Var>,
-    connect: Option<Vec<LitVvec>>,
-    optcst: Option<Vec<LitVvec>>,
+    connect: Option<Vec<Vec<LitVec>>>,
+    optcst: Option<Vec<Vec<LitVec>>>,
     foundcex: bool,
 }
 
@@ -34,7 +34,7 @@ impl LocalAbs {
         }
         let mut uts = TransysUnroll::new(ts);
         let mut opt = HashMap::default();
-        let mut connect = None;
+        let mut connect: Option<Vec<Vec<LitVec>>> = None;
         if abs_trans {
             for v in uts.ts.latch() {
                 let n = uts.ts.var_next_lit(v);
@@ -43,11 +43,11 @@ impl LocalAbs {
                     e.insert(uts.max_var);
                 }
             }
-            connect = Some(vec![LitVvec::new()]);
+            connect = Some(vec![Vec::new()]);
         }
-        let mut optcst = None;
+        let mut optcst: Option<Vec<Vec<LitVec>>> = None;
         if abs_cst {
-            let mut rel = LitVvec::new();
+            let mut rel = Vec::new();
             for c in uts.ts.constraint() {
                 let cc = *opt.entry(c.var()).or_insert_with(|| {
                     uts.max_var += 1;
@@ -104,7 +104,7 @@ impl LocalAbs {
     fn unroll_abst(&mut self) {
         self.uts.unroll(self.connect.is_none());
         if let Some(crel) = self.connect.as_mut() {
-            let mut cr = LitVvec::new();
+            let mut cr = Vec::new();
             for l in self.uts.ts.latch() {
                 let l = l.lit();
                 let n = self.uts.ts.next(l);
@@ -117,7 +117,7 @@ impl LocalAbs {
             crel.push(cr);
         }
         if let Some(crel) = self.optcst.as_mut() {
-            let mut cr = LitVvec::new();
+            let mut cr = Vec::new();
             for c in self.uts.ts.constraint() {
                 let cc = self.opt[&c.var()];
                 let cn = self.uts.next_map[c][self.uts.num_unroll];
@@ -151,7 +151,9 @@ impl IC3 {
         debug!("localabs: checking witness by bmc with depth {depth}");
         self.localabs.unroll_to_abst(depth);
         for k in self.localabs.kslv + 1..=depth {
-            self.localabs.uts.load_trans(&mut self.localabs.solver, k, !self.abs_cst);
+            self.localabs
+                .uts
+                .load_trans(&mut self.localabs.solver, k, !self.abs_cst);
             if let Some(crel) = self.localabs.connect.as_ref() {
                 for cls in crel[k].iter() {
                     self.localabs.solver.add_clause(cls);

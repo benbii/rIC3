@@ -8,7 +8,7 @@ pub mod scorr;
 mod simp;
 pub mod unroll;
 
-use logicrs::{DagCnf, Lit, LitVec, LitVvec, OptionU32, Var, VarMap, satif::Satif};
+use logicrs::{DagCnf, Lit, LitVec, OptionU32, Var, VarMap, satif::Satif};
 use std::{
     fmt::{self, Display},
     sync::Arc,
@@ -105,8 +105,8 @@ impl Transys {
     }
 
     #[inline]
-    pub fn trans(&self) -> impl Iterator<Item = &LitVec> + '_ {
-        self.rel.clause()
+    pub fn trans(&self) -> impl Iterator<Item = &[Lit]> + '_ {
+        self.rel.all_clauses()
     }
 
     #[inline]
@@ -132,8 +132,8 @@ impl Transys {
         true
     }
 
-    pub fn inits(&self) -> LitVvec {
-        let mut cnf = LitVvec::new();
+    pub fn inits(&self) -> Vec<LitVec> {
+        let mut cnf = Vec::new();
         for l in self.latch() {
             if let Some(i) = self.init(l) {
                 if let Some(i) = i.try_constant() {

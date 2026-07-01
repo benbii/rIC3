@@ -1,11 +1,11 @@
+use crate::RseedMap as HashMap;
 use crate::{
     config::PreprocConfig,
     gipsat::DagCnfSolver,
     transys::{Transys, certify::Restore},
 };
-use crate::RseedMap as HashMap;
-use logicrs::bitvec::BitVec;
 use log::{debug, info};
+use logicrs::bitvec::BitVec;
 use logicrs::{Lit, LitVec, Var, VarLMap, VarMap, satif::Satif};
 use std::{sync::Arc, time::Instant};
 
@@ -69,7 +69,9 @@ impl Scorr {
 
     fn rt_simulation(&self, init: &VarMap<BitVec>, num_word: usize) -> VarMap<BitVec> {
         fn assign(sim: &VarMap<BitVec>, idx: usize, vars: &[Var]) -> LitVec {
-            vars.iter().map(|&v| v.lit().not_if(!sim[v].get(idx))).collect()
+            vars.iter()
+                .map(|&v| v.lit().not_if(!sim[v].get(idx)))
+                .collect()
         }
 
         fn dfs(
@@ -117,11 +119,17 @@ impl Scorr {
             slv.add_clause(&block);
         }
         slv.use_phase_saving = false;
-        let domain: Vec<_> = self.ts.latch().map(|l| self.ts.var_next_lit(l).var()).collect();
+        let domain: Vec<_> = self
+            .ts
+            .latch()
+            .map(|l| self.ts.var_next_lit(l).var())
+            .collect();
 
         for from in 0..init[Var::CONST].len() {
             let assump = assign(init, from, &consider);
-            dfs(&self.ts, &mut sim, &mut slv, &consider, &domain, num_word, &assump);
+            dfs(
+                &self.ts, &mut sim, &mut slv, &consider, &domain, num_word, &assump,
+            );
         }
         sim
     }

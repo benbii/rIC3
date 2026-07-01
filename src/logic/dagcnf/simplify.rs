@@ -1,10 +1,13 @@
 use super::DagCnf;
 use crate::{
-    Lbool, Lit, LitMap, LitOrdVec, LitVec, LitVvec, RseedSet as HashSet,
-    Var, VarAssign, VarRange, nckvec::NckVec, occur::Occurs
+    Lbool, Lit, LitMap, LitOrdVec, LitVec, RseedSet as HashSet, Var, VarAssign, VarRange,
+    nckvec::NckVec, occur::Occurs,
 };
 use log::debug;
-use std::{iter::once, time::{Duration, Instant}};
+use std::{
+    iter::once,
+    time::{Duration, Instant},
+};
 
 struct AccidentalHeap {
     heap: Vec<Var>,
@@ -118,7 +121,7 @@ pub struct DagCnfSimplify {
 
 impl DagCnfSimplify {
     pub fn new(dagcnf: &DagCnf) -> Self {
-        let num_ocls = dagcnf.num_clause();
+        let num_ocls = dagcnf.len();
         let cdb = NckVec::new();
         let max_var = dagcnf.max_var;
         let cnf = LitMap::new_with(max_var);
@@ -134,7 +137,8 @@ impl DagCnfSimplify {
             time: Duration::default(),
         };
         for v in VarRange::new_inclusive(Var::CONST, max_var) {
-            for mut cls in dagcnf.cnf[v].clone() {
+            for cls in dagcnf.clauses_of_var(v) {
+                let mut cls = LitVec::from(cls);
                 cls.sort();
                 cls.dedup();
                 assert!(cls.last().var().eq(&v));
@@ -259,8 +263,8 @@ impl DagCnfSimplify {
         ncnf: &[usize],
         pivot: Var,
         limit: usize,
-    ) -> Option<LitVvec> {
-        let mut res = LitVvec::new();
+    ) -> Option<Vec<LitVec>> {
+        let mut res = Vec::new();
         for &pcls in pcnf {
             for &ncls in ncnf {
                 if let Some(resolvent) =
@@ -467,7 +471,7 @@ impl DagCnfSimplify {
         debug!(
             "dagcnf simplified from {} to {} clauses in {:.2}s",
             self.num_ocls,
-            dagcnf.num_clause(),
+            dagcnf.len(),
             self.time.as_secs_f64()
         );
         dagcnf
@@ -481,7 +485,7 @@ impl DagCnfSimplify {
     }
 }
 
-fn clause_subsume_simplify(lemmas: LitVvec) -> LitVvec {
+fn clause_subsume_simplify(lemmas: Vec<LitVec>) -> Vec<LitVec> {
     let mut lemmas: Vec<LitOrdVec> = lemmas.into_iter().map(LitOrdVec::new).collect();
     lemmas.sort_by_key(|l| l.len());
     let mut i = 0;

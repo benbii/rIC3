@@ -61,8 +61,7 @@ impl IC3 {
             );
             if blocked {
                 return Some(
-                    inductive_core(&mut self.solvers[frame - 1], &self.ts, &ordered_cube)
-                        .unwrap(),
+                    inductive_core(&mut self.solvers[frame - 1], &self.ts, &ordered_cube).unwrap(),
                 );
             }
             let mut ret = false;
@@ -120,8 +119,7 @@ impl IC3 {
             let (blocked, ordered_cube) = self.blocked_with_ordered(frame, &cube, true);
             if blocked {
                 return Some(
-                    inductive_core(&mut self.solvers[frame - 1], &self.ts, &ordered_cube)
-                        .unwrap(),
+                    inductive_core(&mut self.solvers[frame - 1], &self.ts, &ordered_cube).unwrap(),
                 );
             }
             for lit in cube.iter() {

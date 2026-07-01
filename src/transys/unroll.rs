@@ -148,12 +148,13 @@ impl TransysUnroll {
                 let c = self.lit_next(*c, u);
                 constraint.push(c);
             }
-            for (v, cls) in self.ts.rel.iter() {
-                let v = self.var_next(v, u);
-                if v <= rel.max_var() && rel.has_rel(v) {
+            for old_v in VarRange::new_inclusive(Var(1), self.ts.rel.max_var()) {
+                let v = self.var_next(old_v, u);
+                if v <= rel.max_var() && !rel.clauses_of_var(v).is_empty() {
                     continue;
                 }
-                let cls: Vec<LitVec> = cls.iter().map(|c| self.lits_next(c, u).collect()).collect();
+                let cls = self.ts.rel.clauses_of_var(old_v);
+                let cls: Vec<LitVec> = cls.map(|c| self.lits_next(c, u).collect()).collect();
                 Arc::get_mut(&mut rel).unwrap().add_rel(v, &cls);
             }
         }
@@ -180,15 +181,16 @@ impl TransysUnroll {
         assert!(self.num_unroll == 1);
         let keep = self.ts.rel.fanouts(self.ts.input());
         let mut rel = Arc::new((*self.ts.rel).clone());
-        for (v, cls) in self.ts.rel.iter() {
-            if keep.contains(&v) {
+        for old_v in VarRange::new_inclusive(Var(1), self.ts.rel.max_var()) {
+            if keep.contains(&old_v) {
                 continue;
             }
-            let v = self.var_next(v, 1);
-            if v <= rel.max_var() && rel.has_rel(v) {
+            let v = self.var_next(old_v, 1);
+            if v <= rel.max_var() && !rel.clauses_of_var(v).is_empty() {
                 continue;
             }
-            let cls: Vec<LitVec> = cls.iter().map(|c| self.lits_next(c, 1).collect()).collect();
+            let cls = self.ts.rel.clauses_of_var(old_v);
+            let cls: Vec<LitVec> = cls.map(|c| self.lits_next(c, 1).collect()).collect();
             Arc::get_mut(&mut rel).unwrap().add_rel(v, &cls);
         }
         let mut ts = Transys {
@@ -220,12 +222,13 @@ impl TransysUnroll {
         let mut constraint = self.ts.constraint.clone();
         constraint.extend(self.lits_next(self.ts.constraint(), 1));
 
-        for (v, cls) in self.ts.rel.iter() {
-            let v = self.var_next(v, 1);
-            if v <= rel.max_var() && rel.has_rel(v) {
+        for old_v in VarRange::new_inclusive(Var(1), self.ts.rel.max_var()) {
+            let v = self.var_next(old_v, 1);
+            if v <= rel.max_var() && !rel.clauses_of_var(v).is_empty() {
                 continue;
             }
-            let cls: Vec<LitVec> = cls.iter().map(|c| self.lits_next(c, 1).collect()).collect();
+            let cls = self.ts.rel.clauses_of_var(old_v);
+            let cls: Vec<LitVec> = cls.map(|c| self.lits_next(c, 1).collect()).collect();
             Arc::get_mut(&mut rel).unwrap().add_rel(v, &cls);
         }
 

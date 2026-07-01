@@ -70,7 +70,7 @@ impl Transys {
         let mut removed = 0;
         for v in VarRange::new_inclusive(Var::CONST + 1, self.max_var()) {
             if !mark.contains(&v) {
-                removed += self.rel[v].len();
+                removed += self.rel.clauses_of_var(v).len();
                 self.rel_mut().del_rel(v);
                 rst.remove(v);
             }
@@ -126,12 +126,13 @@ impl Transys {
     pub fn simplify(&mut self, rst: &mut Restore) {
         self.coi_refine(rst);
         let frozens = self.frozens();
-        self.rel = std::sync::Arc::new(self.rel.simplify(frozens.iter().copied()));
+        self.rel = std::sync::Arc::new(self.rel.simplify(frozens));
         self.coi_refine(rst);
         self.constraint.retain(|l| !l.is_constant(true));
         self.constraint.sort();
         self.constraint.dedup();
         self.rearrange(rst);
+        self.rel_mut().compact();
     }
 
     pub fn preproc(mut ts: Self, cfg: &PreprocConfig, mut rst: Restore) -> (Self, Restore) {

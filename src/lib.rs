@@ -264,6 +264,7 @@ impl DoubleEndedIterator for VarRange {
 
 impl ExactSizeIterator for VarRange {}
 
+#[repr(transparent)]
 #[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Default, Serialize, Deserialize)]
 pub struct Lit(u32);
 
@@ -401,7 +402,7 @@ pub use btor::Btor;
 
 use crate::{
     transys::certify::{BlProof, BlWitness},
-    wltransys::certify::{WlProof, WlWitness}
+    wltransys::certify::{WlProof, WlWitness},
 };
 use enum_as_inner::EnumAsInner;
 use std::ops::BitOr;

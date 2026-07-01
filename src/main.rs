@@ -3,15 +3,24 @@ use log::info;
 use rIC3::{
     Engine, LitVec, McResult,
     aig::Aig,
-    bmc::BMC, btor::Btor,
+    bmc::BMC,
+    btor::Btor,
     config::{EngineConfig, PreprocConfig},
     frontend::{Frontend, aig::AigFrontend, btor::BtorFrontend},
-    ic3::IC3, kind::Kind, rlive::Rlive,
+    ic3::IC3,
+    kind::Kind,
+    rlive::Rlive,
     transys::{Transys, certify::Restore},
-    wlbmc::WlBMC, wlkind::WlKind,
+    wlbmc::WlBMC,
+    wlkind::WlKind,
 };
 use std::{
-    env, fs, fs::File, io::BufWriter, io::BufReader, path::PathBuf, process::ExitCode,
+    env, fs,
+    fs::File,
+    io::BufReader,
+    io::BufWriter,
+    path::PathBuf,
+    process::ExitCode,
     time::{Duration, Instant},
 };
 
@@ -65,7 +74,7 @@ fn main() -> ExitCode {
     env_logger::init();
     match Commands::parse() {
         Commands::Check { chk, cfg, pp } => cmd_check(chk, cfg, pp),
-        Commands::Preprocess { pp } => cmd_preproc(pp)
+        Commands::Preprocess { pp } => cmd_preproc(pp),
     }
 }
 
@@ -85,13 +94,13 @@ fn cmd_check(mut chk: CheckCmd, cfg: EngineConfig, pp: PreprocConfig) -> ExitCod
         Some(ext) if (ext == "btor") | (ext == "btor2") => {
             Box::new(BtorFrontend::new(Btor::from_file(&chk.model)))
         }
-        _ => panic!("aig, aag, btor, btor2 files only.")
+        _ => panic!("aig, aag, btor, btor2 files only."),
     };
     let ots = fend.ts();
 
     let (ts, rst) = if let Some(ref p) = pp.load
-        && let Ok(file ) = File::open(&p)
-        && let mut file= BufReader::new(file)
+        && let Ok(file) = File::open(&p)
+        && let mut file = BufReader::new(file)
         && let Ok(ts_ld) = bincode::deserialize_from(&mut file)
         && let Ok(rst_ld) = bincode::deserialize_from(&mut file)
         && let Ok(sec_ld) = bincode::deserialize_from(&mut file)
@@ -140,7 +149,10 @@ fn cmd_check(mut chk: CheckCmd, cfg: EngineConfig, pp: PreprocConfig) -> ExitCod
             assert!(!chk.certify || fend.certify(&chk.model, chk.cert.as_ref().unwrap()));
             println!("SAT");
             if chk.witness {
-                println!("{}", fs::read_to_string(chk.cert.as_ref().unwrap()).unwrap());
+                println!(
+                    "{}",
+                    fs::read_to_string(chk.cert.as_ref().unwrap()).unwrap()
+                );
             }
             if let Some(ref p) = chk.cert {
                 let c = fend.unsafe_certificate(engine.witness());
@@ -164,7 +176,7 @@ fn cmd_preproc(pp: PreprocessCmd) -> ExitCode {
         Some(ext) if (ext == "btor") | (ext == "btor2") => {
             BtorFrontend::new(Btor::from_file(&model)).ts()
         }
-        _ => panic!("aig, aag, btor, btor2 files only.")
+        _ => panic!("aig, aag, btor, btor2 files only."),
     };
     info!("original transys has {}", ts.statistic());
     let t = Instant::now();

@@ -1,6 +1,6 @@
 use super::{Aig, AigEdge};
 use crate::RseedSet as HashSet;
-use logicrs::{DagCnf, LitVvec, Var};
+use logicrs::{DagCnf, Var};
 
 impl Aig {
     #[inline]
@@ -95,7 +95,7 @@ impl Aig {
                         refs.insert(xor1.node_id());
                         let xor0 = xor0.to_lit();
                         let xor1 = xor1.to_lit();
-                        ans.add_rel(n.var(), &LitVvec::cnf_xor(n, xor0, xor1));
+                        ans.add_cnf_xor(n, xor0, xor1);
                         continue;
                     }
                     if let Some((c, t, e)) = self.is_ite(i) {
@@ -105,7 +105,7 @@ impl Aig {
                         let c = c.to_lit();
                         let t = t.to_lit();
                         let e = e.to_lit();
-                        ans.add_rel(n.var(), &LitVvec::cnf_ite(n, c, t, e));
+                        ans.add_cnf_ite(n, c, t, e);
                         continue;
                     }
                 }
@@ -113,7 +113,7 @@ impl Aig {
                 refs.insert(self.nodes[i].fanin1().id);
                 let fanin0 = self.nodes[i].fanin0().to_lit();
                 let fanin1 = self.nodes[i].fanin1().to_lit();
-                ans.add_rel(n.var(), &LitVvec::cnf_and(n, &[fanin0, fanin1]));
+                ans.add_cnf_and(n, &[fanin0, fanin1]);
             }
         }
         ans

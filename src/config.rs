@@ -1,6 +1,5 @@
 use crate::{
-    bmc::BMCConfig, ic3::IC3Config, kind::KindConfig, wlbmc::WlBMCConfig,
-    wlkind::WlKindConfig,
+    bmc::BMCConfig, ic3::IC3Config, kind::KindConfig, wlbmc::WlBMCConfig, wlkind::WlKindConfig,
 };
 use clap::{ArgAction, Args, Parser};
 use enum_as_inner::EnumAsInner;

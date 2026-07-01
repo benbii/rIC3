@@ -1,5 +1,5 @@
 use crate::RseedSet as HashSet;
-use crate::{DagCnf, Lit, LitVec, LitVvec, Var, VarVMap};
+use crate::{DagCnf, Lit, LitVec, Var, VarVMap};
 use std::{
     iter::once,
     ops::{Deref, DerefMut},
@@ -103,7 +103,12 @@ impl Cnf {
             and[0]
         } else {
             let n = self.new_var().lit();
-            self.add_clauses(LitVvec::cnf_and(n, &and));
+            for &l in &and {
+                self.add_clause(&[!n, l]);
+            }
+            let mut cls = LitVec::from(n);
+            cls.extend(and.iter().map(|l| !*l));
+            self.add_clause(&cls);
             n
         }
     }
@@ -127,7 +132,12 @@ impl Cnf {
             or[0]
         } else {
             let n = self.new_var().lit();
-            self.add_clauses(LitVvec::cnf_or(n, &or));
+            for &l in &or {
+                self.add_clause(&[n, !l]);
+            }
+            let mut cls = LitVec::from(!n);
+            cls.extend(or.iter().copied());
+            self.add_clause(&cls);
             n
         }
     }
@@ -163,7 +173,7 @@ impl DagCnf {
     pub fn lower(&self) -> Cnf {
         Cnf {
             max_var: self.max_var(),
-            cls: self.clause().cloned().collect(),
+            cls: self.all_clauses().map(LitVec::from).collect(),
         }
     }
 }
