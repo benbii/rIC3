@@ -103,13 +103,13 @@ fn cmd_check(mut chk: CheckCmd, cfg: EngineConfig, pp: PreprocConfig) -> ExitCod
         (ts_ld, rst_ld)
     } else {
         info!("transys to be checked has {}", ots.statistic());
-        let mut ts = ots.clone();
+        let mut ts = ots.clone_deep();
         let rst = Restore::new(&ts);
         if pp.prop < ts.bad.len() {
             ts.bad = LitVec::from(ts.bad[pp.prop]);
         } else if ts.bad.len() > 1 {
             let bad = std::mem::take(&mut ts.bad);
-            ts.bad = LitVec::from(ts.rel.new_or(bad));
+            ts.bad = LitVec::from(ts.rel_mut().new_or(bad));
         }
         Transys::preproc(ts, &pp, rst)
     };

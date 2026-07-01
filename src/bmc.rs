@@ -59,7 +59,7 @@ impl BMC {
         let mut rng = StdRng::seed_from_u64(cfg.rseed);
         if ts.bad.len() > 1 {
             let bad = std::mem::take(&mut ts.bad);
-            ts.bad = LitVec::from(ts.rel.new_or(bad));
+            ts.bad = LitVec::from(ts.rel_mut().new_or(bad));
         }
         let mut ts = ts.remove_dep();
         for c in std::mem::take(&mut ts.constraint) {

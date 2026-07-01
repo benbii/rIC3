@@ -1,5 +1,5 @@
 use crate::{
-    BlProof, BlWitness, Engine, McProof, McResult, McWitness,
+    BlWitness, Engine, McProof, McResult, McWitness,
     config::EngineConfig,
     gipsat::{DagCnfSolver, SolverStatistic, new_transys_solver},
     ic3::{block::BlockResult, localabs::LocalAbs, mab::CtgMab, predprop::PredProp},
@@ -298,7 +298,7 @@ impl Engine for IC3 {
     }
 
     fn proof(&mut self) -> McProof {
-        let mut proof = self.ots.clone();
+        let mut proof = self.ots.clone_deep();
         if let Some(iv) = self.rst.init_var() {
             let piv = proof.add_init_var();
             self.rst.add_restore(iv, piv);
@@ -306,7 +306,7 @@ impl Engine for IC3 {
         let mut invariants = self.inner_invariant();
         for c in self.ts.constraint.clone() {
             proof
-                .rel
+                .rel_mut()
                 .migrate(&self.ts.rel, c.var(), &mut self.rst.bvmap);
             invariants.push(LitVec::from(!c));
         }
@@ -317,12 +317,13 @@ impl Engine for IC3 {
         invariants.extend(self.rst.eq_invariant());
         let mut certifaiger_dnf = vec![];
         for cube in invariants {
-            certifaiger_dnf.push(proof.rel.new_and(cube));
+            certifaiger_dnf.push(proof.rel_mut().new_and(cube));
         }
-        let invariants = proof.rel.new_or(certifaiger_dnf);
-        let bad = proof.rel.new_or(proof.bad);
-        proof.bad = LitVec::from(proof.rel.new_or([invariants, bad]));
-        McProof::Bl(BlProof { proof })
+        let invariants = proof.rel_mut().new_or(certifaiger_dnf);
+        let proof_bad = std::mem::take(&mut proof.bad);
+        let bad = proof.rel_mut().new_or(proof_bad);
+        proof.bad = LitVec::from(proof.rel_mut().new_or([invariants, bad]));
+        McProof::Bl(proof)
     }
 
     fn witness(&mut self) -> McWitness {

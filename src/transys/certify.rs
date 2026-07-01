@@ -1,10 +1,6 @@
 use crate::RseedMap as HashMap;
-use crate::{
-    gipsat::DagCnfSolver,
-    transys::{Transys, unroll::TransysUnroll},
-};
+use crate::transys::{Transys, unroll::TransysUnroll};
 use logicrs::{Lit, LitVec, LitVvec, Var, VarVMap, satif::Satif};
-use std::ops::{Deref, DerefMut};
 
 #[derive(Clone, Debug, Default)]
 pub struct BlWitness {
@@ -125,8 +121,8 @@ impl BlWitness {
             .unwrap();
     }
 
-    pub fn lift(&mut self, ts: &Transys, additional_target: Option<impl Fn(usize) -> LitVec>) {
-        let mut slv = DagCnfSolver::new(&ts.rel);
+    /* pub fn lift(&mut self, ts: &Transys, additional_target: Option<impl Fn(usize) -> LitVec>) {
+        let mut slv = DagCnfSolver::new(Arc::clone(&ts.rel));
         let mut last_target = LitVec::from(ts.bad[self.bad_id]);
         for k in (0..self.len()).rev() {
             let assump: LitVec = self.input[k]
@@ -144,44 +140,10 @@ impl BlWitness {
             self.state[k].retain(|l| slv.unsat_has(*l));
             last_target = ts.lits_next(&self.state[k]);
         }
-    }
+    } */
 }
 
-#[derive(Clone, Debug, Default)]
-pub struct BlProof {
-    pub proof: Transys,
-}
-
-impl Deref for BlProof {
-    type Target = Transys;
-
-    #[inline]
-    fn deref(&self) -> &Self::Target {
-        &self.proof
-    }
-}
-
-impl DerefMut for BlProof {
-    #[inline]
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.proof
-    }
-}
-
-impl BlProof {
-    pub fn new(p: Transys) -> Self {
-        Self { proof: p }
-    }
-
-    pub fn merge(&mut self, other: &Self, ts: &Transys) {
-        self.proof.merge(
-            &other.proof,
-            |v| {
-                if v <= ts.max_var() { Some(v) } else { None }
-            },
-        );
-    }
-}
+pub type BlProof = Transys;
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Restore {
@@ -254,14 +216,14 @@ impl Restore {
         self.fvmap.filter_map_value(map);
     }
 
-    #[inline]
+    /* #[inline]
     pub fn retain(&mut self, f: impl Fn(Var) -> bool) {
         self.bvmap.retain(|&k, _| f(k));
         self.fvmap.retain(|_, k| f(*k));
         if let Some(iv) = self.init_var {
             assert!(f(iv));
         }
-    }
+    } */
 
     #[inline]
     pub fn replace(&mut self, x: Var, y: Lit) {
@@ -326,13 +288,14 @@ impl Restore {
         wit
     }
 
-    pub fn restore_proof(&self, mut proof: BlProof, ts: &Transys) -> BlProof {
-        let mut res = ts.clone();
+    /* pub fn restore_proof(&self, mut proof: BlProof, ts: &Transys) -> BlProof {
+        let mut res = ts.clone_with_independent_rel();
         proof.constraint.clear();
         res.merge(&proof, |v| self.bvmap.get(&v).copied());
         let eqi = self.eq_invariant();
         for cube in eqi {
-            res.bad.push(res.rel.new_and(cube));
+            let bad = res.rel_mut().new_and(cube);
+            res.bad.push(bad);
         }
         BlProof { proof: res }
     }
@@ -351,5 +314,5 @@ impl Restore {
                 .collect();
         }
         res
-    }
+    } */
 }

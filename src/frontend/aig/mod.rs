@@ -7,7 +7,7 @@ use crate::{
 };
 use log::{debug, error, warn};
 use logicrs::{Lbool, Lit, LitVec, Var, VarVMap};
-use std::{fmt::Display, path::Path, process::Command};
+use std::{fmt::Display, path::Path, process::Command, sync::Arc};
 
 impl From<&Transys> for Aig {
     fn from(ts: &Transys) -> Self {
@@ -77,7 +77,7 @@ impl Transys {
             bad,
             constraint,
             justice,
-            rel,
+            rel: Arc::new(rel),
             ..Default::default()
         };
         for l in aig.latchs.iter() {
@@ -157,15 +157,15 @@ impl Frontend for AigFrontend {
         if !self.is_safety() {
             panic!("rIC3 does not support certificate generation for safe liveness properties");
         }
-        let mut certifaiger = Aig::from(&proof.proof);
+        let mut certifaiger = Aig::from(&proof);
         certifaiger = certifaiger.reencode();
         certifaiger.symbols.clear();
-        for (i, v) in proof.proof.input().enumerate() {
+        for (i, v) in proof.input().enumerate() {
             if let Some(r) = self.rst.get(&v) {
                 certifaiger.set_symbol(certifaiger.inputs[i], &format!("= {}", (**r) * 2));
             }
         }
-        for (i, v) in proof.proof.latch().enumerate() {
+        for (i, v) in proof.latch().enumerate() {
             if let Some(r) = self.rst.get(&v) {
                 certifaiger.set_symbol(certifaiger.latchs[i].input, &format!("= {}", (**r) * 2));
             }

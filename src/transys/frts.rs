@@ -9,7 +9,7 @@ use logicrs::{
     Lit, LitVec, Var, VarLMap, VarMap, VarRange, bitvec::BitVec, simplify::DagCnfSimplify,
 };
 use rand::{SeedableRng, rngs::StdRng};
-use std::time::Instant;
+use std::{sync::Arc, time::Instant};
 
 pub struct FrTs {
     cfg: PreprocConfig,
@@ -23,7 +23,7 @@ impl FrTs {
     pub fn new(mut ts: Transys, cfg: &PreprocConfig, mut rst: Restore) -> Self {
         const NUM_WORD: usize = 1000;
         ts.topsort(&mut rst);
-        let solver = DagCnfSolver::new(&ts.rel);
+        let solver = DagCnfSolver::new(Arc::clone(&ts.rel));
         let mut rng = StdRng::seed_from_u64(0);
         let mut sim = VarMap::new_with(ts.max_var());
         sim[Var::CONST] = BitVec::from_elem(NUM_WORD * BitVec::WORD_SIZE, false);
@@ -103,27 +103,34 @@ impl FrTs {
         }
     }
 
-    pub fn fr(mut self) -> (Transys, Restore) {
+    pub fn fr(self) -> (Transys, Restore) {
+        let FrTs {
+            cfg,
+            mut ts,
+            map,
+            mut solver,
+            mut rst,
+        } = self;
         let start = Instant::now();
-        let before = self.ts.max_var();
+        let before = ts.max_var();
         let mut replace = VarLMap::new();
         let mut v = Var(1);
-        while v <= self.ts.max_var() {
-            if start.elapsed().as_secs() > self.cfg.frts_tl {
+        while v <= ts.max_var() {
+            if start.elapsed().as_secs() > cfg.frts_tl {
                 info!("frts: timeout");
                 break;
             }
-            if self.ts.rel.is_leaf(v) {
+            if ts.rel.is_leaf(v) {
                 v += 1;
                 continue;
             }
-            let Some(m) = self.map.map(v) else {
+            let Some(m) = map.map(v) else {
                 v += 1;
                 continue;
             };
             let lv = v.lit();
             trace!("frts: checking var {m} with lit {v}");
-            match self.solver.solve_with_restart_limit(
+            match solver.solve_with_restart_limit(
                 &[],
                 &[LitVec::from([m, lv]), LitVec::from([!m, !lv])],
                 1,
@@ -132,19 +139,20 @@ impl FrTs {
                 Some(false) => {
                     debug!("frts: {v} -> {m}");
                     replace.insert_lit(lv, m);
-                    self.solver.add_eq(lv, m);
+                    solver.add_eq(lv, m);
                     if replace.len().is_multiple_of(5000) {
-                        self.ts.replace(&replace, &mut self.rst);
-                        self.ts.coi_refine(&mut self.rst);
-                        let mut simp = DagCnfSimplify::new(&self.ts.rel);
-                        for &v in self.ts.frozens().iter() {
+                        drop(solver);
+                        ts.replace(&replace, &mut rst);
+                        ts.coi_refine(&mut rst);
+                        let mut simp = DagCnfSimplify::new(&ts.rel);
+                        for &v in ts.frozens().iter() {
                             simp.froze(v);
                         }
                         simp.const_simplify();
                         simp.bve_simplify();
-                        self.ts.rel = simp.finalize();
-                        self.solver = DagCnfSolver::new(&self.ts.rel);
-                        info!("frts ts simplified to: {}", self.ts.statistic());
+                        ts.rel = Arc::new(simp.finalize());
+                        solver = DagCnfSolver::new(Arc::clone(&ts.rel));
+                        info!("frts ts simplified to: {}", ts.statistic());
                     }
                 }
                 None => {
@@ -153,17 +161,18 @@ impl FrTs {
             }
             v += 1;
         }
-        self.ts.replace(&replace, &mut self.rst);
-        self.ts.coi_refine(&mut self.rst);
-        self.ts.rearrange(&mut self.rst);
+        drop(solver);
+        ts.replace(&replace, &mut rst);
+        ts.coi_refine(&mut rst);
+        ts.rearrange(&mut rst);
         info!(
             "frts: eliminates {} out of {} vars in {:.2}s",
-            *before - *self.ts.max_var(),
+            *before - *ts.max_var(),
             *before,
             start.elapsed().as_secs_f32()
         );
-        self.ts.simplify(&mut self.rst);
-        info!("frts: simplified ts: {}", self.ts.statistic());
-        (self.ts, self.rst)
+        ts.simplify(&mut rst);
+        info!("frts: simplified ts: {}", ts.statistic());
+        (ts, rst)
     }
 }

@@ -1,7 +1,7 @@
 use super::Transys;
 use crate::transys::certify::BlWitness;
 use logicrs::{Lit, LitMap, LitVec, Var, VarRange, satif::Satif};
-use std::ops::Deref;
+use std::{ops::Deref, sync::Arc};
 
 #[derive(Debug, Clone)]
 pub struct TransysUnroll {
@@ -139,7 +139,7 @@ impl TransysUnroll {
         }
         let mut input = Vec::new();
         let mut constraint = LitVec::new();
-        let mut rel = self.ts.rel.clone();
+        let mut rel = Arc::new((*self.ts.rel).clone());
         for u in 0..=self.num_unroll {
             for i in self.ts.input.iter() {
                 input.push(self.lit_next(i.lit(), u).var());
@@ -154,7 +154,7 @@ impl TransysUnroll {
                     continue;
                 }
                 let cls: Vec<LitVec> = cls.iter().map(|c| self.lits_next(c, u).collect()).collect();
-                rel.add_rel(v, &cls);
+                Arc::get_mut(&mut rel).unwrap().add_rel(v, &cls);
             }
         }
         assert!(self.ts.justice.is_empty());
@@ -179,7 +179,7 @@ impl TransysUnroll {
     pub fn internal_signals(&self) -> Transys {
         assert!(self.num_unroll == 1);
         let keep = self.ts.rel.fanouts(self.ts.input());
-        let mut rel = self.ts.rel.clone();
+        let mut rel = Arc::new((*self.ts.rel).clone());
         for (v, cls) in self.ts.rel.iter() {
             if keep.contains(&v) {
                 continue;
@@ -189,7 +189,7 @@ impl TransysUnroll {
                 continue;
             }
             let cls: Vec<LitVec> = cls.iter().map(|c| self.lits_next(c, 1).collect()).collect();
-            rel.add_rel(v, &cls);
+            Arc::get_mut(&mut rel).unwrap().add_rel(v, &cls);
         }
         let mut ts = Transys {
             input: self.ts.input.clone(),
@@ -213,7 +213,7 @@ impl TransysUnroll {
     pub fn internal_signals_with_full_prime(&self) -> Transys {
         assert!(self.num_unroll == 1);
         let keep = self.ts.rel.fanouts(self.ts.input());
-        let mut rel = self.ts.rel.clone();
+        let mut rel = Arc::new((*self.ts.rel).clone());
 
         let mut input = self.ts.input.clone();
         input.extend(self.ts.input().map(|v| self.var_next(v, 1)));
@@ -226,7 +226,7 @@ impl TransysUnroll {
                 continue;
             }
             let cls: Vec<LitVec> = cls.iter().map(|c| self.lits_next(c, 1).collect()).collect();
-            rel.add_rel(v, &cls);
+            Arc::get_mut(&mut rel).unwrap().add_rel(v, &cls);
         }
 
         assert!(self.ts.justice.is_empty());

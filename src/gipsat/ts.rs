@@ -1,8 +1,9 @@
 use crate::{gipsat::DagCnfSolver, transys::Transys};
 use logicrs::{Lit, LitVec, satif::Satif};
+use std::sync::Arc;
 
 pub fn new_transys_solver(ts: &Transys) -> DagCnfSolver {
-    let mut slv = DagCnfSolver::new(&ts.rel);
+    let mut slv = DagCnfSolver::new(Arc::clone(&ts.rel));
     for c in ts.constraint.iter() {
         slv.add_clause(&[*c]);
     }

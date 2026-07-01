@@ -61,7 +61,7 @@ impl Transys {
                 .iter()
                 .map(|cls| cls.iter().map(|l| lmap(*l)).collect())
                 .collect();
-            self.rel.add_rel(mv, &rel);
+            self.rel_mut().add_rel(mv, &rel);
         }
         for &l in other.bad.iter() {
             let lm = lmap(l);
@@ -115,8 +115,8 @@ impl Transys {
         }
         let iv = rst.get_init_var(self);
         for (v, i) in eq {
-            let e = self.rel.new_xnor(v.lit(), i);
-            let c = self.rel.new_imply(iv.lit(), e);
+            let e = self.rel_mut().new_xnor(v.lit(), i);
+            let c = self.rel_mut().new_imply(iv.lit(), e);
             self.constraint.push(c);
         }
     }
@@ -128,10 +128,10 @@ impl Transys {
             {
                 let y_init = x_init.not_if(!y.polarity());
                 if let Some(init) = self.init(y.var()) {
-                    let c = self.rel.new_xnor(init, y_init);
+                    let c = self.rel_mut().new_xnor(init, y_init);
                     if !c.is_constant(true) {
                         let iv = rst.get_init_var(self);
-                        let c = self.rel.new_imply(iv.lit(), c);
+                        let c = self.rel_mut().new_imply(iv.lit(), c);
                         self.constraint.push(c);
                     }
                 } else {
@@ -148,7 +148,7 @@ impl Transys {
         }
         self.input.retain(|l| !map.contains_key(l));
         self.latch.retain(|l| !map.contains_key(l));
-        self.rel.replace(map);
+        self.rel_mut().replace(map);
         let mut init = VarMap::new();
         let mut next = VarMap::new();
         for v in VarRange::new_inclusive(Var::CONST, self.max_var()) {
@@ -241,7 +241,7 @@ impl Transys {
 
         self.input = old_input.iter().map(|&v| map[v]).collect();
         self.latch = old_latch.iter().map(|&v| map[v]).collect();
-        self.rel = rel;
+        self.rel = std::sync::Arc::new(rel);
         self.init = init;
         self.next = next;
         self.bad = self.bad.map_var(|v| map[v]);

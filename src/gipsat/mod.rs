@@ -22,7 +22,7 @@ use propagate::Watchers;
 use rand::{SeedableRng, rngs::StdRng};
 use simplify::Simplify;
 pub use statistic::SolverStatistic;
-use std::time::Instant;
+use std::{sync::Arc, time::Instant};
 pub use ts::*;
 use vsids::Vsids;
 
@@ -46,7 +46,7 @@ pub struct DagCnfSolver {
     temporary_domain: bool,
     prepared_vsids: bool,
     constrain_act: Var,
-    dc: DagCnf,
+    dc: Arc<DagCnf>,
     trivial_unsat: bool,
     pub assump: LitVec,
     statistic: SolverStatistic,
@@ -55,10 +55,11 @@ pub struct DagCnfSolver {
 }
 
 impl DagCnfSolver {
-    pub fn new(dc: &DagCnf) -> Self {
+    pub fn new(dc: Arc<DagCnf>) -> Self {
         let constrain_act = Var::CONST;
+        let dc_ref = Arc::clone(&dc);
         let mut solver = Self {
-            dc: dc.clone(),
+            dc,
             cdb: Default::default(),
             watchers: Default::default(),
             value: VarAssign::new_with(constrain_act),
@@ -83,10 +84,10 @@ impl DagCnfSolver {
             rng: StdRng::seed_from_u64(0),
             use_phase_saving: true,
         };
-        while solver.num_var() < solver.dc.num_var() {
+        while solver.num_var() < dc_ref.num_var() {
             solver.new_var();
         }
-        for cls in dc.clause() {
+        for cls in dc_ref.clause() {
             solver.add_clause_inner(cls, ClauseKind::Trans);
         }
         assert!(solver.propagate() == CREF_NONE);

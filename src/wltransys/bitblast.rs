@@ -16,6 +16,7 @@ use logicrs::{
         op,
     },
 };
+use std::sync::Arc;
 
 impl WlTransys {
     fn bitblast(&self) -> (Self, HashMap<Term, TermVec>, HashMap<Term, (Term, usize)>) {
@@ -126,7 +127,7 @@ impl WlTransys {
             input,
             bad,
             constraint,
-            rel: dc,
+            rel: Arc::new(dc),
             justice,
             ..Default::default()
         };
@@ -262,11 +263,10 @@ impl BitblastMap {
         res
     }
 
-    pub fn restore_proof(&self, wts: &WlTransys, proof: &BlProof) -> WlProof {
+    pub fn restore_proof(&self, wts: &WlTransys, ts: &BlProof) -> WlProof {
         let mut res = wts.clone();
         res.bad.clear();
         let mut new_latch = Vec::new();
-        let ts = &proof.proof;
         let mut map: HashMap<Var, Term> = HashMap::default();
         map.insert(Var::CONST, Term::bool_const(false));
         for i in ts.input() {

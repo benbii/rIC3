@@ -49,15 +49,15 @@ impl Rlive {
         shoal.retain(|s| s.iter().all(|l| l.var() != self.base_var));
         let ors: Vec<_> = shoal
             .iter()
-            .map(|s| self.rts.rel.new_and(s.clone()))
+            .map(|s| self.rts.rel_mut().new_and(s.clone()))
             .collect();
-        let c = self.rts.rel.new_or(ors);
+        let c = self.rts.rel_mut().new_or(ors);
         self.rts.constraint.push(c);
         let ors: Vec<_> = shoal
             .iter()
-            .map(|s| self.ts.rel.new_and(s.clone()))
+            .map(|s| self.ts.rel_mut().new_and(s.clone()))
             .collect();
-        let c = self.ts.rel.new_or(ors);
+        let c = self.ts.rel_mut().new_or(ors);
         self.ts.constraint.push(c);
         self.shoals.extend(shoal);
     }
@@ -75,7 +75,7 @@ impl Rlive {
             rts.add_init(l.var(), Lit::constant(l.polarity()));
         }
         let rst = Restore::new(&rts);
-        let mut ic3 = IC3::new(self.rcfg.clone(), rts.clone(), rts, rst);
+        let mut ic3 = IC3::new(self.rcfg.clone(), rts.clone_deep(), rts, rst);
         let prev_level = log::max_level();
         log::set_max_level(LevelFilter::Warn);
         let res = ic3.check();
@@ -123,13 +123,14 @@ impl Rlive {
         assert!(ts.justice.len() == 1);
         let base_var = ts.new_var();
         ts.add_latch(base_var, Some(Lit::constant(false)), Lit::constant(true));
-        let mut rts = ts.clone();
+        let mut rts = ts.clone_deep();
         rts.init.clear();
         rts.add_init(base_var, Lit::constant(false));
         rts.bad = take(&mut rts.justice);
-        let bvc = rts.rel.new_imply(!base_var.lit(), rts.bad[0]);
+        let bad = rts.bad[0];
+        let bvc = rts.rel_mut().new_imply(!base_var.lit(), bad);
         rts.constraint.push(bvc);
-        rts.bad = LitVec::from(rts.rel.new_and([rts.bad[0], base_var.lit()]));
+        rts.bad = LitVec::from(rts.rel_mut().new_and([bad, base_var.lit()]));
         let mut rcfg = EngineConfig::parse_from(["", "ic3"]).into_ic3().unwrap();
         rcfg.pred_prop = false;
         Self {
@@ -151,7 +152,7 @@ impl Engine for Rlive {
             let mut ts = self.ts.clone();
             ts.bad = take(&mut ts.justice);
             let rst = Restore::new(&ts);
-            let mut ic3 = IC3::new(self.rcfg.clone(), ts.clone(), ts, rst);
+            let mut ic3 = IC3::new(self.rcfg.clone(), ts.clone_deep(), ts, rst);
             let prev_level = log::max_level();
             log::set_max_level(LevelFilter::Warn);
             let res = ic3.check();

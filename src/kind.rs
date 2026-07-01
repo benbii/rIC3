@@ -1,5 +1,5 @@
 use crate::{
-    BlProof, Engine, McProof, McResult, McWitness,
+    Engine, McProof, McResult, McWitness,
     cadical::CaDiCaL,
     config::EngineConfig,
     transys::{Transys, certify::Restore, nodep::NoDepTransysUnroll},
@@ -148,19 +148,20 @@ impl Engine for Kind {
             error!("k-induction with simple path constraint not support certifaiger");
             panic!();
         }
-        let mut ts = self.ots.clone();
+        let mut ts = self.ots.clone_deep();
         let eqi = self.rst.eq_invariant();
         let mut certifaiger_dnf = vec![];
         for cube in eqi {
-            certifaiger_dnf.push(ts.rel.new_and(cube));
+            certifaiger_dnf.push(ts.rel_mut().new_and(cube));
         }
-        certifaiger_dnf.extend(ts.bad);
-        let invariants = ts.rel.new_or(certifaiger_dnf);
+        certifaiger_dnf.extend(std::mem::take(&mut ts.bad));
+        let invariants = ts.rel_mut().new_or(certifaiger_dnf);
         ts.bad = LitVec::from(invariants);
         if !ts.constraint.is_empty() {
-            ts.constraint = LitVec::from([ts.rel.new_and(ts.constraint)]);
+            let constraint = std::mem::take(&mut ts.constraint);
+            ts.constraint = LitVec::from([ts.rel_mut().new_and(constraint)]);
         }
-        let mut proof = ts.clone();
+        let mut proof = ts.clone_deep();
         let ni = proof.input.len();
         let nl = proof.latch.len();
         let k = self.uts.num_unroll;
@@ -191,7 +192,7 @@ impl Engine for Kind {
             for v in VarRange::new_inclusive(Var(1), ts.max_var()) {
                 let rel: Vec<LitVec> = ts.rel[v].iter().map(|cls| cls.map(lmap)).collect();
                 let mv = map(v);
-                proof.rel.add_rel(mv, &rel);
+                proof.rel_mut().add_rel(mv, &rel);
             }
             for &i in ts.input.iter() {
                 inputs.push(map(i));
@@ -213,7 +214,7 @@ impl Engine for Kind {
         }
         if !constrains.is_empty() {
             for i in 0..k {
-                bads[i] = proof.rel.new_or([bads[i], !constrains[i]]);
+                bads[i] = proof.rel_mut().new_or([bads[i], !constrains[i]]);
             }
         }
         let sum = inputs.len() + latchs.len();
@@ -238,14 +239,14 @@ impl Engine for Kind {
         }
         for i in 0..k {
             let al = aux_latchs[i];
-            let p = proof.rel.new_imply(al, !bads[i]);
+            let p = proof.rel_mut().new_imply(al, !bads[i]);
             bads[i] = !p;
         }
 
         for i in 1..k {
             let al = aux_latchs[i];
             let al_next = aux_latchs[i - 1];
-            let p = proof.rel.new_imply(al, al_next);
+            let p = proof.rel_mut().new_imply(al, al_next);
             bads.push(!p);
             let mut eqs = Vec::new();
             let mut init = Vec::new();
@@ -255,28 +256,27 @@ impl Engine for Kind {
                     init.push(LitVec::from([lis1j.lit(), !linit]));
                     init.push(LitVec::from([!lis1j.lit(), linit]));
                 }
-                eqs.push(
-                    proof
-                        .rel
-                        .new_xnor(
-                            dense_lit(&next, latchs[j + i * nl]).unwrap(),
-                            latchs[j + (i - 1) * nl].lit(),
-                        ),
-                );
+                eqs.push(proof.rel_mut().new_xnor(
+                    dense_lit(&next, latchs[j + i * nl]).unwrap(),
+                    latchs[j + (i - 1) * nl].lit(),
+                ));
             }
-            let p = proof.rel.new_and(eqs);
-            let p = proof.rel.new_imply(al, p);
+            let p = proof.rel_mut().new_and(eqs);
+            let p = proof.rel_mut().new_imply(al, p);
             bads.push(!p);
-            let init: Vec<_> = init.into_iter().map(|cls| proof.rel.new_or(cls)).collect();
-            let init = proof.rel.new_and(init);
-            let p = proof.rel.new_and([!al, al_next]);
-            let p = proof.rel.new_imply(p, init);
+            let init: Vec<_> = init
+                .into_iter()
+                .map(|cls| proof.rel_mut().new_or(cls))
+                .collect();
+            let init = proof.rel_mut().new_and(init);
+            let p = proof.rel_mut().new_and([!al, al_next]);
+            let p = proof.rel_mut().new_imply(p, init);
             bads.push(!p);
         }
         bads.push(!aux_latchs[0]);
-        proof.bad = LitVec::from(proof.rel.new_or(bads));
+        proof.bad = LitVec::from(proof.rel_mut().new_or(bads));
         assert!(proof.input.len() + proof.latch.len() == sum + k);
-        McProof::Bl(BlProof { proof })
+        McProof::Bl(proof)
     }
 
     fn witness(&mut self) -> McWitness {

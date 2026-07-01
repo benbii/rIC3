@@ -1,6 +1,7 @@
 use crate::RseedSet as HashSet;
 use crate::{gipsat::DagCnfSolver, transys::unroll::TransysUnroll};
 use logicrs::{Lit, LitVec, Var, satif::Satif};
+use std::sync::Arc;
 
 pub struct TsLift {
     ts: TransysUnroll,
@@ -10,7 +11,7 @@ pub struct TsLift {
 impl TsLift {
     pub fn new(ts: TransysUnroll) -> Self {
         let tsc = ts.compile();
-        let slv = DagCnfSolver::new(&tsc.rel);
+        let slv = DagCnfSolver::new(Arc::clone(&tsc.rel));
         Self { ts, slv }
     }
 

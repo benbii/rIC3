@@ -5,7 +5,7 @@ use std::{iter::once, mem::take};
 
 impl Transys {
     pub fn l2s(&self) -> Self {
-        let mut l2s = self.clone();
+        let mut l2s = self.clone_deep();
         let mut nls = Vec::new();
         for _ in self.latch() {
             let nl = l2s.new_var();
@@ -15,23 +15,23 @@ impl Transys {
         let mut eqs = Vec::new();
         let mut eqns = Vec::new();
         for (l, nl) in self.latch().zip(nls.iter()) {
-            eqs.push(l2s.rel.new_xnor(l.lit(), nl.lit()));
-            eqns.push(l2s.rel.new_xnor(self.var_next_lit(l), nl.lit()));
+            eqs.push(l2s.rel_mut().new_xnor(l.lit(), nl.lit()));
+            eqns.push(l2s.rel_mut().new_xnor(self.var_next_lit(l), nl.lit()));
         }
-        let eq = l2s.rel.new_and(eqs);
-        let eqn = l2s.rel.new_and(eqns);
+        let eq = l2s.rel_mut().new_and(eqs);
+        let eqn = l2s.rel_mut().new_and(eqns);
         let encounter = l2s.new_var();
-        let encounter_next = l2s.rel.new_or([eq, encounter.lit()]);
+        let encounter_next = l2s.rel_mut().new_or([eq, encounter.lit()]);
         l2s.add_latch(encounter, Some(Lit::constant(false)), encounter_next);
         let mut jlns = Vec::new();
         for &j in self.justice.iter() {
             let jl = l2s.new_var();
-            let jln = l2s.rel.new_and([encounter_next, j]);
-            let jln = l2s.rel.new_or([jl.lit(), jln]);
+            let jln = l2s.rel_mut().new_and([encounter_next, j]);
+            let jln = l2s.rel_mut().new_or([jl.lit(), jln]);
             jlns.push(jln);
             l2s.add_latch(jl, Some(Lit::constant(false)), jln);
         }
-        l2s.bad = LitVec::from([l2s.rel.new_and(jlns.into_iter().chain(once(eqn)))]);
+        l2s.bad = LitVec::from([l2s.rel_mut().new_and(jlns.into_iter().chain(once(eqn)))]);
         l2s.justice.clear();
         l2s
     }
@@ -57,15 +57,15 @@ impl Transys {
         for &j in justice.iter() {
             let lj = self.new_var();
             ljs.push(lj);
-            let ljn = self.rel.new_or([lj.lit(), j]);
+            let ljn = self.rel_mut().new_or([lj.lit(), j]);
             ljns.push(ljn);
         }
-        let accept = self.rel.new_and(ljns.clone());
+        let accept = self.rel_mut().new_and(ljns.clone());
         let ni = self.new_var();
         self.add_input(ni);
-        let reset = self.rel.new_or([ni.lit(), accept]);
+        let reset = self.rel_mut().new_or([ni.lit(), accept]);
         for (&lj, &ljn) in ljs.iter().zip(ljns.iter()) {
-            let ljn = self.rel.new_and([ljn, !reset]);
+            let ljn = self.rel_mut().new_and([ljn, !reset]);
             self.add_latch(lj, Some(Lit::constant(false)), ljn);
         }
         self.justice.push(accept);

@@ -9,7 +9,10 @@ mod simp;
 pub mod unroll;
 
 use logicrs::{DagCnf, Lit, LitVec, LitVvec, OptionU32, Var, VarMap, satif::Satif};
-use std::fmt::{self, Display};
+use std::{
+    fmt::{self, Display},
+    sync::Arc,
+};
 
 #[derive(Default, Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Transys {
@@ -21,7 +24,7 @@ pub struct Transys {
     pub bad: LitVec,
     pub constraint: LitVec,
     pub justice: LitVec,
-    pub rel: DagCnf,
+    pub rel: Arc<DagCnf>,
 }
 
 impl Transys {
@@ -32,7 +35,7 @@ impl Transys {
 
     #[inline]
     pub fn new_var(&mut self) -> Var {
-        self.rel.new_var()
+        self.rel_mut().new_var()
     }
 
     #[inline]
@@ -40,6 +43,18 @@ impl Transys {
         while self.max_var() < var {
             self.new_var();
         }
+    }
+
+    #[inline]
+    pub fn rel_mut(&mut self) -> &mut DagCnf {
+        Arc::get_mut(&mut self.rel).expect("Transys.rel is shared")
+    }
+
+    #[inline]
+    pub fn clone_deep(&self) -> Self {
+        let mut res = self.clone();
+        res.rel = Arc::new((*self.rel).clone());
+        res
     }
 
     #[inline]

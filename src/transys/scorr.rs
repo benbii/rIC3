@@ -7,7 +7,7 @@ use crate::RseedMap as HashMap;
 use logicrs::bitvec::BitVec;
 use log::{debug, info};
 use logicrs::{Lit, LitVec, Var, VarLMap, VarMap, satif::Satif};
-use std::time::Instant;
+use std::{sync::Arc, time::Instant};
 
 pub struct Scorr {
     ts: Transys,
@@ -19,11 +19,11 @@ pub struct Scorr {
 
 impl Scorr {
     pub fn new(ts: Transys, cfg: &PreprocConfig, rst: Restore) -> Self {
-        let mut ind_slv = DagCnfSolver::new(&ts.rel);
+        let mut ind_slv = DagCnfSolver::new(Arc::clone(&ts.rel));
         for c in ts.constraint.iter() {
             ind_slv.add_clause(&[*c]);
         }
-        let mut init_slv = DagCnfSolver::new(&ts.rel);
+        let mut init_slv = DagCnfSolver::new(Arc::clone(&ts.rel));
         for c in ts.constraint.iter() {
             init_slv.add_clause(&[*c]);
         }
@@ -38,7 +38,7 @@ impl Scorr {
     }
 
     fn init_simulation(&self, num_word: usize) -> VarMap<BitVec> {
-        let mut slv = DagCnfSolver::new(&self.ts.rel);
+        let mut slv = DagCnfSolver::new(Arc::clone(&self.ts.rel));
         for cls in self.ts.constraint() {
             slv.add_clause(&[cls]);
         }
@@ -107,7 +107,7 @@ impl Scorr {
         let mut sim: VarMap<BitVec> = VarMap::new_with(self.ts.max_var());
         let consider: Vec<_> = self.ts.latch().filter(|v| !init[*v].is_empty()).collect();
         sim.reserve(self.ts.max_var());
-        let mut slv = DagCnfSolver::new(&self.ts.rel);
+        let mut slv = DagCnfSolver::new(Arc::clone(&self.ts.rel));
         for cls in self.ts.constraint() {
             slv.add_clause(&[cls]);
         }
@@ -231,9 +231,17 @@ impl Scorr {
             self.ts.latch.len(),
             start.elapsed().as_secs_f32()
         );
-        self.ts.replace(&scorr, &mut self.rst);
-        self.ts.simplify(&mut self.rst);
-        info!("scorr: simplified ts: {}", self.ts.statistic());
-        (self.ts, self.rst)
+        let Scorr {
+            mut ts,
+            mut rst,
+            init_slv,
+            ind_slv,
+            cfg: _,
+        } = self;
+        drop((init_slv, ind_slv));
+        ts.replace(&scorr, &mut rst);
+        ts.simplify(&mut rst);
+        info!("scorr: simplified ts: {}", ts.statistic());
+        (ts, rst)
     }
 }

@@ -71,7 +71,7 @@ impl Transys {
         for v in VarRange::new_inclusive(Var::CONST + 1, self.max_var()) {
             if !mark.contains(&v) {
                 removed += self.rel[v].len();
-                self.rel.del_rel(v);
+                self.rel_mut().del_rel(v);
                 rst.remove(v);
             }
         }
@@ -95,7 +95,7 @@ impl Transys {
             }
             additional.push(self.var_next_lit(*l).var());
         }
-        let domain_map = self.rel.rearrange(additional);
+        let domain_map = self.rel_mut().rearrange(additional);
         let map_lit = |l: Lit| Lit::new(domain_map[l.var()], l.polarity());
         let old_input = self.input.clone();
         let old_latch = self.latch.clone();
@@ -126,7 +126,7 @@ impl Transys {
     pub fn simplify(&mut self, rst: &mut Restore) {
         self.coi_refine(rst);
         let frozens = self.frozens();
-        self.rel = self.rel.simplify(frozens.iter().copied());
+        self.rel = std::sync::Arc::new(self.rel.simplify(frozens.iter().copied()));
         self.coi_refine(rst);
         self.constraint.retain(|l| !l.is_constant(true));
         self.constraint.sort();
