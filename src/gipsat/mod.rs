@@ -1,7 +1,6 @@
 mod analyze;
 mod cdb;
 mod domain;
-mod eq;
 mod propagate;
 mod search;
 mod simplify;
@@ -9,7 +8,6 @@ mod statistic;
 mod ts;
 mod vsids;
 
-use crate::gipsat::eq::Eqc;
 use analyze::Analyze;
 pub use cdb::ClauseKind;
 use cdb::{CREF_NONE, CRef, ClauseDB};
@@ -40,7 +38,6 @@ pub struct DagCnfSolver {
     phase_saving: VarMap<Lbool>,
     analyze: Analyze,
     simplify: Simplify,
-    eqc: Eqc,
     unsat_core: LitSet,
     domain: Domain,
     temporary_domain: bool,
@@ -72,7 +69,6 @@ impl DagCnfSolver {
             phase_saving: Default::default(),
             analyze: Default::default(),
             simplify: Default::default(),
-            eqc: Default::default(),
             unsat_core: Default::default(),
             domain: Domain::new(),
             temporary_domain: Default::default(),
@@ -131,8 +127,9 @@ impl DagCnfSolver {
         }
     }
 
-    pub fn add_eq(&mut self, x: Lit, y: Lit) {
-        self.eqc.add_eq(x, y);
+    pub fn add_entailed_clause(&mut self, clause: &[Lit]) {
+        self.reset();
+        self.add_clause_inner(clause, ClauseKind::Lemma);
     }
 
     // #[allow(unused)]
@@ -292,7 +289,6 @@ impl Satif for DagCnfSolver {
         self.watchers.reserve(var);
         self.vsids.reserve(var);
         self.phase_saving.reserve(var);
-        self.eqc.reserve(var);
         self.analyze.reserve(var);
         self.unsat_core.reserve(var);
         self.domain.reserve(var);

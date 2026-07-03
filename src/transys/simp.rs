@@ -2,7 +2,7 @@ use super::Transys;
 use crate::RseedSet as HashSet;
 use crate::{
     config::PreprocConfig,
-    transys::{certify::Restore, frts::FrTs, scorr::Scorr},
+    transys::{certify::Restore, frts::combsweep, scorr::Scorr},
 };
 use log::{debug, info};
 use logicrs::{Lit, OptionU32, Var, VarMap, VarRange};
@@ -144,8 +144,7 @@ impl Transys {
                 (ts, rst) = scorr.scorr();
             }
             if cfg.frts {
-                let frts = FrTs::new(ts, cfg, rst);
-                (ts, rst) = frts.fr();
+                (ts, rst) = combsweep(ts, cfg, rst);
             }
         }
         info!("preprocessed ts has {}", ts.statistic());

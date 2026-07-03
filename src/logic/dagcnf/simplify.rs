@@ -175,7 +175,7 @@ impl DagCnfSimplify {
         }
     }
 
-    pub fn froze(&mut self, v: Var) {
+    pub fn freeze(&mut self, v: Var) {
         self.frozen.insert(v);
     }
 
@@ -536,7 +536,7 @@ impl DagCnf {
             .map(|l| *l.as_ref())
             .chain(once(Var::CONST))
         {
-            simp.froze(v);
+            simp.freeze(v);
         }
         simp.simplify()
     }
@@ -555,7 +555,7 @@ mod test {
         println!("{dc}");
         let mut simp = DagCnfSimplify::new(&dc);
         for v in VarRange::new_inclusive(Var::CONST, dc.max_var()) {
-            simp.froze(v);
+            simp.freeze(v);
         }
         let ndc = simp.simplify();
         println!("{ndc}");

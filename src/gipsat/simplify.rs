@@ -46,7 +46,6 @@ impl DagCnfSolver {
             self.cdb.lemmas = self.simplify_subsume(lemmas);
             self.simplify.last_num_lemma = self.cdb.lemmas.len();
         }
-        self.clean_eq();
         self.garbage_collect();
         self.simplify.last_simplify = self.statistic.num_solve;
     }

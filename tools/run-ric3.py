@@ -140,6 +140,8 @@ elif args.preset == "abcLcorr":
   # [[[solver, "-c", "read_aiger TESTCASE; ps; lcorr -v; ps; dfraig -rc; ps"]]]
 elif args.preset == "abcPdr":
   cfg = [[[solver, "-c", "read_aiger TESTCASE; ps; lcorr -v; ps; dfraig; ps; pdr -v"]]]
+elif args.preset in ("preproc", "preprocess"):
+  cfg = [[[solver, "preprocess", "TESTCASE"]]]
 else:
   sys.exit("unknown preset; read the script for a list (it's easy!)")
 
@@ -166,7 +168,6 @@ tmp.close()
 
 if (args.listen_addr is None) != (args.listen_port is None):
   sys.exit("--listen-addr and --listen-port must be specified together")
-
 if args.listen_addr is None:
   os.execv(
     str(run_info),
@@ -183,13 +184,7 @@ if args.listen_addr is None:
     ],
   )
 
-submit_argv = [
-  str(run_info),
-  "submit",
-  args.listen_addr,
-  args.listen_port,
-  tmp.name,
-]
+submit_argv = [str(run_info), "submit", args.listen_addr, args.listen_port, tmp.name]
 if args.secret is not None:
   submit_argv.append(args.secret)
 os.execv(str(run_info), submit_argv)
