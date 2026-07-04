@@ -12,6 +12,14 @@ pub struct BinaryHeap {
 
 impl BinaryHeap {
     #[inline]
+    fn new_with(var: Var) -> Self {
+        Self {
+            heap: NckVec::new(),
+            pos: VarMap::new_with(var),
+        }
+    }
+
+    #[inline]
     fn reserve(&mut self, var: Var) {
         self.pos.reserve(var);
     }
@@ -117,6 +125,18 @@ impl Index<Var> for Activity {
 
 impl Activity {
     #[inline]
+    pub fn new_with(var: Var) -> Self {
+        let mut bucket_table = NckVec::new();
+        bucket_table.push(0);
+        Self {
+            activity: VarMap::new_with(var),
+            act_inc: 1.0,
+            bucket_heap: BinaryHeap::new_with(var),
+            bucket_table,
+        }
+    }
+
+    #[inline]
     pub fn reserve(&mut self, var: Var) {
         self.activity.reserve(var);
         self.bucket_heap.reserve(var);
@@ -163,19 +183,6 @@ impl Activity {
     }
 }
 
-impl Default for Activity {
-    fn default() -> Self {
-        let mut bucket_table = NckVec::new();
-        bucket_table.push(0);
-        Self {
-            act_inc: 1.0,
-            activity: Default::default(),
-            bucket_heap: Default::default(),
-            bucket_table,
-        }
-    }
-}
-
 #[derive(Clone)]
 pub struct Vsids {
     pub activity: Activity,
@@ -185,6 +192,15 @@ pub struct Vsids {
 }
 
 impl Vsids {
+    pub fn new_with(var: Var) -> Self {
+        Self {
+            activity: Activity::new_with(var),
+            heap: BinaryHeap::new_with(var),
+            bucket: Bucket::new_with(var),
+            enable_bucket: true,
+        }
+    }
+
     #[inline]
     pub fn reserve(&mut self, var: Var) {
         self.heap.reserve(var);
@@ -225,17 +241,6 @@ impl Vsids {
     }
 }
 
-impl Default for Vsids {
-    fn default() -> Self {
-        Self {
-            activity: Default::default(),
-            heap: Default::default(),
-            bucket: Bucket::new(),
-            enable_bucket: true,
-        }
-    }
-}
-
 #[derive(Clone)]
 pub struct Bucket {
     buckets: NckVec<NckVec<Var>>,
@@ -245,12 +250,12 @@ pub struct Bucket {
 
 impl Bucket {
     #[inline]
-    pub fn new() -> Self {
+    fn new_with(var: Var) -> Self {
         let mut buckets: NckVec<_> = NckVec::new();
         buckets.reserve(10);
         Self {
             buckets,
-            in_bucket: Default::default(),
+            in_bucket: VarMap::new_with(var),
             head: Default::default(),
         }
     }

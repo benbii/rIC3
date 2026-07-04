@@ -1,7 +1,7 @@
 use crate::{
     BlWitness, Engine, McProof, McResult, McWitness,
     config::EngineConfig,
-    gipsat::{DagCnfSolver, SolverStatistic, new_transys_solver},
+    gipsat::{DagCnfSolver, SolverStatistic},
     ic3::{block::BlockResult, localabs::LocalAbs, mab::CtgMab, predprop::PredProp},
     transys::{Transys, certify::Restore, lift::TsLift, unroll::TransysUnroll},
 };
@@ -95,6 +95,7 @@ impl Default for IC3Config {
 pub struct IC3 {
     ts: Transys,
     solvers: Vec<DagCnfSolver>,
+    last_assump: Vec<LitVec>,
     inf_solver: DagCnfSolver,
     lift: TsLift,
     frame: Frames,
@@ -132,6 +133,7 @@ impl IC3 {
         }
         let solver = self.inf_solver.clone();
         self.solvers.push(solver);
+        self.last_assump.push(LitVec::new());
         self.frame.push(Frame::new());
         if self.level() == 0 {
             for init in self.ts.inits() {
@@ -192,13 +194,14 @@ impl IC3 {
         }
         let activity = Activity::new(&ts);
         let frame = Frames::new(&ts);
-        let inf_solver = new_transys_solver(&ts);
+        let inf_solver = ts.new_solver();
         let lift = TsLift::new(TransysUnroll::new(&ts));
         let localabs = LocalAbs::new(&ts, cfg.abs_cst, cfg.abs_trans);
         Self {
             ts,
             activity,
             solvers: Vec::new(),
+            last_assump: Vec::new(),
             inf_solver,
             lift,
             statistic,

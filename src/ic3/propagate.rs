@@ -1,4 +1,4 @@
-use crate::gipsat::{inductive, inductive_core};
+use super::solver::{inductive, inductive_core};
 use crate::ic3::{Frame, IC3};
 // use log::error;
 use logicrs::{LitOrdVec, LitVec};

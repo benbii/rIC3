@@ -1,4 +1,4 @@
-use crate::gipsat::{inductive, inductive_core};
+use super::solver::{inductive, inductive_core};
 use crate::ic3::mab::balanced_params;
 use crate::ic3::{IC3, mic::DropVarParameter, proofoblig::ProofObligation};
 use log::debug;

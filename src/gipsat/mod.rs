@@ -5,7 +5,6 @@ mod propagate;
 mod search;
 mod simplify;
 mod statistic;
-mod ts;
 mod vsids;
 
 use analyze::Analyze;
@@ -21,7 +20,6 @@ use rand::{SeedableRng, rngs::StdRng};
 use simplify::Simplify;
 pub use statistic::SolverStatistic;
 use std::{sync::Arc, time::Instant};
-pub use ts::*;
 use vsids::Vsids;
 
 #[derive(Clone)]
@@ -45,7 +43,6 @@ pub struct DagCnfSolver {
     constrain_act: Var,
     dc: Arc<DagCnf>,
     trivial_unsat: bool,
-    pub assump: LitVec,
     statistic: SolverStatistic,
     pub use_phase_saving: bool,
     pub rng: StdRng,
@@ -53,37 +50,32 @@ pub struct DagCnfSolver {
 
 impl DagCnfSolver {
     pub fn new(dc: Arc<DagCnf>) -> Self {
-        let constrain_act = Var::CONST;
-        let dc_ref = Arc::clone(&dc);
+        let constrain_act = Var::new(dc.num_var());
         let mut solver = Self {
-            dc,
+            dc: dc.clone(),
             cdb: Default::default(),
-            watchers: Default::default(),
+            watchers: Watchers::new_with(constrain_act),
             value: VarAssign::new_with(constrain_act),
             trail: Default::default(),
             pos_in_trail: Default::default(),
             level: VarMap::new_with(constrain_act),
             reason: VarMap::new_with(constrain_act),
             propagated: Default::default(),
-            vsids: Default::default(),
-            phase_saving: Default::default(),
-            analyze: Default::default(),
+            vsids: Vsids::new_with(constrain_act),
+            phase_saving: VarMap::new_with(constrain_act),
+            analyze: Analyze::new_with(constrain_act),
             simplify: Default::default(),
-            unsat_core: Default::default(),
-            domain: Domain::new(),
+            unsat_core: LitSet::new_with(constrain_act),
+            domain: Domain::new_with(constrain_act),
             temporary_domain: Default::default(),
             prepared_vsids: false,
             constrain_act,
-            assump: Default::default(),
             statistic: Default::default(),
             trivial_unsat: false,
             rng: StdRng::seed_from_u64(0),
             use_phase_saving: true,
         };
-        while solver.num_var() < dc_ref.num_var() {
-            solver.new_var();
-        }
-        for cls in dc_ref.all_clauses() {
+        for cls in dc.all_clauses() {
             solver.add_clause_inner(cls, ClauseKind::Trans);
         }
         assert!(solver.propagate() == CREF_NONE);
@@ -204,7 +196,6 @@ impl DagCnfSolver {
         domain: &[Var],
         restart_limit: u32,
     ) -> Option<bool> {
-        self.assump = assump.into();
         if self.trivial_unsat {
             self.unsat_core.clear();
             return Some(false);

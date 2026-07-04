@@ -1,5 +1,5 @@
 use crate::{
-    gipsat::{DagCnfSolver, new_transys_solver},
+    gipsat::DagCnfSolver,
     ic3::{IC3, proofoblig::ProofObligation},
     transys::{Transys, lift::TsLift, unroll::TransysUnroll},
 };
@@ -26,7 +26,7 @@ impl PredProp {
             bts.bad = LitVec::from([bts.bad[local_proof]]);
         }
         bts.constraint.extend(!&uts.ts.bad);
-        let slv = new_transys_solver(&bts);
+        let slv = bts.new_solver();
         let lift = TsLift::new(uts);
         Self {
             bts,
@@ -41,7 +41,7 @@ impl PredProp {
     }
 
     pub fn extend<'a>(&'a mut self, lemmas: impl IntoIterator<Item = &'a LitVec>) {
-        self.slv = new_transys_solver(&self.bts);
+        self.slv = self.bts.new_solver();
         for l in lemmas.into_iter() {
             self.slv.add_clause(&!l);
         }
@@ -55,7 +55,7 @@ impl IC3 {
             return true;
         }
         let bad = self.ts.bad.clone();
-        let mut slv = new_transys_solver(&self.ts);
+        let mut slv = self.ts.new_solver();
         for init in self.ts.inits() {
             slv.add_clause(&init);
         }
@@ -84,7 +84,7 @@ impl IC3 {
         }
         self.ts.constraint.extend(!bad);
         self.lift = TsLift::new(TransysUnroll::new(&self.ts));
-        self.inf_solver = new_transys_solver(&self.ts);
+        self.inf_solver = self.ts.new_solver();
         true
     }
 

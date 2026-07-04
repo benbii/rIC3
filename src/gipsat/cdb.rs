@@ -1,7 +1,7 @@
 use super::DagCnfSolver;
 use bitfield_struct::bitfield;
-use logicrs::nckvec::NckVec;
 use logicrs::Lit;
+use logicrs::nckvec::NckVec;
 use std::{
     mem::take,
     ops::{AddAssign, Index, MulAssign},
@@ -91,7 +91,6 @@ impl Clause {
     pub fn slice(&self) -> &[Lit] {
         unsafe { from_raw_parts(self.data.add(1) as *const Lit, self.len()) }
     }
-
 }
 
 impl Index<usize> for Clause {

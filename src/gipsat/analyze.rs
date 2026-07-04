@@ -14,13 +14,20 @@ pub enum Mark {
     Failed,
 }
 
-#[derive(Default, Clone)]
+#[derive(Clone)]
 pub struct Analyze {
     mark: VarMap<Mark>,
     clear: Vec<Lit>,
 }
 
 impl Analyze {
+    pub fn new_with(var: Var) -> Self {
+        Self {
+            mark: VarMap::new_with(var),
+            clear: Vec::new(),
+        }
+    }
+
     pub fn reserve(&mut self, var: Var) {
         self.mark.reserve(var)
     }

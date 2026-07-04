@@ -1,6 +1,6 @@
 use super::IC3;
+use super::solver::inductive_core;
 use crate::RseedSet as HashSet;
-use crate::gipsat::inductive_core;
 use log::trace;
 use logicrs::{Lit, LitOrdVec, LitVec, satif::Satif};
 use rand::{Rng, seq::SliceRandom};

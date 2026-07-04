@@ -8,6 +8,7 @@ pub mod scorr;
 mod simp;
 pub mod unroll;
 
+use crate::gipsat::DagCnfSolver;
 use logicrs::{DagCnf, Lit, LitVec, OptionU32, Var, VarMap, satif::Satif};
 use std::{
     fmt::{self, Display},
@@ -165,6 +166,14 @@ impl Transys {
         for c in self.constraint() {
             satif.add_clause(&[c]);
         }
+    }
+
+    pub fn new_solver(&self) -> DagCnfSolver {
+        let mut slv = DagCnfSolver::new(Arc::clone(&self.rel));
+        for c in self.constraint.iter() {
+            slv.add_clause(&[*c]);
+        }
+        slv
     }
 
     pub fn statistic(&self) -> String {

@@ -25,6 +25,13 @@ pub struct Watchers {
 
 impl Watchers {
     #[inline]
+    pub fn new_with(var: Var) -> Self {
+        Self {
+            wtrs: LitMap::new_with(var),
+        }
+    }
+
+    #[inline]
     pub fn reserve(&mut self, var: Var) {
         self.wtrs.reserve(var)
     }

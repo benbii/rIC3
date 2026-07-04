@@ -22,11 +22,11 @@ parser.add_argument("-p", "--listen-port")
 parser.add_argument("-S", "--secret")
 args = parser.parse_args()
 
-script_dir = Path(__file__).resolve().parent
-run_info = Path(args.run_info).resolve() if args.run_info else script_dir / "run-info"
+script_dir = Path(__file__).absolute().parent
+run_info = Path(args.run_info).absolute() if args.run_info else script_dir / "run-info"
 inputdir = Path(args.inputdir)
 ymdHMS = datetime.now().strftime("%y%m%d%H%M%S")
-log_basename = Path(args.log_basename if args.log_basename else f"{ymdHMS}-{args.preset}").resolve()
+log_basename = Path(args.log_basename if args.log_basename else f"{ymdHMS}-{args.preset}").absolute()
 logsmall = Path(str(log_basename) + ".txt")
 loglarge = Path(str(log_basename) + ".md")
 solver = args.solver
@@ -148,7 +148,7 @@ else:
 testcases = []
 for path in inputdir.rglob("*"):
   if path.is_file() and path.suffix in (".aig", ".btor", ".aag", ".btor2"):
-    testcases.append(path.resolve().as_posix())
+    testcases.append(path.absolute().as_posix())
 random.Random(12345678).shuffle(testcases)
 if len(testcases) == 0:
   sys.exit(f"no .aig or .btor files found in {inputdir}")
