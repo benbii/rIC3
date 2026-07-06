@@ -1,10 +1,9 @@
 use crate::{
     gipsat::DagCnfSolver,
-    ic3::{IC3, proofoblig::ProofObligation},
+    ic3::IC3,
     transys::{Transys, lift::TsLift, unroll::TransysUnroll},
 };
-use log::info;
-use logicrs::{Lit, LitOrdVec, LitVec, satif::Satif};
+use logicrs::{Lit, LitVec, satif::Satif};
 use rand::seq::SliceRandom;
 use std::time::Instant;
 
@@ -12,28 +11,25 @@ pub struct PredProp {
     bts: Transys,
     slv: DagCnfSolver,
     lift: TsLift,
-    inn: bool,
 }
 
 impl PredProp {
-    pub fn new(uts: TransysUnroll, local_proof: usize, inn: bool) -> Self {
+    pub fn new(uts: TransysUnroll, local_proof: usize, inn: bool, bad: &LitVec) -> Self {
         let mut bts = if inn {
             uts.internal_signals_with_full_prime()
         } else {
             uts.compile()
         };
-        if local_proof < bts.bad.len() {
-            bts.bad = LitVec::from([bts.bad[local_proof]]);
-        }
-        bts.constraint.extend(!&uts.ts.bad);
+        let next_bad: LitVec = uts.lits_next(bad, uts.num_unroll).collect();
+        bts.bad = if local_proof < next_bad.len() {
+            LitVec::from([next_bad[local_proof]])
+        } else {
+            next_bad
+        };
+        bts.constraint.extend(!bad);
         let slv = bts.new_solver();
         let lift = TsLift::new(uts);
-        Self {
-            bts,
-            slv,
-            lift,
-            inn,
-        }
+        Self { bts, slv, lift }
     }
 
     pub fn add_lemma(&mut self, lemma: &LitVec) {
@@ -49,52 +45,13 @@ impl PredProp {
 }
 
 impl IC3 {
-    pub fn prep_prop_base(&mut self) -> bool {
-        assert!(self.solvers.is_empty());
-        if self.predprop.is_none() {
-            return true;
-        }
-        let bad = self.ts.bad.clone();
-        let mut slv = self.ts.new_solver();
-        for init in self.ts.inits() {
-            slv.add_clause(&init);
-        }
-        if slv.solve(&[self.ts.bad[0]]) {
-            let mut input = LitVec::new();
-            for i in self.ts.input() {
-                if let Some(v) = slv.sat_value_lit(i) {
-                    input.push(v);
-                }
-            }
-            let mut bad = LitVec::new();
-            for l in self.ts.latch() {
-                if let Some(v) = slv.sat_value_lit(l) {
-                    bad.push(v);
-                }
-            }
-            self.add_obligation(ProofObligation::new(
-                0,
-                LitOrdVec::new(bad),
-                vec![input],
-                0,
-                None,
-            ));
-            info!("counter-example found in base checking");
-            return false;
-        }
-        self.ts.constraint.extend(!bad);
-        self.lift = TsLift::new(TransysUnroll::new(&self.ts));
-        self.inf_solver = self.ts.new_solver();
-        true
-    }
-
     pub fn pred_prop_get_bad(&mut self) -> Option<(LitVec, Vec<LitVec>)> {
         let start = Instant::now();
         let predprop = self.predprop.as_mut().unwrap();
         let res = predprop.slv.solve(&predprop.bts.bad);
         self.statistic.block.get_bad_time += start.elapsed();
         let order = |mut i: usize, cube: &mut [Lit]| -> bool {
-            if predprop.inn {
+            if self.inn {
                 if i == 0 {
                     cube.sort_by(|a, b| b.cmp(a));
                     return true;
@@ -102,15 +59,9 @@ impl IC3 {
                 i -= 1;
             }
             match i {
-                0 => {
-                    self.activity.sort_by_activity(cube, false);
-                }
-                1 => {
-                    cube.reverse();
-                }
-                _ => {
-                    cube.shuffle(&mut self.rng);
-                }
+                0 => self.activity.sort_by_activity(cube, false),
+                1 => cube.reverse(),
+                _ => cube.shuffle(&mut self.rng),
             };
             true
         };

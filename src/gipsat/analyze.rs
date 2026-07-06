@@ -89,7 +89,7 @@ impl DagCnfSolver {
                 if self.reason[l] == CREF_NONE || matches!(self.analyze[l], Mark::Failed) {
                     stack.push((p, 0));
                     for (l, _) in stack {
-                        if let Mark::Unseen = self.analyze[l] {
+                        if matches!(self.analyze[l], Mark::Unseen) {
                             self.analyze.mark(l, Mark::Failed);
                         }
                     }
@@ -99,7 +99,7 @@ impl DagCnfSolver {
                 stack.push((l, 1));
                 continue 'a;
             }
-            if let Mark::Unseen = self.analyze[p] {
+            if matches!(self.analyze[p], Mark::Unseen) {
                 self.analyze.mark(p, Mark::Removable);
             }
         }
@@ -126,7 +126,7 @@ impl DagCnfSolver {
         loop {
             self.cdb.bump(conflict);
             let cref = self.cdb.get(conflict);
-            let begin = if resolve_lit.is_some() { 1 } else { 0 };
+            let begin = usize::from(resolve_lit.is_some());
             for lit in begin..cref.len() {
                 let lit = cref[lit];
                 if !self.analyze.seen(lit) && self.level[lit] > 0 {

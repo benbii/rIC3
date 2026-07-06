@@ -1,5 +1,5 @@
-use crate::{gipsat::DagCnfSolver, transys::Transys};
 use super::IC3;
+use crate::{gipsat::DagCnfSolver, transys::Transys};
 use log::trace;
 use logicrs::{Lit, LitVec, satif::Satif};
 use rand::seq::SliceRandom;

@@ -14,7 +14,7 @@ use proofoblig::{ProofObligation, ProofObligationQueue};
 use rand::{SeedableRng, rngs::StdRng};
 use serde::{Deserialize, Serialize};
 use stat::Statistic;
-use std::time::Instant;
+use std::{sync::Arc, time::Instant};
 
 mod activity;
 mod block;
@@ -93,7 +93,7 @@ impl Default for IC3Config {
 }
 
 pub struct IC3 {
-    ts: Transys,
+    ts: Arc<Transys>,
     solvers: Vec<DagCnfSolver>,
     last_assump: Vec<LitVec>,
     inf_solver: DagCnfSolver,
@@ -135,84 +135,129 @@ impl IC3 {
         self.solvers.push(solver);
         self.last_assump.push(LitVec::new());
         self.frame.push(Frame::new());
-        if self.level() == 0 {
-            for init in self.ts.inits() {
-                self.add_lemma(0, !init, true, None);
-            }
-            let mut init = LitVec::new();
-            for l in self.ts.latch.iter() {
-                if self.ts.init(*l).is_none()
-                    && let Some(v) = self.solvers[0].sat_value(l.lit())
-                {
-                    let l = l.lit().not_if(!v);
-                    init.push(l);
-                }
-            }
-            for i in init {
-                self.ts.add_init(i.var(), Lit::constant(i.polarity()));
-            }
-        }
     }
 }
 
 impl IC3 {
-    pub fn new(cfg: IC3Config, mut ts: Transys, ots: Transys, mut rst: Restore) -> Self {
+    pub fn new(mut cfg: IC3Config, mut ts: Transys, ots: Transys, mut rst: Restore) -> Self {
         // validate config
-        if cfg.dynamic && cfg.mab {
-            panic!("cannot enable both dynamic and mab");
-        }
-        if cfg.dynamic && cfg.drop_po {
-            panic!("cannot enable both dynamic and drop-po");
-        }
-        if cfg.mab && cfg.drop_po {
-            panic!("cannot enable both mab and drop-po");
-        }
-        if cfg.inn && (cfg.abs_cst || cfg.abs_trans) {
-            panic!("cannot enable both inn and (abs_cst or abs_trans)");
-        }
+        assert!(!cfg.dynamic || !cfg.mab, "dynamic & mab incompatible");
+        assert!(!cfg.dynamic || !cfg.mab, "dynamic & drop_po incompatible");
+        assert!(!cfg.mab || !cfg.drop_po, "mab & drop_po incompatible");
+        assert!(!cfg.inn || !cfg.abs_trans, "inn & localAbs incompatible");
+        assert!(!cfg.inn || !cfg.abs_cst, "inn & localAbs incompatible");
 
-        let rng = StdRng::seed_from_u64(cfg.rseed);
-        let statistic = Statistic::default();
+        let mut statistic = Statistic::default();
         ts.remove_gate_init(&mut rst);
-        let mut uts = TransysUnroll::new(&ts);
-        uts.unroll(true);
-        if cfg.inn {
-            ts = uts.internal_signals();
-        }
-        let predprop = cfg
-            .pred_prop
-            .then(|| PredProp::new(uts, cfg.local_proof, cfg.inn));
-        let mab = cfg.mab.then(|| CtgMab::new(cfg.mab_alpha, cfg.mab_lambda));
+        let real_bad = ts.bad.clone(); // only differs from ts.bad if local proof is on
         if cfg.local_proof < ts.bad.len() {
+            cfg.pred_prop = true;
             ts.bad = LitVec::from(ts.bad[cfg.local_proof]);
         }
         if ts.bad.len() != 1 {
-            error!(
-                "{} props in single IC3! Loaded wrong preprocessed model?",
-                ts.bad.len()
-            );
+            error!("{} bads in IC3! Wrong preprocessed model load?", ts.bad.len());
         }
-        let activity = Activity::new(&ts);
-        let frame = Frames::new(&ts);
-        let inf_solver = ts.new_solver();
-        let lift = TsLift::new(TransysUnroll::new(&ts));
-        let localabs = LocalAbs::new(&ts, cfg.abs_cst, cfg.abs_trans);
+        let mut ts = Arc::new(ts);
+        let mut predprop = None;
+        if cfg.inn {
+            let mut uts = TransysUnroll::new(Arc::clone(&ts));
+            uts.unroll(true);
+            ts = Arc::new(uts.internal_signals());
+            if cfg.pred_prop {
+                predprop = Some(PredProp::new(uts, cfg.local_proof, cfg.inn, &real_bad));
+            }
+        } else if cfg.pred_prop {
+            let mut uts = TransysUnroll::new(Arc::clone(&ts));
+            uts.unroll(true);
+            predprop = Some(PredProp::new(uts, cfg.local_proof, cfg.inn, &real_bad));
+        }
+
+        let mut base_cex = None;
+        if predprop.is_some() {
+            let mut slv = ts.new_solver();
+            for init in ts.inits() {
+                slv.add_clause(&init);
+            }
+            if slv.solve(&[ts.bad[0]]) {
+                let mut input = LitVec::new();
+                for i in ts.input() {
+                    if let Some(v) = slv.sat_value_lit(i) {
+                        input.push(v);
+                    }
+                }
+                let mut bad = LitVec::new();
+                for l in ts.latch() {
+                    if let Some(v) = slv.sat_value_lit(l) {
+                        bad.push(v);
+                    }
+                }
+                base_cex = Some(ProofObligation::new(
+                    0,
+                    LitOrdVec::new(bad),
+                    vec![input],
+                    0,
+                    None,
+                ));
+            } else {
+                unsafe { &mut *(Arc::as_ptr(&mut ts) as *mut Transys) }
+                    .constraint
+                    .extend(!&real_bad);
+            }
+        }
+
+        let mut solvers = Vec::new();
+        let mut last_assump = Vec::new();
+        let mut obligations = ProofObligationQueue::new();
+        let frames = if let Some(po) = base_cex {
+            statistic.avg_po_cube_len += po.state.len();
+            obligations.add(po);
+            Frames::new(&ts)
+        } else {
+            let mut solver = ts.new_solver();
+            let mut frame = Frame::new();
+            for init in ts.inits() {
+                let lemma = LitOrdVec::new(!init);
+                if let Some(predprop) = predprop.as_mut() {
+                    predprop.add_lemma(&lemma);
+                }
+                solver.add_clause(&!lemma.as_litvec());
+                frame.push((lemma, None));
+            }
+            let mut init = LitVec::new();
+            for l in ts.latch.iter() {
+                if ts.init(*l).is_none()
+                    && let Some(v) = solver.sat_value(l.lit())
+                {
+                    init.push(l.lit().not_if(!v));
+                }
+            }
+            for i in init {
+                unsafe { &mut *(Arc::as_ptr(&mut ts) as *mut Transys) }
+                    .add_init(i.var(), Lit::constant(i.polarity()));
+            }
+            solvers.push(solver);
+            last_assump.push(LitVec::new());
+            let mut f = Frames::new(&ts);
+            f.push(frame);
+            f
+        };
+
         Self {
-            ts,
-            activity,
-            solvers: Vec::new(),
-            last_assump: Vec::new(),
-            inf_solver,
-            lift,
+            activity: Activity::new(&ts),
+            solvers,
+            last_assump,
+            inf_solver: ts.new_solver(),
+            lift: TsLift::new(TransysUnroll::new(Arc::clone(&ts))),
             statistic,
-            obligations: ProofObligationQueue::new(),
-            frame,
-            localabs,
+            obligations,
+            frame: frames,
+            localabs: LocalAbs::new(Arc::clone(&ts), cfg.abs_cst, cfg.abs_trans),
+            ts,
             ots,
             rst,
             predprop,
-            mab,
-            rng,
+            mab: cfg.mab.then(|| CtgMab::new(cfg.mab_alpha, cfg.mab_lambda)),
+            rng: StdRng::seed_from_u64(cfg.rseed),
             time_limit: cfg.time_limit,
             default_mic: if cfg.ctg {
                 mic::DropVarParameter::new(cfg.ctg_limit, cfg.ctg_max, 1)
@@ -239,11 +284,10 @@ impl IC3 {
 
 impl Engine for IC3 {
     fn check(&mut self) -> McResult {
-        if !self.prep_prop_base() {
+        if self.solvers.len() == 0 {
             info!("ic3 found a counterexample at depth 0");
             return McResult::Unsafe(0);
         }
-        self.extend();
         let mut last_sec = 0;
         loop {
             let now_sec = self.statistic.time.time().as_secs();

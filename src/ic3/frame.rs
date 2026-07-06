@@ -1,4 +1,4 @@
-use super::{IC3, solver::inductive, proofoblig::ProofObligation};
+use super::{IC3, proofoblig::ProofObligation, solver::inductive};
 use crate::transys::Transys;
 use logicrs::{Lit, LitOrdVec, LitSet, LitVec, Var, satif::Satif};
 use std::{

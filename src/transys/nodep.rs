@@ -156,7 +156,7 @@ pub(crate) struct NoDepTransysUnroll {
 }
 
 impl NoDepTransysUnroll {
-    pub(crate) fn new(ts: &NoDepTransys) -> Self {
+    pub(crate) fn new(ts: NoDepTransys) -> Self {
         let mut next_map: LitMap<Vec<_>> = LitMap::new();
         next_map.reserve(ts.max_var());
         for v in VarRange::new_inclusive(Var::CONST, ts.max_var()) {
@@ -165,9 +165,9 @@ impl NoDepTransysUnroll {
             next_map[!l].push(!l);
         }
         Self {
-            ts: ts.clone(),
-            num_unroll: 0,
             max_var: ts.max_var(),
+            ts,
+            num_unroll: 0,
             next_map,
         }
     }

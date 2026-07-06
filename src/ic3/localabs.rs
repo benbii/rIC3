@@ -8,6 +8,7 @@ use crate::{RseedMap as HashMap, RseedSet as HashSet};
 use log::{debug, info};
 use logicrs::{LitVec, Var, satif::Satif};
 use rand::seq::SliceRandom;
+use std::sync::Arc;
 
 pub struct LocalAbs {
     refine: HashSet<Var>,
@@ -22,7 +23,7 @@ pub struct LocalAbs {
 }
 
 impl LocalAbs {
-    pub fn new(ts: &Transys, abs_cst: bool, abs_trans: bool) -> Self {
+    pub fn new(ts: Arc<Transys>, abs_cst: bool, abs_trans: bool) -> Self {
         let mut refine = HashSet::default();
         refine.insert(Var::CONST);
         refine.extend(ts.bad.iter().map(|l| l.var()));
@@ -32,7 +33,7 @@ impl LocalAbs {
         if !abs_trans {
             refine.extend(ts.latch().map(|l| ts.var_next_lit(l).var()));
         }
-        let mut uts = TransysUnroll::new(ts);
+        let mut uts = TransysUnroll::new(Arc::clone(&ts));
         let mut opt = HashMap::default();
         let mut connect: Option<Vec<Vec<LitVec>>> = None;
         if abs_trans {

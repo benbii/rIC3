@@ -1,6 +1,7 @@
 use crate::RseedMap as HashMap;
 use crate::transys::{Transys, unroll::TransysUnroll};
 use logicrs::{Lit, LitVec, Var, VarVMap, satif::Satif};
+use std::sync::Arc;
 
 #[derive(Clone, Debug, Default)]
 pub struct BlWitness {
@@ -92,7 +93,7 @@ impl BlWitness {
     }
 
     pub fn exact_state(&mut self, ts: &Transys, init: bool) {
-        let mut uts = TransysUnroll::new(ts);
+        let mut uts = TransysUnroll::new(Arc::new(ts.clone()));
         uts.unroll_to(self.len() - 1);
         let mut solver = crate::cadical::CaDiCaL::new();
         if init {

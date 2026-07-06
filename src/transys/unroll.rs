@@ -5,7 +5,7 @@ use std::{ops::Deref, sync::Arc};
 
 #[derive(Debug, Clone)]
 pub struct TransysUnroll {
-    pub ts: Transys,
+    pub ts: Arc<Transys>,
     pub num_unroll: usize,
     pub max_var: Var,
     pub next_map: LitMap<Vec<Lit>>,
@@ -16,12 +16,12 @@ impl Deref for TransysUnroll {
 
     #[inline]
     fn deref(&self) -> &Self::Target {
-        &self.ts
+        self.ts.as_ref()
     }
 }
 
 impl TransysUnroll {
-    pub fn new(ts: &Transys) -> Self {
+    pub fn new(ts: Arc<Transys>) -> Self {
         let mut next_map: LitMap<Vec<_>> = LitMap::new();
         next_map.reserve(ts.max_var());
         for v in VarRange::new_inclusive(Var::CONST, ts.max_var()) {
@@ -135,7 +135,7 @@ impl TransysUnroll {
 
     pub fn compile(&self) -> Transys {
         if self.num_unroll == 0 {
-            return self.ts.clone();
+            return (*self.ts).clone();
         }
         let mut input = Vec::new();
         let mut constraint = LitVec::new();

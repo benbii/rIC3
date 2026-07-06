@@ -63,7 +63,7 @@ impl Kind {
             let bad = std::mem::take(&mut ts.bad);
             ts.bad = LitVec::from(ts.rel.new_or(bad));
         }
-        let uts = NoDepTransysUnroll::new(&ts);
+        let uts = NoDepTransysUnroll::new(ts);
         Self {
             bad_prop_id: 0,
             uts,

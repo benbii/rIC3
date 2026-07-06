@@ -66,7 +66,6 @@ impl BMC {
             ts.rel.add_clause(&[c]);
         }
         ts.simplify(&mut rst);
-        let uts = NoDepTransysUnroll::new(&ts);
         let solver = if cfg.kissat {
             let mut s = Kissat::new();
             s.set_seed(rng.random());
@@ -83,6 +82,7 @@ impl BMC {
         } else {
             cfg.step as usize
         };
+        let uts = NoDepTransysUnroll::new(ts);
         Self {
             ots,
             uts,
