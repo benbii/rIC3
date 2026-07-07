@@ -7,7 +7,7 @@ use crate::{
 };
 use log::{debug, error, warn};
 use logicrs::{Lbool, Lit, LitVec, Var, VarRange, VarVMap};
-use std::{fmt::Display, path::Path, process::Command, sync::Arc};
+use std::{path::Path, process::Command, sync::Arc};
 
 impl From<&Transys> for Aig {
     fn from(ts: &Transys) -> Self {
@@ -97,15 +97,14 @@ fn aig_preprocess(aig: &Aig) -> (Aig, VarVMap) {
 }
 
 pub struct AigFrontend {
-    oaig: Aig,
+    // oaig: Aig,
     ots: Transys,
     ts: Transys,
     rst: VarVMap,
 }
 
 impl AigFrontend {
-    pub fn new(aig: Aig) -> Self {
-        let mut oaig = aig;
+    pub fn new(mut oaig: Aig) -> Self {
         if !oaig.outputs.is_empty() {
             if oaig.bads.is_empty() {
                 oaig.bads = std::mem::take(&mut oaig.outputs);
@@ -121,31 +120,18 @@ impl AigFrontend {
             warn!("empty property in aiger");
             oaig.bads.push(AigEdge::constant(false));
         }
-        let mut aig = oaig.clone();
-        if !aig.justice.is_empty() {
-            if !aig.bads.is_empty() {
-                error!(
-                    "rIC3 does not support solving both safety and liveness properties simultaneously"
-                );
-                panic!();
+        if !oaig.bads.is_empty() {
+            if !oaig.justice.is_empty() {
+                error!("both safety and liveness found; certificate may be messed up");
+            } else if !oaig.fairness.is_empty() {
+                warn!("fairness constraints are ignored when solving safety property");
+                oaig.fairness.clear();
             }
-        } else if !aig.fairness.is_empty() {
-            warn!("fairness constraints are ignored when solving the safety property");
-            aig.fairness.clear();
         }
-        let ots = Transys::from_aig(&aig, true);
-        let (aig, rst) = aig_preprocess(&aig);
+        let ots = Transys::from_aig(&oaig, true);
+        let (aig, rst) = aig_preprocess(&oaig);
         let ts = Transys::from_aig(&aig, true);
-        Self { oaig, ots, ts, rst }
-    }
-
-    pub fn is_safety(&self) -> bool {
-        if !self.oaig.bads.is_empty() {
-            true
-        } else {
-            assert!(!self.ts.justice.is_empty());
-            false
-        }
+        Self { /*oaig,*/ ots, ts, rst }
     }
 }
 
@@ -154,10 +140,10 @@ impl Frontend for AigFrontend {
         self.ts.clone()
     }
 
-    fn safe_certificate(&mut self, proof: McProof) -> Box<dyn Display> {
+    fn safe_certificate(&mut self, proof: McProof) -> String {
         let proof = proof.into_bl().unwrap();
-        if !self.is_safety() {
-            panic!("rIC3 does not support certificate generation for safe liveness properties");
+        if !self.ots.justice.is_empty() {
+            error!("certifying safe liveness unsupported");
         }
         let mut certifaiger = Aig::from(&proof);
         certifaiger = certifaiger.reencode();
@@ -172,14 +158,14 @@ impl Frontend for AigFrontend {
                 certifaiger.set_symbol(certifaiger.latchs[i].input, &format!("= {}", (**r) * 2));
             }
         }
-        Box::new(certifaiger)
+        certifaiger.to_string()
     }
 
-    fn unsafe_certificate(&mut self, witness: McWitness) -> Box<dyn Display> {
+    fn unsafe_certificate(&mut self, witness: McWitness) -> String {
         let witness = witness.into_bl().unwrap();
         let mut wit = witness.filter_map_var(|v: Var| self.rst.get(&v).copied());
         let mut res = vec!["1".to_string()];
-        if self.is_safety() {
+        if self.ots.justice.is_empty() {
             res.push(format!("b{}", witness.bad_id));
         } else {
             res.push("j0".to_string());
@@ -202,19 +188,15 @@ impl Frontend for AigFrontend {
                 HashMap::from_iter(c.iter().map(|l| (l.var(), l.polarity())));
             let mut line = String::new();
             let mut input = Vec::new();
-            for l in self.oaig.inputs.iter() {
-                let r = if let Some(r) = map.get(&Var::new(*l)) {
-                    *r
-                } else {
-                    true
-                };
+            for l in &self.ots.input {
+                let r = map.get(l).copied().unwrap_or(true);
                 line.push(if r { '1' } else { '0' });
                 input.push(Lbool::from(r));
             }
             res.push(line);
         }
         res.push(".\n".to_string());
-        Box::new(res.join("\n"))
+        res.join("\n")
     }
 
     fn certify(&mut self, model: &Path, cert: &Path) -> bool {

@@ -18,7 +18,7 @@ impl IC3 {
                 if self.frame[frame_idx].iter().all(|l| l.ne(&lemma)) {
                     continue;
                 }
-                for ctp in 0..3 {
+                for _ctp in 0..3 {
                     let (blocked, ordered_cube) =
                         self.blocked_with_ordered(frame_idx + 1, &lemma.0, false);
                     if blocked {
@@ -33,7 +33,6 @@ impl IC3 {
                             self.obligations.add(po.clone());
                         }
                         self.add_lemma(frame_idx + 1, core, true, lemma.1);
-                        self.statistic.ctp.statistic(ctp > 0);
                         break;
                     }
                     if !self.ctp {

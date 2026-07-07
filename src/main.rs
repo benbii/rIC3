@@ -133,8 +133,8 @@ fn cmd_check(mut chk: CheckCmd, cfg: EngineConfig, pp: PreprocConfig) -> ExitCod
         EngineConfig::Kind(cfg) => Box::new(Kind::new(cfg, ts, ots, rst)),
         EngineConfig::BMC(cfg) => Box::new(BMC::new(cfg, ts, ots, rst)),
         EngineConfig::Rlive => Box::new(Rlive::new(ts, rst)),
-        EngineConfig::WlBMC(cfg) => Box::new(WlBMC::new(cfg, fend.wts().0)),
-        EngineConfig::WlKind(cfg) => Box::new(WlKind::new(cfg, fend.wts().0)),
+        EngineConfig::WlBMC(cfg) => Box::new(WlBMC::new(cfg, fend.wts())),
+        EngineConfig::WlKind(cfg) => Box::new(WlKind::new(cfg, fend.wts())),
     };
 
     let res = engine.check();

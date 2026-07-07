@@ -10,7 +10,6 @@ pub mod nckvec;
 pub(crate) mod occur;
 mod others;
 pub mod satif;
-pub mod statistic;
 mod varmap;
 
 pub use assign::*;

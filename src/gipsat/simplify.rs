@@ -28,7 +28,7 @@ impl DagCnfSolver {
         debug_assert!(self.highest_level() == 0);
         debug_assert!(self.propagate() == CREF_NONE);
         // param finetune: 100 1000
-        if self.statistic.num_solve <= self.simplify.last_simplify + 100 {
+        if self.num_solve <= self.simplify.last_simplify + 100 {
             return;
         }
         if self.simplify.last_num_assign < self.trail.len() {
@@ -47,7 +47,7 @@ impl DagCnfSolver {
             self.simplify.last_num_lemma = self.cdb.lemmas.len();
         }
         self.garbage_collect();
-        self.simplify.last_simplify = self.statistic.num_solve;
+        self.simplify.last_simplify = self.num_solve;
     }
 
     pub fn simplify_satisfied_clauses(&mut self, mut clauses: NckVec<CRef>) -> NckVec<CRef> {
@@ -126,9 +126,7 @@ impl DagCnfSolver {
                 let (res, diff) = lemma.subsume_except_one(&clauses[*subsumed].1);
                 if res {
                     self.detach_clause(clauses[*subsumed].0);
-                    self.statistic.num_simplify_subsume += 1;
                 } else if let Some(diff) = diff {
-                    self.statistic.num_simplify_self_subsume += 1;
                     if lemma.len() == clauses[*subsumed].1.len() {
                         if lemma.len() > 2 {
                             self.detach_clause(clauses[*subsumed].0);

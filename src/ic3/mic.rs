@@ -4,7 +4,6 @@ use crate::RseedSet as HashSet;
 use log::trace;
 use logicrs::{Lit, LitOrdVec, LitVec, satif::Satif};
 use rand::{RngExt, seq::SliceRandom};
-use std::time::Instant;
 
 #[derive(Clone, Copy, Debug, Default)]
 pub struct DropVarParameter {
@@ -39,7 +38,6 @@ impl IC3 {
         cex: &mut Vec<(LitOrdVec, LitOrdVec)>,
     ) -> Option<LitVec> {
         let mut cube = cube.clone();
-        self.statistic.num_down += 1;
         loop {
             if self.ts.cube_subsume_init(&cube) {
                 return None;
@@ -51,7 +49,6 @@ impl IC3 {
             {
                 return None;
             }
-            self.statistic.num_down_sat += 1;
             let (blocked, ordered_cube) = self.blocked_with_ordered_with_constrain(
                 frame,
                 &cube,
@@ -109,13 +106,11 @@ impl IC3 {
         parameter: DropVarParameter,
     ) -> Option<LitVec> {
         let mut cube = cube.clone();
-        self.statistic.num_down += 1;
         let mut ctg = 0;
         loop {
             if self.ts.cube_subsume_init(&cube) {
                 return None;
             }
-            self.statistic.num_down_sat += 1;
             let (blocked, ordered_cube) = self.blocked_with_ordered(frame, &cube, true);
             if blocked {
                 return Some(
@@ -190,7 +185,6 @@ impl IC3 {
         constraint: &[LitVec],
         parameter: DropVarParameter,
     ) -> LitVec {
-        let start = Instant::now();
         if parameter.level == 0 {
             self.solvers[frame - 1].set_domain(
                 self.ts
@@ -200,8 +194,6 @@ impl IC3 {
                     .chain(cube.iter().copied()),
             );
         }
-        self.statistic.avg_mic_cube_len += cube.len();
-        self.statistic.num_mic += 1;
         let mut cex = Vec::new();
         if self.rng.random_bool(0.2) {
             cube.shuffle(&mut self.rng);
@@ -229,7 +221,6 @@ impl IC3 {
                 self.ctg_down(frame, &removed_cube, &keep, &cube, parameter)
             };
             if let Some(new_cube) = mic {
-                self.statistic.mic_drop.success();
                 (cube, i) = self.handle_down_success(frame, cube, i, new_cube);
                 if parameter.level == 0 {
                     self.solvers[frame - 1].unset_domain();
@@ -242,7 +233,6 @@ impl IC3 {
                     );
                 }
             } else {
-                self.statistic.mic_drop.fail();
                 keep.insert(cube[i]);
                 i += 1;
             }
@@ -251,7 +241,6 @@ impl IC3 {
             self.solvers[frame - 1].unset_domain();
         }
         self.activity.bump_cube_activity(&cube);
-        self.statistic.block.mic_time += start.elapsed();
         cube
     }
 

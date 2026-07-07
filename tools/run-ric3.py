@@ -142,8 +142,13 @@ elif args.preset == "abcPdr":
   cfg = [[[solver, "-c", "read_aiger TESTCASE; ps; lcorr -v; ps; dfraig; ps; pdr -v"]]]
 elif args.preset in ("preproc", "preprocess"):
   cfg = [[[solver, "preprocess", "TESTCASE"]]]
+
+elif os.path.isfile(args.preset):
+  lines = open(args.preset).readlines()
+  cfg = [ [[solver, "check", "TESTCASE"] + l.strip().split(" ")] for l in lines]
 else:
   sys.exit("unknown preset; read the script for a list (it's easy!)")
+# for grp in cfg: print(grp)
 
 testcases = []
 for path in inputdir.rglob("*"):

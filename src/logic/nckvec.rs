@@ -1,11 +1,11 @@
-use std::{
-    ops::{Deref, DerefMut, Index, IndexMut},
-    ptr, vec,
-};
 use rand::{
     RngExt,
     distr::{Distribution, StandardUniform},
     rngs::SmallRng,
+};
+use std::{
+    ops::{Deref, DerefMut, Index, IndexMut},
+    ptr, vec,
 };
 
 #[derive(Default, Debug, Clone)]

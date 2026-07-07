@@ -4,7 +4,6 @@ mod domain;
 mod propagate;
 mod search;
 mod simplify;
-mod statistic;
 mod vsids;
 
 use analyze::Analyze;
@@ -18,8 +17,7 @@ use logicrs::{Lit, LitSet, LitVec, Var, VarMap};
 use propagate::Watchers;
 use rand::{SeedableRng, rngs::SmallRng};
 use simplify::Simplify;
-pub use statistic::SolverStatistic;
-use std::{sync::Arc, time::Instant};
+use std::sync::Arc;
 use vsids::Vsids;
 
 #[derive(Clone)]
@@ -43,7 +41,7 @@ pub struct DagCnfSolver {
     constrain_act: Var,
     dc: Arc<DagCnf>,
     trivial_unsat: bool,
-    statistic: SolverStatistic,
+    pub num_solve: usize,
     pub use_phase_saving: bool,
     pub rng: SmallRng,
 }
@@ -70,7 +68,7 @@ impl DagCnfSolver {
             temporary_domain: Default::default(),
             prepared_vsids: false,
             constrain_act,
-            statistic: Default::default(),
+            num_solve: 0,
             trivial_unsat: false,
             rng: SmallRng::seed_from_u64(0),
             use_phase_saving: true,
@@ -184,8 +182,6 @@ impl DagCnfSolver {
                 self.vsids.heap.clear();
             }
         }
-        self.statistic.avg_decide_var +=
-            self.domain.len() as f64 / (self.dc.num_var() - self.trail.len()) as f64;
         true
     }
 
@@ -200,13 +196,11 @@ impl DagCnfSolver {
             self.unsat_core.clear();
             return Some(false);
         }
-        self.statistic.num_solve += 1;
-        let start = Instant::now();
+        self.num_solve += 1;
         let mut assumption;
         if self.propagate() != CREF_NONE {
             self.trivial_unsat = true;
             self.unsat_core.clear();
-            self.statistic.avg_solve_time += start.elapsed();
             return Some(false);
         }
         let search_assump = if !constraint.is_empty() {
@@ -215,7 +209,6 @@ impl DagCnfSolver {
             assumption.extend_from_slice(assump);
             if !self.new_round(domain, assump, constraint, true) {
                 self.unsat_core.clear();
-                self.statistic.avg_solve_time += start.elapsed();
                 return Some(false);
             };
             &assumption
@@ -226,7 +219,6 @@ impl DagCnfSolver {
         self.clean_learnt(true);
         self.simplify();
         let res = self.search_with_restart(search_assump, restart_limit);
-        self.statistic.avg_solve_time += start.elapsed();
         res
     }
 
@@ -241,11 +233,6 @@ impl DagCnfSolver {
 
     pub fn solve_with_domain(&mut self, assumps: &[Lit], domain: &[Var]) -> bool {
         self.solve_full(assumps, &[], domain, u32::MAX).unwrap()
-    }
-
-    #[inline]
-    pub fn statistic(&self) -> &SolverStatistic {
-        &self.statistic
     }
 
     pub fn minimal_premise(

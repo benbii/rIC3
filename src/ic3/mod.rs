@@ -1,7 +1,7 @@
 use crate::{
     BlWitness, Engine, McProof, McResult, McWitness,
     config::EngineConfig,
-    gipsat::{DagCnfSolver, SolverStatistic},
+    gipsat::DagCnfSolver,
     ic3::{block::BlockResult, localabs::LocalAbs, mab::CtgMab, predprop::PredProp},
     transys::{Transys, certify::Restore, lift::TsLift, unroll::TransysUnroll},
 };
@@ -13,7 +13,6 @@ use logicrs::{Lit, LitOrdVec, LitVec, satif::Satif};
 use proofoblig::{ProofObligation, ProofObligationQueue};
 use rand::{SeedableRng, rngs::SmallRng};
 use serde::{Deserialize, Serialize};
-use stat::Statistic;
 use std::{sync::Arc, time::Instant};
 
 mod activity;
@@ -26,7 +25,6 @@ mod predprop;
 mod proofoblig;
 mod propagate;
 mod solver;
-mod stat;
 
 #[derive(Args, Clone, Debug, Serialize, Deserialize)]
 pub struct IC3Config {
@@ -101,7 +99,6 @@ pub struct IC3 {
     frame: Frames,
     obligations: ProofObligationQueue,
     activity: Activity,
-    statistic: Statistic,
     localabs: LocalAbs,
     ots: Transys,
     rst: Restore,
@@ -147,7 +144,6 @@ impl IC3 {
         assert!(!cfg.inn || !cfg.abs_trans, "inn & localAbs incompatible");
         assert!(!cfg.inn || !cfg.abs_cst, "inn & localAbs incompatible");
 
-        let mut statistic = Statistic::default();
         ts.remove_gate_init(&mut rst);
         let real_bad = ts.bad.clone(); // only differs from ts.bad if local proof is on
         if cfg.local_proof < ts.bad.len() {
@@ -209,7 +205,6 @@ impl IC3 {
         let mut last_assump = Vec::new();
         let mut obligations = ProofObligationQueue::new();
         let frames = if let Some(po) = base_cex {
-            statistic.avg_po_cube_len += po.state.len();
             obligations.add(po);
             Frames::new(&ts)
         } else {
@@ -248,7 +243,6 @@ impl IC3 {
             last_assump,
             inf_solver: ts.new_solver(),
             lift: TsLift::new(TransysUnroll::new(Arc::clone(&ts))),
-            statistic,
             obligations,
             frame: frames,
             localabs: LocalAbs::new(Arc::clone(&ts), cfg.abs_cst, cfg.abs_trans),
@@ -288,9 +282,10 @@ impl Engine for IC3 {
             info!("ic3 found a counterexample at depth 0");
             return McResult::Unsafe(0);
         }
+        let start = Instant::now();
         let mut last_sec = 0;
         loop {
-            let now_sec = self.statistic.time.time().as_secs();
+            let now_sec = start.elapsed().as_secs();
             if now_sec > self.time_limit {
                 return McResult::Unknown(Some(self.level()));
             }
@@ -298,17 +293,14 @@ impl Engine for IC3 {
                 info!("{}", self.frame.statistic(true));
                 last_sec = now_sec;
             }
-            let start = Instant::now();
 
             loop {
                 match self.block() {
                     BlockResult::Failure(depth) => {
-                        self.statistic.block.overall_time += start.elapsed();
                         info!("ic3 found a counterexample at depth {depth}");
                         return McResult::Unsafe(depth);
                     }
                     BlockResult::Proved => {
-                        self.statistic.block.overall_time += start.elapsed();
                         info!("ic3 proved the property");
                         return McResult::Safe;
                     }
@@ -318,7 +310,7 @@ impl Engine for IC3 {
                     trace!("bad state {bad} found in frame {}", self.level());
                     let bad = LitOrdVec::new(bad);
                     let depth = inputs.len() - 1;
-                    self.add_obligation(ProofObligation::new(
+                    self.obligations.add(ProofObligation::new(
                         self.level(),
                         bad,
                         inputs,
@@ -330,12 +322,9 @@ impl Engine for IC3 {
                 }
             }
 
-            self.statistic.block.overall_time += start.elapsed();
             info!("ic3 found no counterexample up to depth {}", self.level());
             self.extend();
-            let start = Instant::now();
             let propagate = self.propagate(None);
-            self.statistic.overall_propagate_time += start.elapsed();
             if propagate {
                 info!("ic3 proved the property");
                 return McResult::Safe;
@@ -408,11 +397,10 @@ impl Engine for IC3 {
     fn statistic(&mut self) {
         info!("obligations: {}", self.obligations.statistic());
         info!("{}", self.frame.statistic(false));
-        let mut statistic = SolverStatistic::default();
+        let mut num_solve = 0;
         for s in self.solvers.iter() {
-            statistic += *s.statistic();
+            num_solve += s.num_solve;
         }
-        info!("{statistic:#?}");
-        info!("{:#?}", self.statistic);
+        info!("{num_solve:#?}");
     }
 }

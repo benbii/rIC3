@@ -1,4 +1,3 @@
-use super::IC3;
 use log::trace;
 use logicrs::{LitOrdVec, LitVec};
 use std::cmp::Ordering;
@@ -189,12 +188,5 @@ impl ProofObligationQueue {
 
     pub fn statistic(&self) -> String {
         format!("{:?}", self.num)
-    }
-}
-
-impl IC3 {
-    pub(super) fn add_obligation(&mut self, po: ProofObligation) {
-        self.statistic.avg_po_cube_len += po.state.len();
-        self.obligations.add(po)
     }
 }

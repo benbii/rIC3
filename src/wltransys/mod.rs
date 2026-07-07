@@ -2,15 +2,14 @@ pub mod bitblast;
 pub mod certify;
 mod preproc;
 mod simplify;
-pub mod symbol;
 pub mod unroll;
 
-use crate::wltransys::certify::Restore;
-use crate::{RseedMap as HashMap, RseedSet as HashSet};
-use logicrs::fol::{Sort, Term, op};
+use crate::Btor;
+use logicrs::fol::{Term, op};
 use std::mem::take;
 
-#[derive(Clone, Debug, Default)]
+pub type WlTransys = Btor;
+/* #[derive(Clone, Debug, Default)]
 pub struct WlTransys {
     pub input: Vec<Term>,
     pub latch: Vec<Term>,
@@ -18,16 +17,10 @@ pub struct WlTransys {
     pub next: HashMap<Term, Term>,
     pub bad: Vec<Term>,
     pub constraint: Vec<Term>,
-    pub justice: Vec<Term>,
-}
+    // pub justice: Vec<Term>,
+} */
 
 impl WlTransys {
-    pub fn print_info(&self) {
-        println!("num input: {}", self.input.len());
-        println!("num latch: {}", self.latch.len());
-        println!("num constraint: {}", self.constraint.len());
-    }
-
     #[inline]
     pub fn init(&self, term: &Term) -> Option<Term> {
         self.init.get(term).cloned()
@@ -54,29 +47,7 @@ impl WlTransys {
         self.next.insert(latch, next);
     }
 
-    pub fn remove_no_next_latch(&mut self, rst: &mut Restore) -> HashSet<Term> {
-        let mut no_next = HashSet::default();
-        for l in take(&mut self.latch) {
-            if self.next.contains_key(&l) {
-                self.latch.push(l.clone());
-            } else {
-                if let Some(init) = self.init.get(&l).cloned() {
-                    if rst.init_var().is_none() {
-                        let iv = self.add_init_var();
-                        rst.set_init_var(iv);
-                    }
-                    let iv = rst.init_var().unwrap();
-                    self.constraint.push(iv.imply(l.teq(&init)));
-                }
-                self.init.remove(&l);
-                no_next.insert(l.clone());
-                self.input.push(l);
-            }
-        }
-        no_next
-    }
-
-    pub fn add_init_var(&mut self) -> Term {
+    /* pub fn add_init_var(&mut self) -> Term {
         let iv = Term::new_var(Sort::bool());
         self.add_latch(
             iv.clone(),
@@ -84,7 +55,7 @@ impl WlTransys {
             Term::bool_const(false),
         );
         iv
-    }
+    } */
 
     pub fn compress_bads(&mut self) {
         if self.bad.len() <= 1 {
@@ -94,7 +65,7 @@ impl WlTransys {
         self.bad = vec![Term::new_op_fold(op::Or, bad)];
     }
 
-    pub fn compress_constraints(&mut self) {
+    /* pub fn compress_constraints(&mut self) {
         if self.bad.len() <= 1 {
             return;
         }
@@ -114,7 +85,7 @@ impl WlTransys {
         for i in 0..self.bad.len() {
             self.bad[i] = &self.bad[i] & &c;
         }
-    }
+    } */
 }
 
 //     pub fn term_next(&self, term: &Term) -> Term {

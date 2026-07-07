@@ -11,7 +11,7 @@ use logicrs::bitvec::BitVec;
 use logicrs::{
     DagCnf, Lbool, LboolVec, Lit, LitVec, Var, VarRange,
     fol::{
-        BvTermValue, Sort, Term, TermValue, TermVec, Value,
+        Sort, Term, TermValue, Value,
         bitblast::{bitblast_terms, cnf_encode_terms},
         op,
     },
@@ -19,7 +19,8 @@ use logicrs::{
 use std::sync::Arc;
 
 impl WlTransys {
-    fn bitblast(&self) -> (Self, HashMap<Term, TermVec>, HashMap<Term, (Term, usize)>) {
+    pub fn bitblast_to_ts(&self) -> (Transys, BitblastMap) {
+        // Step 1: bitblast from WlTransys with generic terms to WlTransys with boolean terms only
         let mut rst = HashMap::default();
         let mut map = HashMap::default();
         let mut input = Vec::new();
@@ -71,101 +72,84 @@ impl WlTransys {
         let constraint: Vec<Term> = bitblast_terms(self.constraint.iter(), &mut map)
             .flatten()
             .collect();
-        let justice: Vec<Term> = bitblast_terms(self.justice.iter(), &mut map)
-            .flatten()
-            .collect();
+        // let justice: Vec<Term> = bitblast_terms(self.justice.iter(), &mut map)
+        //     .flatten()
+        //     .collect();
         let mut nmap = HashMap::default();
         for v in self.input.iter().chain(self.latch.iter()) {
             nmap.insert(v.clone(), map[v].clone());
         }
-        (
-            Self {
-                input,
-                latch,
-                init,
-                next,
-                bad,
-                constraint,
-                justice,
-            },
-            nmap,
-            rst,
-        )
-    }
+        let bitwl = Self { input, latch, init, next, bad, constraint };
 
-    fn lower_to_ts(&self) -> (Transys, HashMap<Var, Term>) {
-        let mut rst = HashMap::default();
+        // Step 2: encode the boolean only WlTransys to bit level Transys
+        let mut v2t = HashMap::default();
         let mut dc = DagCnf::new();
         let mut map = HashMap::default();
         let mut input = Vec::new();
-        for x in self.input.iter() {
+        for x in bitwl.input.iter() {
             let v = x.cnf_encode(&mut dc, &mut map).var();
-            rst.insert(v, x.clone());
+            v2t.insert(v, x.clone());
             input.push(v);
         }
         let mut latch = Vec::new();
-        for x in self.latch.iter() {
+        for x in bitwl.latch.iter() {
             let v = x.cnf_encode(&mut dc, &mut map).var();
-            rst.insert(v, x.clone());
+            v2t.insert(v, x.clone());
             latch.push(v);
         }
         let mut next = Vec::new();
-        for (idx, l) in self.latch.iter().enumerate() {
-            let n = self.next.get(l).unwrap().cnf_encode(&mut dc, &mut map);
+        for (idx, l) in bitwl.latch.iter().enumerate() {
+            let n = bitwl.next.get(l).unwrap().cnf_encode(&mut dc, &mut map);
             next.push((latch[idx], n));
         }
         let constraint: LitVec =
-            cnf_encode_terms(self.constraint.iter(), &mut dc, &mut map).collect();
-        let justice: LitVec = cnf_encode_terms(self.justice.iter(), &mut dc, &mut map).collect();
+            cnf_encode_terms(bitwl.constraint.iter(), &mut dc, &mut map).collect();
+        // let justice: LitVec = cnf_encode_terms(bitwl.justice.iter(), &mut dc, &mut map).collect();
         let mut init = Vec::new();
-        for (idx, l) in self.latch.iter().enumerate() {
-            let i = self.init.get(l).map(|i| i.cnf_encode(&mut dc, &mut map));
+        for (idx, l) in bitwl.latch.iter().enumerate() {
+            let i = bitwl.init.get(l).map(|i| i.cnf_encode(&mut dc, &mut map));
             init.push((latch[idx], i));
         }
-        let bad: LitVec = cnf_encode_terms(self.bad.iter(), &mut dc, &mut map).collect();
+        let bad: LitVec = cnf_encode_terms(bitwl.bad.iter(), &mut dc, &mut map).collect();
         let mut ts = Transys {
             input,
             bad,
             constraint,
             rel: Arc::new(dc),
-            justice,
+            // justice,
             ..Default::default()
         };
         for ((l, n), (_, i)) in next.into_iter().zip(init) {
             ts.add_latch(l, i, n);
         }
-        (ts, rst)
-    }
 
-    pub fn bitblast_to_ts(&self) -> (Transys, BitblastMap) {
-        let (bitblast, bb_map, bb_rst) = self.bitblast();
-        let (ts, v2t) = bitblast.lower_to_ts();
-        let t2v: HashMap<Term, Var> = v2t.iter().map(|(&x, y)| (y.clone(), x)).collect();
-        let w2b: HashMap<Term, Vec<Var>> = bb_map
+        // Step 3: construct bit-to-word mappings
+        /* let t2v: HashMap<Term, Var> = v2t.iter().map(|(&x, y)| (y.clone(), x)).collect();
+        let w2b: HashMap<Term, Vec<Var>> = nmap
             .iter()
             .map(|(t, tv)| {
                 let tv: Vec<Var> = tv.iter().map(|t| t2v[t]).collect();
                 (t.clone(), tv)
             })
-            .collect();
+            .collect(); */
         let mut b2w = HashMap::default();
         for (k, v) in v2t {
-            b2w.insert(k, bb_rst[&v].clone());
+            b2w.insert(k, rst[&v].clone());
         }
-        (ts, BitblastMap { w2b, b2w })
+        (ts, BitblastMap { /* w2b, */ b2w })
     }
 }
 
 #[derive(Debug, Default, Clone)]
 pub struct BitblastMap {
     b2w: HashMap<Var, (Term, usize)>,
-    w2b: HashMap<Term, Vec<Var>>,
+    // w2b: HashMap<Term, Vec<Var>>,
 }
 
 impl BitblastMap {
-    pub fn map(self, t: &Term) -> Vec<Var> {
+    /* pub fn map(self, t: &Term) -> Vec<Var> {
         self.w2b[t].clone()
-    }
+    } */
 
     pub fn restore(&self, v: Var) -> (Term, usize) {
         self.b2w[&v].clone()
@@ -175,14 +159,12 @@ impl BitblastMap {
         self.b2w.get(&v).cloned()
     }
 
-    pub fn add_map(&mut self, v: Var, t: &Term) {
+    /* pub fn add_map(&mut self, v: Var, t: &Term) {
         assert!(t.sort().bv() == 1);
         assert!(self.b2w.insert(v, (t.clone(), 0)).is_none());
         assert!(self.w2b.insert(t.clone(), vec![v]).is_none());
-    }
-}
+    } */
 
-impl BitblastMap {
     pub fn restore_lits(&self, state: &[Lit]) -> Vec<TermValue> {
         let mut map = HashMap::default();
         for l in state.iter() {
@@ -206,7 +188,7 @@ impl BitblastMap {
         map.into_iter().map(|(t, v)| TermValue::new(t, v)).collect()
     }
 
-    pub fn map_termval(&self, tv: &BvTermValue) -> LitVec {
+    /* pub fn map_termval(&self, tv: &BvTermValue) -> LitVec {
         let b = &self.w2b[tv.t()];
         assert!(b.len() == tv.v().len());
         b.iter()
@@ -214,7 +196,7 @@ impl BitblastMap {
             .filter(|&(_, v)| !(v.is_none()))
             .map(|(s, v)| Lit::new(*s, v.is_true()))
             .collect()
-    }
+    } */
 
     pub fn restore_var(&self, v: Var) -> Term {
         let (w, b) = &self.restore(v);
@@ -245,7 +227,7 @@ impl BitblastMap {
         res
     }
 
-    pub fn bitblast_witness(&self, witness: &WlWitness) -> BlWitness {
+    /* pub fn bitblast_witness(&self, witness: &WlWitness) -> BlWitness {
         let mut res = BlWitness::new();
         res.bad_id = witness.bad_id;
         for t in 0..witness.len() {
@@ -261,7 +243,7 @@ impl BitblastMap {
             res.state.push(lv);
         }
         res
-    }
+    } */
 
     pub fn restore_proof(&self, wts: &WlTransys, ts: &BlProof) -> WlProof {
         let mut res = wts.clone();
@@ -314,9 +296,9 @@ impl BitblastMap {
         for &c in ts.constraint.iter() {
             res.constraint.push(map_lit(c));
         }
-        for &j in ts.justice.iter() {
-            res.justice.push(map_lit(j));
-        }
-        WlProof { proof: res }
+        // for &j in ts.justice.iter() {
+        //     res.justice.push(map_lit(j));
+        // }
+        res
     }
 }

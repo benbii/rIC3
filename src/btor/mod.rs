@@ -1,6 +1,5 @@
 mod deparse;
 mod parse;
-pub mod ywb;
 
 use crate::RseedMap as HashMap;
 use deparse::Deparser;
@@ -16,8 +15,6 @@ pub struct Btor {
     pub next: HashMap<Term, Term>,
     pub bad: Vec<Term>,
     pub constraint: Vec<Term>,
-    pub symbols: HashMap<Term, Vec<String>>,
-    pub prop_label: Vec<String>,
 }
 
 impl Btor {

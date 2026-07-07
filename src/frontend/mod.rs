@@ -1,19 +1,15 @@
-use crate::{
-    McProof, McWitness,
-    transys::Transys,
-    wltransys::{WlTransys, symbol::WlTsSymbol},
-};
-use std::{fmt::Display, path::Path};
+use crate::{McProof, McWitness, transys::Transys, wltransys::WlTransys};
+use std::path::Path;
 
 pub mod aig;
 pub mod btor;
 
 pub trait Frontend {
     fn ts(&mut self) -> Transys;
-    fn wts(&mut self) -> (WlTransys, WlTsSymbol) {
+    fn wts(&mut self) -> WlTransys {
         panic!("frontend unsupported for wltransys")
     }
-    fn safe_certificate(&mut self, proof: McProof) -> Box<dyn Display>;
-    fn unsafe_certificate(&mut self, witness: McWitness) -> Box<dyn Display>;
+    fn safe_certificate(&mut self, proof: McProof) -> String;
+    fn unsafe_certificate(&mut self, witness: McWitness) -> String;
     fn certify(&mut self, model: &Path, cert: &Path) -> bool;
 }

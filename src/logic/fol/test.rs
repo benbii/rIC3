@@ -1,8 +1,7 @@
-use super::{Sort, Term, Value};
-use crate::LboolVec;
+use super::{Sort, Term};
 use crate::RseedMap as HashMap;
 
-fn bv_val(s: &str) -> Value {
+/* fn bv_val(s: &str) -> Value {
     Value::Bv(LboolVec::from(s))
 }
 
@@ -138,7 +137,7 @@ fn test_simulate_with_unknown() {
 
     // 1x00 & 1100 = 1x00 (x & 1 = x, x & 0 = 0)
     assert_bv_eq(&and_xy.simulate(&mut val), "1x00");
-}
+} */
 
 #[test]
 fn test_simplify_and_or_identities() {

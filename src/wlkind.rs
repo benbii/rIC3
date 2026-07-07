@@ -2,7 +2,7 @@ use crate::RseedMap as HashMap;
 use crate::{
     Engine, McProof, McResult, McWitness,
     bitwuzla::Bitwuzla,
-    wltransys::{WlTransys, certify::WlProof, unroll::WlTransysUnroll},
+    wltransys::{WlTransys, unroll::WlTransysUnroll},
 };
 use clap::Args;
 use log::info;
@@ -173,6 +173,6 @@ impl Engine for WlKind {
         }
         bads.push(!&aux_vars[0]);
         proof.bad = vec![Term::new_op_fold(op::Or, bads)];
-        McProof::Wl(WlProof { proof })
+        McProof::Wl(proof)
     }
 }

@@ -26,7 +26,7 @@ impl WlTransysUnroll {
             .chain(ts.init.values())
             .chain(ts.next.values())
             .chain(ts.constraint.iter())
-            .chain(ts.justice.iter())
+            // .chain(ts.justice.iter())
         {
             next_map.insert(t.clone(), vec![t.clone()]);
         }

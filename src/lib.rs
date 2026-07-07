@@ -8,7 +8,6 @@ pub use logic::fol;
 pub use logic::nckvec;
 pub(crate) use logic::occur;
 pub use logic::satif;
-pub use logic::statistic;
 
 pub mod aig;
 pub mod bitwuzla;

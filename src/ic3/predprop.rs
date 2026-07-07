@@ -5,7 +5,6 @@ use crate::{
 };
 use logicrs::{Lit, LitVec, satif::Satif};
 use rand::seq::SliceRandom;
-use std::time::Instant;
 
 pub struct PredProp {
     bts: Transys,
@@ -46,10 +45,8 @@ impl PredProp {
 
 impl IC3 {
     pub fn pred_prop_get_bad(&mut self) -> Option<(LitVec, Vec<LitVec>)> {
-        let start = Instant::now();
         let predprop = self.predprop.as_mut().unwrap();
         let res = predprop.slv.solve(&predprop.bts.bad);
-        self.statistic.block.get_bad_time += start.elapsed();
         let order = |mut i: usize, cube: &mut [Lit]| -> bool {
             if self.inn {
                 if i == 0 {

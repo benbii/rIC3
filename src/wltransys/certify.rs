@@ -1,7 +1,5 @@
 use crate::wltransys::WlTransys;
-use crate::{RseedMap as HashMap, RseedSet as HashSet};
-use logicrs::fol::{self, BvTermValue, Term, TermValue};
-use std::ops::{Deref, DerefMut};
+use logicrs::fol::{BvTermValue, Term, TermValue};
 
 #[derive(Clone, Debug, Default)]
 pub struct WlWitness {
@@ -27,7 +25,7 @@ impl WlWitness {
         self.state.resize(size, Vec::new());
     }
 
-    pub fn enrich(&mut self, observe: &HashSet<Term>) {
+    /* pub fn enrich(&mut self, observe: &HashSet<Term>) {
         for k in (0..self.len()).rev() {
             let mut val = HashMap::default();
             let mut has = HashSet::default();
@@ -49,46 +47,48 @@ impl WlWitness {
                 }
             }
         }
-    }
+    } */
 }
 
-#[derive(Clone, Debug, Default)]
-pub struct WlProof {
-    pub proof: WlTransys,
-}
-
-impl Deref for WlProof {
-    type Target = WlTransys;
-
-    #[inline]
-    fn deref(&self) -> &Self::Target {
-        &self.proof
-    }
-}
-
-impl DerefMut for WlProof {
-    #[inline]
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.proof
-    }
-}
-
-#[derive(Clone, Default)]
-pub struct Restore {
-    init_var: Option<Term>,
-}
-
-impl Restore {
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    pub fn init_var(&self) -> Option<Term> {
-        self.init_var.clone()
-    }
-
-    pub fn set_init_var(&mut self, iv: Term) {
-        assert!(self.init_var.is_none());
-        self.init_var = Some(iv);
-    }
-}
+pub type WlProof = WlTransys;
+pub type WlRestore = Option<Term>;
+// #[derive(Clone, Debug, Default)]
+// pub struct WlProof {
+//     pub proof: WlTransys,
+// }
+//
+// impl Deref for WlProof {
+//     type Target = WlTransys;
+//
+//     #[inline]
+//     fn deref(&self) -> &Self::Target {
+//         &self.proof
+//     }
+// }
+//
+// impl DerefMut for WlProof {
+//     #[inline]
+//     fn deref_mut(&mut self) -> &mut Self::Target {
+//         &mut self.proof
+//     }
+// }
+//
+// #[derive(Clone, Default)]
+// pub struct Restore {
+//     init_var: Option<Term>,
+// }
+//
+// impl Restore {
+//     pub fn new() -> Self {
+//         Self::default()
+//     }
+//
+//     pub fn init_var(&self) -> Option<Term> {
+//         self.init_var.clone()
+//     }
+//
+//     pub fn set_init_var(&mut self, iv: Term) {
+//         assert!(self.init_var.is_none());
+//         self.init_var = Some(iv);
+//     }
+// }

@@ -3,7 +3,7 @@ use super::{op::DynOp, sort::Sort};
 use crate::RseedMap as HashMap;
 use crate::bitvec::BitVec;
 use crate::fol::op::{Concat, Slice};
-use crate::fol::{TermVec, Value, op};
+use crate::fol::{TermVec, op};
 use std::cell::UnsafeCell;
 use std::fmt::{self, Debug};
 use std::hash;
@@ -242,7 +242,7 @@ impl Term {
         self.cached_apply(&r, &mut HashMap::default())
     }
 
-    pub fn simulate(&self, val: &mut HashMap<Term, Value>) -> Value {
+    /* pub fn simulate(&self, val: &mut HashMap<Term, Value>) -> Value {
         if let Some(v) = val.get(self) {
             return v.clone();
         }
@@ -257,7 +257,7 @@ impl Term {
         };
         val.insert(self.clone(), v.clone());
         v
-    }
+    } */
 }
 
 impl Deref for Term {

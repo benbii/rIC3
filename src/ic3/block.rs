@@ -3,7 +3,6 @@ use crate::ic3::mab::balanced_params;
 use crate::ic3::{IC3, mic::DropVarParameter, proofoblig::ProofObligation};
 use log::debug;
 use logicrs::{LitOrdVec, LitVec, satif::Satif};
-use std::time::Instant;
 
 pub enum BlockResult {
     Success,
@@ -13,7 +12,6 @@ pub enum BlockResult {
 
 impl IC3 {
     fn push_lemma(&mut self, frame: usize, mut cube: LitVec) -> (usize, LitVec) {
-        let start = Instant::now();
         for i in frame + 1..=self.level() {
             if inductive(&mut self.solvers[i - 1], &self.ts, &cube, true) {
                 cube = inductive_core(&mut self.solvers[i - 1], &self.ts, &cube).unwrap_or(cube);
@@ -21,7 +19,6 @@ impl IC3 {
                 return (i, cube);
             }
         }
-        self.statistic.block.push_time += start.elapsed();
         (self.level() + 1, cube)
     }
 
@@ -31,7 +28,7 @@ impl IC3 {
             // intersects with init; failed if on frame 0
             if self.ts.cube_subsume_init(&po.state) {
                 if self.abs_cst || self.abs_trans {
-                    self.add_obligation(po.clone());
+                    self.obligations.add(po.clone());
                     if self.check_witness_by_bmc(po.depth) {
                         return BlockResult::Failure(po.depth);
                     }
@@ -43,7 +40,7 @@ impl IC3 {
                     }
                     continue;
                 } else if po.frame == 0 {
-                    self.add_obligation(po.clone());
+                    self.obligations.add(po.clone());
                     return BlockResult::Failure(po.depth);
                 }
                 debug_assert!(!self.solvers[0].solve(po.state.as_litvec()));
@@ -52,7 +49,7 @@ impl IC3 {
             if let Some((bf, _)) = self.frame.trivial_contained(Some(po.frame), &po.state) {
                 if let Some(bf) = bf {
                     po.push_to(bf + 1);
-                    self.add_obligation(po);
+                    self.obligations.add(po);
                 }
                 continue;
             }
@@ -61,19 +58,17 @@ impl IC3 {
                 continue;
             }
 
-            let blocked_start = Instant::now();
             let (blocked, ordered_cube) = self.blocked_with_ordered(po.frame, &po.state, false);
-            self.statistic.block.blocked_time += blocked_start.elapsed();
             if !blocked {
                 let (model, inputs) = self.get_pred(po.frame, true);
-                self.add_obligation(ProofObligation::new(
+                self.obligations.add(ProofObligation::new(
                     po.frame - 1,
                     LitOrdVec::new(model),
                     inputs,
                     po.depth + 1,
                     Some(po.clone()),
                 ));
-                self.add_obligation(po);
+                self.obligations.add(po);
                 continue;
             }
 
@@ -99,7 +94,6 @@ impl IC3 {
                     let rew = mab.reward(&po, old_sz, mic.len(), frame, arm, lvl);
                     mab.train(arm, input, rew);
                 }
-                self.statistic.avg_po_cube_len += po.state.len();
                 po.push_to(frame);
                 debug_assert_eq!(frame, po.frame);
                 mic
@@ -107,7 +101,7 @@ impl IC3 {
                 po.frame += 1;
                 po.state.as_litvec().clone()
             };
-            self.add_obligation(po.clone());
+            self.obligations.add(po.clone());
             if self.add_lemma(po.frame - 1, lemma, false, Some(po)) {
                 return BlockResult::Proved;
             }

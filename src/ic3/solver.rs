@@ -3,7 +3,6 @@ use crate::{gipsat::DagCnfSolver, transys::Transys};
 use log::trace;
 use logicrs::{Lit, LitVec, satif::Satif};
 use rand::seq::SliceRandom;
-use std::time::Instant;
 
 pub(super) fn inductive(
     slv: &mut DagCnfSolver,
@@ -54,12 +53,10 @@ impl IC3 {
         if self.predprop.is_some() {
             self.pred_prop_get_bad()
         } else {
-            let start = Instant::now();
             debug_assert!(self.ts.bad.len() == 1);
             let frame = self.solvers.len();
             let assump = LitVec::from([self.ts.bad[0]]);
             let res = self.solvers.last_mut().unwrap().solve(&assump);
-            self.statistic.block.get_bad_time += start.elapsed();
             if res {
                 self.last_assump[frame - 1] = assump;
                 Some(self.get_pred(frame, true))
@@ -107,7 +104,6 @@ impl IC3 {
     }
 
     pub(super) fn get_pred(&mut self, frame: usize, strengthen: bool) -> (LitVec, Vec<LitVec>) {
-        let start = Instant::now();
         let solver = &mut self.solvers[frame - 1];
         let mut cls: LitVec = self.last_assump[frame - 1].clone();
         let mut cst = self.ts.constraint.clone();
@@ -134,7 +130,6 @@ impl IC3 {
             true
         };
         let (state, input) = self.lift.lift(solver, cls.iter().chain(cst.iter()), order);
-        self.statistic.block.get_pred_time += start.elapsed();
         (state, input)
     }
 }

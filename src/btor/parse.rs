@@ -198,8 +198,6 @@ impl Parser {
             next: self.next,
             bad: self.bad,
             constraint: self.constraint,
-            symbols: self.symbols,
-            prop_label: self.prop_labels,
         }
     }
 

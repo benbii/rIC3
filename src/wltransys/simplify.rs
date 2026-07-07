@@ -9,7 +9,7 @@ impl WlTransys {
             .constraint
             .iter()
             .chain(self.bad.iter())
-            .chain(self.justice.iter())
+            // .chain(self.justice.iter())
             .cloned()
             .collect();
         for l in self.latch.iter() {
