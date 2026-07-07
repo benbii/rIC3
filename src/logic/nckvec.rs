@@ -2,11 +2,10 @@ use std::{
     ops::{Deref, DerefMut, Index, IndexMut},
     ptr, vec,
 };
-
 use rand::{
-    Rng,
+    RngExt,
     distr::{Distribution, StandardUniform},
-    rngs::StdRng,
+    rngs::SmallRng,
 };
 
 #[derive(Default, Debug, Clone)]
@@ -29,7 +28,7 @@ impl<T> NckVec<T> {
     }
 
     #[inline]
-    pub fn new_rand(len: usize, rng: &mut StdRng) -> Self
+    pub fn new_rand(len: usize, rng: &mut SmallRng) -> Self
     where
         StandardUniform: Distribution<T>,
     {

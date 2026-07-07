@@ -1,7 +1,7 @@
 use super::{DagCnfSolver, cdb::CREF_NONE};
 use logicrs::{Lbool, Lit, Var, VarMap};
 use logicrs::{OptionU32, nckvec::NckVec};
-use rand::Rng;
+use rand::RngExt;
 use std::ops::{Index, MulAssign};
 
 #[derive(Default, Clone)]

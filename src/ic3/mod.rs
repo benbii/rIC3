@@ -11,7 +11,7 @@ use frame::{Frame, Frames};
 use log::{debug, error, info, trace};
 use logicrs::{Lit, LitOrdVec, LitVec, satif::Satif};
 use proofoblig::{ProofObligation, ProofObligationQueue};
-use rand::{SeedableRng, rngs::StdRng};
+use rand::{SeedableRng, rngs::SmallRng};
 use serde::{Deserialize, Serialize};
 use stat::Statistic;
 use std::{sync::Arc, time::Instant};
@@ -107,7 +107,7 @@ pub struct IC3 {
     rst: Restore,
     predprop: Option<PredProp>,
     mab: Option<CtgMab>,
-    rng: StdRng,
+    rng: SmallRng,
     time_limit: u64,
     default_mic: mic::DropVarParameter,
     inn: bool,
@@ -257,7 +257,7 @@ impl IC3 {
             rst,
             predprop,
             mab: cfg.mab.then(|| CtgMab::new(cfg.mab_alpha, cfg.mab_lambda)),
-            rng: StdRng::seed_from_u64(cfg.rseed),
+            rng: SmallRng::seed_from_u64(cfg.rseed),
             time_limit: cfg.time_limit,
             default_mic: if cfg.ctg {
                 mic::DropVarParameter::new(cfg.ctg_limit, cfg.ctg_max, 1)

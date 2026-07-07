@@ -1,5 +1,5 @@
 use crate::nckvec::NckVec;
-use rand::rngs::StdRng;
+use rand::rngs::SmallRng;
 use std::{
     fmt::{self, Debug, Display},
     hash::Hash,
@@ -21,7 +21,7 @@ impl BitVec {
         Self::default()
     }
 
-    pub fn new_rand(num_word: usize, rng: &mut StdRng) -> Self {
+    pub fn new_rand(num_word: usize, rng: &mut SmallRng) -> Self {
         if num_word == 0 {
             return Self::default();
         }

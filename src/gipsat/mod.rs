@@ -16,7 +16,7 @@ use logicrs::satif::Satif;
 use logicrs::{DagCnf, Lbool, VarAssign};
 use logicrs::{Lit, LitSet, LitVec, Var, VarMap};
 use propagate::Watchers;
-use rand::{SeedableRng, rngs::StdRng};
+use rand::{SeedableRng, rngs::SmallRng};
 use simplify::Simplify;
 pub use statistic::SolverStatistic;
 use std::{sync::Arc, time::Instant};
@@ -45,7 +45,7 @@ pub struct DagCnfSolver {
     trivial_unsat: bool,
     statistic: SolverStatistic,
     pub use_phase_saving: bool,
-    pub rng: StdRng,
+    pub rng: SmallRng,
 }
 
 impl DagCnfSolver {
@@ -72,7 +72,7 @@ impl DagCnfSolver {
             constrain_act,
             statistic: Default::default(),
             trivial_unsat: false,
-            rng: StdRng::seed_from_u64(0),
+            rng: SmallRng::seed_from_u64(0),
             use_phase_saving: true,
         };
         for cls in dc.all_clauses() {

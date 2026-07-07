@@ -1,5 +1,3 @@
-mod array;
-
 use super::Frontend;
 use crate::{
     McProof, McWitness,

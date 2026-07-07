@@ -6,12 +6,12 @@ use crate::{
 };
 use log::{info, trace};
 use logicrs::{Lit, Var, VarLMap, VarMap, VarRange, bitvec::BitVec, simplify::DagCnfSimplify};
-use rand::{SeedableRng, rngs::StdRng};
+use rand::{SeedableRng, rngs::SmallRng};
 use std::{sync::Arc, time::Instant};
 
 pub fn combsweep(mut ts: Transys, cfg: &PreprocConfig, mut rst: Restore) -> (Transys, Restore) {
     ts.topsort(&mut rst);
-    let mut rng = StdRng::seed_from_u64(0);
+    let mut rng = SmallRng::seed_from_u64(0);
     let mut sim = VarMap::new_with(ts.max_var());
     sim[Var::CONST] = BitVec::from_elem(65536, false);
     for v in VarRange::new_inclusive(Var(1), ts.max_var()) {

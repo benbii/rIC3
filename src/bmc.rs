@@ -8,7 +8,7 @@ use crate::{
 use clap::{Args, Parser};
 use log::info;
 use logicrs::{LitVec, satif::Satif};
-use rand::{Rng, SeedableRng, rngs::StdRng};
+use rand::{RngExt, SeedableRng, rngs::SmallRng};
 use serde::{Deserialize, Serialize};
 
 #[derive(Args, Clone, Debug, Serialize, Deserialize)]
@@ -41,7 +41,7 @@ impl Default for BMCConfig {
 
 enum S {
     C(CaDiCaL),
-    K(Kissat, StdRng),
+    K(Kissat, SmallRng),
 }
 pub struct BMC {
     ots: Transys,
@@ -56,7 +56,7 @@ pub struct BMC {
 
 impl BMC {
     pub fn new(cfg: BMCConfig, mut ts: Transys, ots: Transys, mut rst: Restore) -> Self {
-        let mut rng = StdRng::seed_from_u64(cfg.rseed);
+        let mut rng = SmallRng::seed_from_u64(cfg.rseed);
         if ts.bad.len() > 1 {
             let bad = std::mem::take(&mut ts.bad);
             ts.bad = LitVec::from(ts.rel_mut().new_or(bad));
