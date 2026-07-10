@@ -17,7 +17,7 @@ pub enum Mark {
 #[derive(Clone)]
 pub struct Analyze {
     mark: VarMap<Mark>,
-    clear: Vec<Lit>,
+    clear: Vec<Var>,
 }
 
 impl Analyze {
@@ -33,20 +33,25 @@ impl Analyze {
     }
 
     #[inline]
-    pub fn seen(&mut self, lit: Lit) -> bool {
-        !matches!(self.mark[lit], Mark::Unseen)
+    pub fn seen_var(&self, var: Var) -> bool {
+        !matches!(self.mark[var], Mark::Unseen)
     }
 
     #[inline]
     pub fn see(&mut self, lit: Lit) {
-        self.mark[lit] = Mark::Seen;
-        self.clear.push(lit);
+        self.see_var(lit.var());
     }
 
     #[inline]
-    fn mark(&mut self, lit: Lit, m: Mark) {
-        self.mark[lit] = m;
-        self.clear.push(lit);
+    pub fn see_var(&mut self, var: Var) {
+        self.mark[var] = Mark::Seen;
+        self.clear.push(var);
+    }
+
+    #[inline]
+    fn mark_var(&mut self, var: Var, m: Mark) {
+        self.mark[var] = m;
+        self.clear.push(var);
     }
 
     fn clear(&mut self) {
@@ -74,23 +79,28 @@ impl DerefMut for Analyze {
 
 impl DagCnfSolver {
     fn lit_redundant(&mut self, lit: Lit) -> bool {
-        debug_assert!(matches!(self.analyze[lit], Mark::Unseen | Mark::Seen));
-        if self.reason[lit] == CREF_NONE {
+        let var = lit.var();
+        debug_assert!(matches!(self.analyze[var], Mark::Unseen | Mark::Seen));
+        if self.reason[var] == CREF_NONE {
             return false;
         }
         let mut stack: Vec<(Lit, usize)> = vec![(lit, 1)];
         'a: while let Some((p, b)) = stack.pop() {
-            let c = self.cdb.get(self.reason[p]);
+            let c = self.cdb.get(self.reason[p.var()]);
             for i in b..c.len() {
                 let l = c[i];
-                if self.level[l] == 0 || matches!(self.analyze[l], Mark::Seen | Mark::Removable) {
+                let lvar = l.var();
+                if self.level[lvar] == 0
+                    || matches!(self.analyze[lvar], Mark::Seen | Mark::Removable)
+                {
                     continue;
                 }
-                if self.reason[l] == CREF_NONE || matches!(self.analyze[l], Mark::Failed) {
+                if self.reason[lvar] == CREF_NONE || matches!(self.analyze[lvar], Mark::Failed) {
                     stack.push((p, 0));
                     for (l, _) in stack {
-                        if matches!(self.analyze[l], Mark::Unseen) {
-                            self.analyze.mark(l, Mark::Failed);
+                        let var = l.var();
+                        if matches!(self.analyze[var], Mark::Unseen) {
+                            self.analyze.mark_var(var, Mark::Failed);
                         }
                     }
                     return false;
@@ -99,8 +109,9 @@ impl DagCnfSolver {
                 stack.push((l, 1));
                 continue 'a;
             }
-            if matches!(self.analyze[p], Mark::Unseen) {
-                self.analyze.mark(p, Mark::Removable);
+            let var = p.var();
+            if matches!(self.analyze[var], Mark::Unseen) {
+                self.analyze.mark_var(var, Mark::Removable);
             }
         }
         true
@@ -129,41 +140,47 @@ impl DagCnfSolver {
             let begin = usize::from(resolve_lit.is_some());
             for lit in begin..cref.len() {
                 let lit = cref[lit];
-                if !self.analyze.seen(lit) && self.level[lit] > 0 {
-                    if lit.var() != self.constrain_act {
-                        self.vsids.bump(lit.var());
+                let var = lit.var();
+                if !self.analyze.seen_var(var) && self.level[var] > 0 {
+                    if var != self.constrain_act {
+                        self.vsids.bump(var);
                     }
-                    self.analyze[lit] = Mark::Seen;
-                    if self.level[lit] >= self.highest_level() as u32 {
+                    self.analyze[var] = Mark::Seen;
+                    if self.level[var] >= self.highest_level() as u32 {
                         path += 1;
                     } else {
                         learnt.push(lit);
                     }
                 }
             }
-            while !self.analyze.seen(self.trail[trail_idx]) {
+            let resolve = loop {
+                let lit = self.trail[trail_idx];
+                if self.analyze.seen_var(lit.var()) {
+                    break lit;
+                }
                 trail_idx -= 1;
-            }
-            self.analyze[self.trail[trail_idx]] = Mark::Unseen;
-            resolve_lit = Some(self.trail[trail_idx]);
+            };
+            let resolve_var = resolve.var();
+            self.analyze[resolve_var] = Mark::Unseen;
+            resolve_lit = Some(resolve);
             path -= 1;
             if path == 0 {
                 break;
             }
-            conflict = self.reason[self.trail[trail_idx]];
+            conflict = self.reason[resolve_var];
         }
         learnt[0] = !resolve_lit.unwrap();
-        self.analyze.clear.extend_from_slice(&learnt);
+        self.analyze.clear.extend(learnt.iter().map(Lit::var));
         learnt = self.minimal_learnt(learnt);
         self.analyze.clear();
         let btl = if learnt.len() == 1 {
             0
         } else {
             let max_idx = (1..learnt.len())
-                .max_by_key(|idx| self.level[learnt[*idx]])
+                .max_by_key(|idx| self.level[learnt[*idx].var()])
                 .unwrap();
             learnt.swap(1, max_idx);
-            self.level[learnt[1]]
+            self.level[learnt[1].var()]
         };
         (learnt, btl as usize)
     }
@@ -177,13 +194,15 @@ impl DagCnfSolver {
         self.analyze.see(p);
         for i in (self.pos_in_trail[0]..self.trail.len() as u32).rev() {
             p = self.trail[i];
-            if self.analyze.seen(p) {
-                if self.reason[p] != CREF_NONE {
-                    let c = self.cdb.get(self.reason[p]);
+            let var = p.var();
+            if self.analyze.seen_var(var) {
+                if self.reason[var] != CREF_NONE {
+                    let c = self.cdb.get(self.reason[var]);
                     for l in 1..c.len() {
                         let l = c[l];
-                        if self.level[l] > 0 {
-                            self.analyze.see(l);
+                        let var = l.var();
+                        if self.level[var] > 0 {
+                            self.analyze.see_var(var);
                         }
                     }
                 } else {

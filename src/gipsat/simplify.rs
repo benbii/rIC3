@@ -113,9 +113,9 @@ impl DagCnfSolver {
             let max_occurs = *clauses[cls_idx]
                 .1
                 .iter()
-                .min_by_key(|l| occurs[**l].len())
+                .min_by_key(|l| occurs[l.var()].len())
                 .unwrap();
-            for subsumed in occurs[max_occurs].iter() {
+            for subsumed in occurs[max_occurs.var()].iter() {
                 let lemma = &clauses[cls_idx].1;
                 if *subsumed == cls_idx {
                     continue;

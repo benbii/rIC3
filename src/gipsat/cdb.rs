@@ -318,7 +318,7 @@ impl DagCnfSolver {
     #[inline]
     pub fn locked(&self, cref: CRef) -> bool {
         let cls = self.cdb.get(cref);
-        self.value.v(cls[0]).is_true() && self.reason[cls[0]] == cref
+        self.value.v(cls[0]).is_true() && self.reason[cls[0].var()] == cref
     }
 
     pub fn clean_learnt(&mut self, full: bool) {
@@ -380,8 +380,10 @@ impl DagCnfSolver {
             }
 
             for l in self.trail.iter() {
-                if self.reason[*l] != CREF_NONE {
-                    self.reason[*l] = self.cdb.allocator.reloc(self.reason[*l], &mut to)
+                let var = l.var();
+                let reason = self.reason[var];
+                if reason != CREF_NONE {
+                    self.reason[var] = self.cdb.allocator.reloc(reason, &mut to)
                 }
             }
 

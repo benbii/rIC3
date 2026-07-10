@@ -142,7 +142,7 @@ impl TransysUnroll {
         let mut rel = Arc::new((*self.ts.rel).clone());
         for u in 0..=self.num_unroll {
             for i in self.ts.input.iter() {
-                input.push(self.lit_next(i.lit(), u).var());
+                input.push(self.var_next(*i, u));
             }
             for c in self.ts.constraint.iter() {
                 let c = self.lit_next(*c, u);

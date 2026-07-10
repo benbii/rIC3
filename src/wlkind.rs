@@ -21,13 +21,13 @@ pub struct WlKind {
     solver: Bitwuzla,
     solver_trans_k: usize,
     solver_bad_k: usize,
-    owts: WlTransys,
+    original_bads: Vec<Term>,
     end: usize,
 }
 
 impl WlKind {
     pub fn new(cfg: WlKindConfig, mut wts: WlTransys) -> Self {
-        let owts = wts.clone();
+        let original_bads = wts.bad.clone();
         wts.compress_bads();
         let uts = WlTransysUnroll::new(wts);
         let solver = Bitwuzla::new();
@@ -36,7 +36,7 @@ impl WlKind {
             solver,
             solver_trans_k: 0,
             solver_bad_k: 0,
-            owts,
+            original_bads,
             end: cfg.end,
         }
     }
@@ -96,12 +96,11 @@ impl Engine for WlKind {
         let mut witness = self.uts.witness(&mut self.solver);
         let mut cache = HashMap::default();
         let mut ilmap = HashMap::default();
-        for i in self.owts.input.iter().chain(self.owts.latch.iter()) {
+        for i in self.uts.ts.input.iter().chain(self.uts.ts.latch.iter()) {
             ilmap.insert(i, self.uts.next(i, self.uts.num_unroll));
         }
         let bads: Vec<_> = self
-            .owts
-            .bad
+            .original_bads
             .iter()
             .map(|b| b.cached_apply(&|t| ilmap.get(t).cloned(), &mut cache))
             .collect();

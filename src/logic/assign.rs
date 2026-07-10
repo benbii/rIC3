@@ -25,7 +25,7 @@ impl VarAssign {
 
     #[inline]
     pub fn v(&self, lit: Lit) -> Lbool {
-        Lbool(self.v[lit].0 ^ (!lit.polarity() as u8))
+        Lbool(self.v[lit.var()].0 ^ (!lit.polarity() as u8))
     }
 
     #[inline]
@@ -35,7 +35,7 @@ impl VarAssign {
 
     #[inline]
     pub fn set(&mut self, lit: Lit) {
-        self.v[lit] = Lbool(lit.polarity() as u8)
+        self.v[lit.var()] = Lbool(lit.polarity() as u8)
     }
 
     #[inline]

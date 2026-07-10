@@ -6,7 +6,7 @@ use crate::{
     transys::Transys,
 };
 use log::{debug, error, warn};
-use logicrs::{Lbool, Lit, LitVec, Var, VarRange, VarVMap};
+use logicrs::{Lit, LitVec, Var, VarRange, VarVMap};
 use std::{path::Path, process::Command, sync::Arc};
 
 impl From<&Transys> for Aig {
@@ -96,85 +96,103 @@ fn aig_preprocess(aig: &Aig) -> (Aig, VarVMap) {
     (aig, restore)
 }
 
+fn normalize_aig(mut aig: Aig, report: bool) -> Aig {
+    if !aig.outputs.is_empty() {
+        if aig.bads.is_empty() {
+            aig.bads = std::mem::take(&mut aig.outputs);
+            if report {
+                warn!(
+                    "property not found, moved {} outputs to bad properties",
+                    aig.bads.len()
+                );
+            }
+        } else {
+            if report {
+                warn!("outputs in aiger are ignored");
+            }
+            aig.outputs.clear();
+        }
+    } else if aig.bads.is_empty() {
+        if report {
+            warn!("empty property in aiger");
+        }
+        aig.bads.push(AigEdge::constant(false));
+    }
+    if !aig.bads.is_empty() {
+        if !aig.justice.is_empty() {
+            if report {
+                error!("both safety and liveness found; certificate may be messed up");
+            }
+        } else if !aig.fairness.is_empty() {
+            if report {
+                warn!("fairness constraints are ignored when solving safety property");
+            }
+            aig.fairness.clear();
+        }
+    }
+    aig
+}
+
+fn certificate_aig(model: &Path) -> Aig {
+    normalize_aig(Aig::from_file(model), false)
+}
+
 pub struct AigFrontend {
-    // oaig: Aig,
-    ots: Transys,
-    ts: Transys,
-    rst: VarVMap,
+    ts: Option<Transys>,
 }
 
 impl AigFrontend {
-    pub fn new(mut oaig: Aig) -> Self {
-        if !oaig.outputs.is_empty() {
-            if oaig.bads.is_empty() {
-                oaig.bads = std::mem::take(&mut oaig.outputs);
-                warn!(
-                    "property not found, moved {} outputs to bad properties",
-                    oaig.bads.len()
-                );
-            } else {
-                warn!("outputs in aiger are ignored");
-                oaig.outputs.clear();
-            }
-        } else if oaig.bads.is_empty() {
-            warn!("empty property in aiger");
-            oaig.bads.push(AigEdge::constant(false));
-        }
-        if !oaig.bads.is_empty() {
-            if !oaig.justice.is_empty() {
-                error!("both safety and liveness found; certificate may be messed up");
-            } else if !oaig.fairness.is_empty() {
-                warn!("fairness constraints are ignored when solving safety property");
-                oaig.fairness.clear();
-            }
-        }
-        let ots = Transys::from_aig(&oaig, true);
-        let (aig, rst) = aig_preprocess(&oaig);
+    pub fn new(oaig: Aig) -> Self {
+        let oaig = normalize_aig(oaig, true);
+        let (aig, _) = aig_preprocess(&oaig);
         let ts = Transys::from_aig(&aig, true);
-        Self { /*oaig,*/ ots, ts, rst }
+        Self { ts: Some(ts) }
     }
 }
 
 impl Frontend for AigFrontend {
     fn ts(&mut self) -> Transys {
-        self.ts.clone()
+        self.ts.take().expect("bit-level transys already moved")
     }
 
-    fn safe_certificate(&mut self, proof: McProof) -> String {
+    fn safe_certificate(&mut self, model: &Path, proof: McProof) -> String {
+        let aig = certificate_aig(model);
+        let (_, rst) = aig_preprocess(&aig);
         let proof = proof.into_bl().unwrap();
-        if !self.ots.justice.is_empty() {
+        if !aig.justice.is_empty() || !aig.fairness.is_empty() {
             error!("certifying safe liveness unsupported");
         }
         let mut certifaiger = Aig::from(&proof);
         certifaiger = certifaiger.reencode();
         certifaiger.symbols.clear();
         for (i, v) in proof.input().enumerate() {
-            if let Some(r) = self.rst.get(&v) {
+            if let Some(r) = rst.get(&v) {
                 certifaiger.set_symbol(certifaiger.inputs[i], &format!("= {}", (**r) * 2));
             }
         }
         for (i, v) in proof.latch().enumerate() {
-            if let Some(r) = self.rst.get(&v) {
+            if let Some(r) = rst.get(&v) {
                 certifaiger.set_symbol(certifaiger.latchs[i].input, &format!("= {}", (**r) * 2));
             }
         }
         certifaiger.to_string()
     }
 
-    fn unsafe_certificate(&mut self, witness: McWitness) -> String {
+    fn unsafe_certificate(&mut self, model: &Path, witness: McWitness) -> String {
+        let aig = certificate_aig(model);
+        let ots = Transys::from_aig(&aig, true);
+        let (_, rst) = aig_preprocess(&aig);
         let witness = witness.into_bl().unwrap();
-        let mut wit = witness.filter_map_var(|v: Var| self.rst.get(&v).copied());
+        let mut wit = witness.filter_map_var(|v: Var| rst.get(&v).copied());
         let mut res = vec!["1".to_string()];
-        if self.ots.justice.is_empty() {
+        if ots.justice.is_empty() {
             res.push(format!("b{}", witness.bad_id));
         } else {
             res.push("j0".to_string());
         }
-        wit.exact_init_state(&self.ots);
+        wit.exact_init_state(&ots);
         let mut line = String::new();
-        let mut lbstate = Vec::new();
         for l in wit.state[0].iter() {
-            lbstate.push(Lbool::from(l.polarity()));
             line.push(if l.polarity() { '1' } else { '0' })
         }
         res.push(line);
@@ -187,11 +205,9 @@ impl Frontend for AigFrontend {
             let map: HashMap<Var, bool> =
                 HashMap::from_iter(c.iter().map(|l| (l.var(), l.polarity())));
             let mut line = String::new();
-            let mut input = Vec::new();
-            for l in &self.ots.input {
+            for l in &ots.input {
                 let r = map.get(l).copied().unwrap_or(true);
                 line.push(if r { '1' } else { '0' });
-                input.push(Lbool::from(r));
             }
             res.push(line);
         }

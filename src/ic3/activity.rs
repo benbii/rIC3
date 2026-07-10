@@ -41,8 +41,11 @@ impl Activity {
     }
 
     pub fn sort_by_activity(&self, cube: &mut [Lit], ascending: bool) {
-        let ascending_func =
-            |a: &Lit, b: &Lit| self.activity[*a].partial_cmp(&self.activity[*b]).unwrap();
+        let ascending_func = |a: &Lit, b: &Lit| {
+            self.activity[a.var()]
+                .partial_cmp(&self.activity[b.var()])
+                .unwrap()
+        };
         if ascending {
             cube.sort_by(ascending_func);
         } else {

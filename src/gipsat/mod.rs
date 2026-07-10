@@ -171,7 +171,7 @@ impl DagCnfSolver {
 
         if !self.temporary_domain {
             self.domain
-                .enable_local(domain, assump, constraint, &self.dc, &self.value);
+                .enable_local(domain, assump, constraint, &self.dc);
             assert!(!self.domain.has(self.constrain_act));
             self.domain.insert(self.constrain_act);
             if bucket {
@@ -298,6 +298,15 @@ impl Satif for DagCnfSolver {
     #[inline]
     fn sat_value(&self, lit: Lit) -> Option<bool> {
         match self.value.v(lit) {
+            Lbool::TRUE => Some(true),
+            Lbool::FALSE => Some(false),
+            _ => None,
+        }
+    }
+
+    #[inline]
+    fn sat_value_var(&self, var: Var) -> Option<bool> {
+        match self.value.var(var) {
             Lbool::TRUE => Some(true),
             Lbool::FALSE => Some(false),
             _ => None,

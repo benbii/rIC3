@@ -96,45 +96,51 @@ fn cmd_check(mut chk: CheckCmd, cfg: EngineConfig, pp: PreprocConfig) -> ExitCod
         }
         _ => panic!("aig, aag, btor, btor2 files only."),
     };
-    let ots = fend.ts();
-
-    let (ts, rst) = if let Some(ref p) = pp.load
-        && let Ok(file) = File::open(&p)
-        && let mut file = BufReader::new(file)
-        && let Ok(ts_ld) = bincode::deserialize_from(&mut file)
-        && let Ok(rst_ld) = bincode::deserialize_from(&mut file)
-        && let Ok(sec_ld) = bincode::deserialize_from(&mut file)
-    {
-        if pp.fake_preproc_wait {
-            std::thread::sleep(Duration::from_secs(sec_ld));
-        }
-        info!("loaded transys has {}", ots.statistic());
-        (ts_ld, rst_ld)
-    } else {
-        info!("transys to be checked has {}", ots.statistic());
-        let mut ts = ots.clone_deep();
-        let rst = Restore::new(&ts);
-        let ic3_local_proof =
-            matches!(&cfg, EngineConfig::IC3(icfg) if icfg.local_proof < ts.bad.len());
-        if !ic3_local_proof {
-            if pp.prop < ts.bad.len() {
-                ts.bad = LitVec::from(ts.bad[pp.prop]);
-            } else if ts.bad.len() > 1 {
-                let bad = std::mem::take(&mut ts.bad);
-                ts.bad = LitVec::from(ts.rel_mut().new_or(bad));
-            }
-        }
-        Transys::preproc(ts, &pp, rst)
-    };
-
     let mut engine: Box<dyn Engine> = match cfg {
-        // not all would require the restore structure though
-        EngineConfig::IC3(cfg) => Box::new(IC3::new(cfg, ts, ots, rst)),
-        EngineConfig::Kind(cfg) => Box::new(Kind::new(cfg, ts, ots, rst)),
-        EngineConfig::BMC(cfg) => Box::new(BMC::new(cfg, ts, ots, rst)),
-        EngineConfig::Rlive => Box::new(Rlive::new(ts, rst)),
         EngineConfig::WlBMC(cfg) => Box::new(WlBMC::new(cfg, fend.wts())),
         EngineConfig::WlKind(cfg) => Box::new(WlKind::new(cfg, fend.wts())),
+        cfg => {
+            let ots = fend.ts();
+            let (ts, rst) = if let Some(ref p) = pp.load
+                && let Ok(file) = File::open(p)
+                && let mut file = BufReader::new(file)
+                && let Ok(ts_ld) = bincode::deserialize_from(&mut file)
+                && let Ok(rst_ld) = bincode::deserialize_from(&mut file)
+                && let Ok(sec_ld) = bincode::deserialize_from(&mut file)
+            {
+                if pp.fake_preproc_wait {
+                    std::thread::sleep(Duration::from_secs(sec_ld));
+                }
+                info!("loaded transys has {}", ots.statistic());
+                (ts_ld, rst_ld)
+            } else {
+                info!("transys to be checked has {}", ots.statistic());
+                let mut ts = ots.clone_deep();
+                let rst = Restore::new(&ts);
+                let ic3_local_proof = matches!(
+                    &cfg,
+                    EngineConfig::IC3(icfg) if icfg.local_proof < ts.bad.len()
+                );
+                if !ic3_local_proof {
+                    if pp.prop < ts.bad.len() {
+                        ts.bad = LitVec::from(ts.bad[pp.prop]);
+                    } else if ts.bad.len() > 1 {
+                        let bad = std::mem::take(&mut ts.bad);
+                        ts.bad = LitVec::from(ts.rel_mut().new_or(bad));
+                    }
+                }
+                Transys::preproc(ts, &pp, rst)
+            };
+
+            match cfg {
+                // not all would require the restore structure though
+                EngineConfig::IC3(cfg) => Box::new(IC3::new(cfg, ts, ots, rst)),
+                EngineConfig::Kind(cfg) => Box::new(Kind::new(cfg, ts, ots, rst)),
+                EngineConfig::BMC(cfg) => Box::new(BMC::new(cfg, ts, ots, rst)),
+                EngineConfig::Rlive => Box::new(Rlive::new(ts, rst)),
+                EngineConfig::WlBMC(_) | EngineConfig::WlKind(_) => unreachable!(),
+            }
+        }
     };
 
     let res = engine.check();
@@ -144,7 +150,7 @@ fn cmd_check(mut chk: CheckCmd, cfg: EngineConfig, pp: PreprocConfig) -> ExitCod
             assert!(!chk.certify || fend.certify(&chk.model, chk.cert.as_ref().unwrap()));
             println!("UNSAT{}", if chk.witness { "\n0" } else { "" });
             if let Some(ref p) = chk.cert {
-                let c = fend.safe_certificate(engine.proof());
+                let c = fend.safe_certificate(&chk.model, engine.proof());
                 fs::write(p, format!("{c}")).unwrap();
             }
             20
@@ -159,7 +165,7 @@ fn cmd_check(mut chk: CheckCmd, cfg: EngineConfig, pp: PreprocConfig) -> ExitCod
                 );
             }
             if let Some(ref p) = chk.cert {
-                let c = fend.unsafe_certificate(engine.witness());
+                let c = fend.unsafe_certificate(&chk.model, engine.witness());
                 fs::write(p, format!("{c}")).unwrap();
             }
             10

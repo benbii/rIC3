@@ -55,7 +55,7 @@ impl TsLift {
         for s in state.into_iter() {
             let s = *s.as_ref();
             let lit = s.lit();
-            if self.slv.domain_has(lit.var())
+            if self.slv.domain_has(s)
                 && let Some(v) = satif.sat_value(lit)
                 && (in_cls.contains(&s) || !satif.flip_to_none(s))
             {

@@ -51,9 +51,7 @@ impl From<WlTransys> for Btor {
 
 pub struct BtorFrontend {
     owts: WlTransys,
-    wts: WlTransys,
-    idmap: HashMap<Term, usize>,
-    no_next: HashSet<Term>,
+    wts: Option<WlTransys>,
     rst: WlRestore,
     bbmap: Option<BitblastMap>,
 }
@@ -64,16 +62,8 @@ impl BtorFrontend {
             warn!("empty property in btor");
             owts.bad.push(Term::bool_const(false));
         }
-        let mut idmap = HashMap::default();
-        for (id, i) in owts.input.iter().enumerate() {
-            idmap.insert(i.clone(), id);
-        }
-        for (id, l) in owts.latch.iter().enumerate() {
-            idmap.insert(l.clone(), id);
-        }
         let mut wts = owts.clone();
         let mut rst: WlRestore = None;
-        let mut no_next = HashSet::default();
 
         for l in take(&mut wts.latch) {
             if wts.next.contains_key(&l) {
@@ -94,14 +84,11 @@ impl BtorFrontend {
                 wts.constraint.push(iv.imply(l.teq(&init)));
             }
             wts.init.remove(&l);
-            no_next.insert(l.clone());
             wts.input.push(l);
         }
         Self {
             owts,
-            wts,
-            idmap,
-            no_next,
+            wts: Some(wts),
             rst,
             bbmap: None,
         }
@@ -172,7 +159,11 @@ impl BtorFrontend {
 
 impl Frontend for BtorFrontend {
     fn ts(&mut self) -> bl::Transys {
-        let mut wts = self.wts.clone();
+        let mut wts = self
+            .wts
+            .as_ref()
+            .expect("word-level transys already moved")
+            .clone();
         wts.simplify();
         wts.coi_refine();
         // let btor = Btor::from(&wts);
@@ -183,7 +174,7 @@ impl Frontend for BtorFrontend {
     }
 
     fn wts(&mut self) -> WlTransys {
-        self.wts.clone()
+        self.wts.take().expect("word-level transys already moved")
     }
 
     fn certify(&mut self, model: &Path, cert: &Path) -> bool {
@@ -216,23 +207,29 @@ impl Frontend for BtorFrontend {
         }
     }
 
-    fn safe_certificate(&mut self, proof: McProof) -> String {
+    fn safe_certificate(&mut self, _model: &Path, proof: McProof) -> String {
         let proof = match proof {
-            McProof::Bl(bl_proof) => self
-                .bbmap
-                .as_ref()
-                .unwrap()
-                .restore_proof(&self.wts, &bl_proof),
+            McProof::Bl(bl_proof) => self.bbmap.as_ref().unwrap().restore_proof(
+                self.wts.as_ref().expect("word-level transys already moved"),
+                &bl_proof,
+            ),
             McProof::Wl(wl_proof) => wl_proof,
         };
+        let original: HashSet<Term> = self
+            .owts
+            .input
+            .iter()
+            .chain(self.owts.latch.iter())
+            .cloned()
+            .collect();
         let mut wts = self.owts.clone();
         for l in proof.input.iter() {
-            if !self.idmap.contains_key(l) {
+            if !original.contains(l) {
                 wts.input.push(l.clone());
             }
         }
         for l in proof.latch.iter() {
-            if !self.idmap.contains_key(l) {
+            if !original.contains(l) {
                 wts.add_latch(l.clone(), proof.init(l), proof.next(l));
             }
         }
@@ -240,7 +237,21 @@ impl Frontend for BtorFrontend {
         Btor::from(wts).to_string()
     }
 
-    fn unsafe_certificate(&mut self, witness: crate::McWitness) -> String {
+    fn unsafe_certificate(&mut self, _model: &Path, witness: crate::McWitness) -> String {
+        let mut idmap = HashMap::default();
+        for (id, i) in self.owts.input.iter().enumerate() {
+            idmap.insert(i.clone(), id);
+        }
+        for (id, l) in self.owts.latch.iter().enumerate() {
+            idmap.insert(l.clone(), id);
+        }
+        let no_next: HashSet<Term> = self
+            .owts
+            .latch
+            .iter()
+            .filter(|l| !self.owts.next.contains_key(*l))
+            .cloned()
+            .collect();
         let mut witness = match witness {
             McWitness::Bl(bl_witness) => self.bbmap.as_ref().unwrap().restore_witness(&bl_witness),
             McWitness::Wl(wl_witness) => wl_witness,
@@ -253,7 +264,7 @@ impl Frontend for BtorFrontend {
             }
             let input = take(&mut witness.input[i]);
             for lv in input {
-                if self.no_next.contains(lv.t()) {
+                if no_next.contains(lv.t()) {
                     witness.state[i].push(TermValue::from(lv));
                 } else {
                     witness.input[i].push(lv);
@@ -264,7 +275,7 @@ impl Frontend for BtorFrontend {
             res.push(format!("#{k}"));
             let mut idw = Vec::new();
             for tv in state {
-                let id = self.idmap[tv.t()];
+                let id = idmap[tv.t()];
                 let bv = tv.into_bv();
                 idw.push((id, format!("{id} {:b}", bv.v())));
             }
@@ -273,7 +284,7 @@ impl Frontend for BtorFrontend {
             res.push(format!("@{k}"));
             let mut idw = Vec::new();
             for tv in input {
-                let id = self.idmap[tv.t()];
+                let id = idmap[tv.t()];
                 idw.push((id, format!("{id} {:b}", tv.v())));
             }
             idw.sort();

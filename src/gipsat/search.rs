@@ -12,10 +12,11 @@ impl DagCnfSolver {
 
     #[inline]
     pub fn assign(&mut self, lit: Lit, reason: CRef) {
+        let var = lit.var();
         self.trail.push(lit);
         self.value.set(lit);
-        self.reason[lit] = reason;
-        self.level[lit] = self.highest_level() as u32;
+        self.reason[var] = reason;
+        self.level[var] = self.highest_level() as u32;
     }
 
     #[inline]
@@ -29,11 +30,12 @@ impl DagCnfSolver {
         }
         while self.trail.len() as u32 > self.pos_in_trail[level] {
             let bt = self.trail.pop().unwrap();
-            self.value.set_none(bt.var());
+            let var = bt.var();
+            self.value.set_none(var);
             if vsids {
-                self.vsids.push(bt.var());
+                self.vsids.push(var);
             }
-            self.phase_saving[bt] = Lbool::from(bt.polarity());
+            self.phase_saving[var] = Lbool::from(bt.polarity());
         }
         self.propagated = self.pos_in_trail[level];
         self.pos_in_trail.truncate(level);

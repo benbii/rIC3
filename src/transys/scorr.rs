@@ -51,9 +51,9 @@ impl Scorr {
             }
             let mut block = LitVec::new();
             for &v in self.ts.latch.iter() {
-                if let Some(a) = slv.sat_value(v.lit()) {
-                    block.push(!slv.sat_value_lit(v).unwrap());
-                    sim[v].push(a);
+                if let Some(value) = slv.sat_value_lit(v) {
+                    block.push(!value);
+                    sim[v].push(value.polarity());
                 } else {
                     sim[v].clear();
                 }
@@ -94,10 +94,9 @@ impl Scorr {
                 let mut block = LitVec::new();
                 for &v in consider {
                     let n = ts.var_next_lit(v);
-                    let va = slv.sat_value(n).unwrap();
-                    let na = slv.sat_value_lit(n.var()).unwrap();
-                    sim[v].push(va);
-                    block.push(!na);
+                    let value = slv.sat_value_lit(n.var()).unwrap();
+                    sim[v].push(value.polarity() == n.polarity());
+                    block.push(!value);
                 }
                 slv.add_clause(&block);
                 let assump = assign(sim, sim[Var::CONST].len() - 1, consider);

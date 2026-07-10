@@ -9,7 +9,7 @@ pub trait Frontend {
     fn wts(&mut self) -> WlTransys {
         panic!("frontend unsupported for wltransys")
     }
-    fn safe_certificate(&mut self, proof: McProof) -> String;
-    fn unsafe_certificate(&mut self, witness: McWitness) -> String;
+    fn safe_certificate(&mut self, model: &Path, proof: McProof) -> String;
+    fn unsafe_certificate(&mut self, model: &Path, witness: McWitness) -> String;
     fn certify(&mut self, model: &Path, cert: &Path) -> bool;
 }

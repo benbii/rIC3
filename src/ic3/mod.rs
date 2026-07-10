@@ -221,7 +221,7 @@ impl IC3 {
             let mut init = LitVec::new();
             for l in ts.latch.iter() {
                 if ts.init(*l).is_none()
-                    && let Some(v) = solver.sat_value(l.lit())
+                    && let Some(v) = solver.sat_value_var(*l)
                 {
                     init.push(l.lit().not_if(!v));
                 }
@@ -401,6 +401,6 @@ impl Engine for IC3 {
         for s in self.solvers.iter() {
             num_solve += s.num_solve;
         }
-        info!("{num_solve:#?}");
+        info!("num_solve: {num_solve:#?}");
     }
 }

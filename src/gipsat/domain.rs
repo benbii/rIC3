@@ -1,5 +1,5 @@
 use super::DagCnfSolver;
-use logicrs::{DagCnf, Lit, LitVec, Var, VarAssign, VarMap};
+use logicrs::{DagCnf, Lit, LitVec, Var, VarMap};
 use std::{ops::Index, slice};
 
 #[derive(Clone)]
@@ -62,7 +62,6 @@ impl Domain {
         assump: &[Lit],
         constraint: &[LitVec],
         dc: &DagCnf,
-        _value: &VarAssign,
     ) {
         self.reset();
         for &r in domain {
@@ -141,7 +140,7 @@ impl DagCnfSolver {
         self.temporary_domain = true;
         let domain: Vec<_> = domain.into_iter().map(|l| l.var()).collect();
         self.domain
-            .enable_local(&domain, &[], &[], &self.dc, &self.value);
+            .enable_local(&domain, &[], &[], &self.dc);
         assert!(!self.domain.has(self.constrain_act));
         self.domain.insert(self.constrain_act);
         self.vsids.enable_bucket = true;

@@ -6,6 +6,7 @@ use crate::{
 };
 use clap::Args;
 use log::info;
+use logicrs::fol::Term;
 use serde::{Deserialize, Serialize};
 
 #[derive(Args, Clone, Debug, Serialize, Deserialize)]
@@ -22,7 +23,7 @@ pub struct WlBMCConfig {
 }
 
 pub struct WlBMC {
-    owts: WlTransys,
+    original_bads: Vec<Term>,
     uts: WlTransysUnroll,
     solver: Bitwuzla,
     solver_k: usize,
@@ -33,7 +34,7 @@ pub struct WlBMC {
 
 impl WlBMC {
     pub fn new(cfg: WlBMCConfig, mut wts: WlTransys) -> Self {
-        let owts = wts.clone();
+        let original_bads = wts.bad.clone();
         wts.compress_bads();
         let uts = WlTransysUnroll::new(wts);
         let mut solver = Bitwuzla::new();
@@ -41,7 +42,7 @@ impl WlBMC {
             solver.assert(&l.teq(i));
         }
         Self {
-            owts,
+            original_bads,
             uts,
             solver,
             solver_k: 0,
@@ -81,12 +82,11 @@ impl Engine for WlBMC {
         let mut witness = self.uts.witness(&mut self.solver);
         let mut cache = HashMap::default();
         let mut ilmap = HashMap::default();
-        for i in self.owts.input.iter().chain(self.owts.latch.iter()) {
+        for i in self.uts.ts.input.iter().chain(self.uts.ts.latch.iter()) {
             ilmap.insert(i, self.uts.next(i, self.uts.num_unroll));
         }
         let bads: Vec<_> = self
-            .owts
-            .bad
+            .original_bads
             .iter()
             .map(|b| b.cached_apply(&|t| ilmap.get(t).cloned(), &mut cache))
             .collect();

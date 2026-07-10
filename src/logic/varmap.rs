@@ -76,32 +76,6 @@ impl<T> IndexMut<Var> for VarMap<T> {
     }
 }
 
-impl<T> Index<Lit> for VarMap<T> {
-    type Output = T;
-
-    #[inline]
-    fn index(&self, index: Lit) -> &Self::Output {
-        #[cfg(not(debug_assertions))]
-        unsafe {
-            self.map.get_unchecked((index.0 >> 1) as usize)
-        }
-        #[cfg(debug_assertions)]
-        &self.map[(index.0 >> 1) as usize]
-    }
-}
-
-impl<T> IndexMut<Lit> for VarMap<T> {
-    #[inline]
-    fn index_mut(&mut self, index: Lit) -> &mut Self::Output {
-        #[cfg(not(debug_assertions))]
-        unsafe {
-            self.map.get_unchecked_mut((index.0 >> 1) as usize)
-        }
-        #[cfg(debug_assertions)]
-        &mut self.map[(index.0 >> 1) as usize]
-    }
-}
-
 impl<T> Deref for VarMap<T> {
     type Target = Vec<T>;
 
