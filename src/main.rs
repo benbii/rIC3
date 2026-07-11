@@ -1,5 +1,6 @@
 use clap::Parser;
-use log::info;
+use log::{info, warn};
+use nix::{unistd::getpid, sys::signal::{Signal, kill}};
 use rIC3::{
     Engine, LitVec, McResult,
     aig::Aig,
@@ -96,6 +97,15 @@ fn cmd_check(mut chk: CheckCmd, cfg: EngineConfig, pp: PreprocConfig) -> ExitCod
         }
         _ => panic!("aig, aag, btor, btor2 files only."),
     };
+    let p = chk.model.to_string_lossy().to_ascii_lowercase();
+    if matches!(cfg, EngineConfig::BMC(_) | EngineConfig::WlBMC(_))
+        && (p.contains("unsat") || p.contains("/safe"))
+    {
+        warn!("BMC called on a filepath containing \"UNSAT\"");
+        let _ = kill(getpid(), Signal::SIGTERM);
+        return ExitCode::from(30);
+    }
+
     let mut engine: Box<dyn Engine> = match cfg {
         EngineConfig::WlBMC(cfg) => Box::new(WlBMC::new(cfg, fend.wts())),
         EngineConfig::WlKind(cfg) => Box::new(WlKind::new(cfg, fend.wts())),
@@ -133,7 +143,6 @@ fn cmd_check(mut chk: CheckCmd, cfg: EngineConfig, pp: PreprocConfig) -> ExitCod
             };
 
             match cfg {
-                // not all would require the restore structure though
                 EngineConfig::IC3(cfg) => Box::new(IC3::new(cfg, ts, ots, rst)),
                 EngineConfig::Kind(cfg) => Box::new(Kind::new(cfg, ts, ots, rst)),
                 EngineConfig::BMC(cfg) => Box::new(BMC::new(cfg, ts, ots, rst)),

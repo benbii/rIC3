@@ -111,7 +111,6 @@ pub struct Activity {
     activity: VarMap<f64>,
     act_inc: f64,
     bucket_heap: BinaryHeap,
-    bucket_table: NckVec<u32>,
 }
 
 impl Index<Var> for Activity {
@@ -126,13 +125,10 @@ impl Index<Var> for Activity {
 impl Activity {
     #[inline]
     pub fn new_with(var: Var) -> Self {
-        let mut bucket_table = NckVec::new();
-        bucket_table.push(0);
         Self {
             activity: VarMap::new_with(var),
             act_inc: 1.0,
             bucket_heap: BinaryHeap::new_with(var),
-            bucket_table,
         }
     }
 
@@ -147,19 +143,25 @@ impl Activity {
         let act = unsafe { &mut *(self as *mut Activity) };
         if self.bucket_heap.pos[var].is_none() {
             self.bucket_heap.push(var, act);
-            let last = self.bucket_table.len() - 1;
-            let b = usize::BITS - last.leading_zeros();
-            *self.bucket_table.last_mut().unwrap() = b;
-            self.bucket_table.push(b + 1);
         }
         assert!(self.bucket_heap.pos[var].is_some())
     }
 
     #[inline]
+    fn unranked_bucket(&self) -> u32 {
+        let len = self.bucket_heap.heap.len() as u32;
+        if len == 0 {
+            0
+        } else {
+            u32::BITS - (len - 1).leading_zeros() + 1
+        }
+    }
+
+    #[inline]
     fn bucket(&self, var: Var) -> u32 {
         match self.bucket_heap.pos[var] {
-            OptionU32::NONE => self.bucket_table[self.bucket_table.len() - 1],
-            b => self.bucket_table[*b],
+            OptionU32::NONE => self.unranked_bucket(),
+            pos => u32::BITS - pos.leading_zeros(),
         }
     }
 
@@ -230,9 +232,6 @@ impl Vsids {
         if !self.enable_bucket {
             self.heap.up(var, &self.activity);
         }
-        self.bucket
-            .buckets
-            .reserve(self.activity.bucket_table[self.activity.bucket_table.len() - 1] as usize + 1);
     }
 
     #[inline]
@@ -252,7 +251,9 @@ impl Bucket {
     #[inline]
     fn new_with(var: Var) -> Self {
         let mut buckets: NckVec<_> = NckVec::new();
-        buckets.reserve(10);
+        // A Lit can address fewer than 2^31 variables, so buckets 0..=32
+        // cover every possible binary-heap rank plus the unranked bucket.
+        buckets.reserve(u32::BITS as usize + 1);
         Self {
             buckets,
             in_bucket: VarMap::new_with(var),

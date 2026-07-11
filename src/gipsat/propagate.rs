@@ -65,7 +65,8 @@ impl DagCnfSolver {
             let mut wtrs_p_len = unsafe { (*wtrs_p_vec).len() };
             'next_cls: while w < wtrs_p_len {
                 let blocker = unsafe { (*wtrs_p_dat.add(w)).blocker };
-                if self.value.v(blocker) == Lbool::TRUE {
+                let blocker_value = self.value.v(blocker);
+                if blocker_value == Lbool::TRUE {
                     w += 1;
                     continue;
                 }
@@ -75,12 +76,16 @@ impl DagCnfSolver {
                     cref.swap(0, 1);
                 }
                 let cref0 = cref[0];
-                if cref0 != blocker && self.value.v(cref[0]) == Lbool::TRUE {
-                    unsafe {
-                        (*wtrs_p_dat.add(w)).blocker = cref0;
+                let mut cref0_value = blocker_value;
+                if cref0 != blocker {
+                    cref0_value = self.value.v(cref0);
+                    if cref0_value == Lbool::TRUE {
+                        unsafe {
+                            (*wtrs_p_dat.add(w)).blocker = cref0;
+                        }
+                        w += 1;
+                        continue;
                     }
-                    w += 1;
-                    continue;
                 }
                 let cref_len = cref.len();
                 for i in 2..cref_len {
@@ -98,7 +103,7 @@ impl DagCnfSolver {
                 unsafe {
                     (*wtrs_p_dat.add(w)).blocker = cref0;
                 }
-                if self.value.v(cref0).is_false() {
+                if cref0_value.is_false() {
                     unsafe {
                         (*wtrs_p_vec).set_len(wtrs_p_len);
                     }
@@ -135,9 +140,10 @@ impl DagCnfSolver {
                     cref.swap(0, 1);
                 }
                 let cref0 = cref[0];
+                let mut cref0_value = v;
                 if cref0 != blocker {
-                    let v = self.value.v(cref0);
-                    if v == Lbool::TRUE || !self.domain.has(cref0.var()) {
+                    cref0_value = self.value.v(cref0);
+                    if cref0_value == Lbool::TRUE || !self.domain.has(cref0.var()) {
                         unsafe {
                             (*wtrs_p_dat.add(w)).blocker = cref0;
                         }
@@ -161,7 +167,7 @@ impl DagCnfSolver {
                 unsafe {
                     (*wtrs_p_dat.add(w)).blocker = cref0;
                 }
-                if self.value.v(cref0).is_false() {
+                if cref0_value.is_false() {
                     unsafe {
                         (*wtrs_p_vec).set_len(wtrs_p_len);
                     }
