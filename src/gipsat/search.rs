@@ -11,10 +11,10 @@ impl DagCnfSolver {
     }
 
     #[inline]
-    pub fn assign(&mut self, lit: Lit, reason: CRef) {
+    pub(super) fn assign(&mut self, lit: Lit, reason: CRef) {
         let var = lit.var();
         self.trail.push(lit);
-        self.value.set(lit);
+        self.state.set(lit);
         self.reason[var] = reason;
         self.level[var] = self.highest_level() as u32;
     }
@@ -31,11 +31,10 @@ impl DagCnfSolver {
         while self.trail.len() as u32 > self.pos_in_trail[level] {
             let bt = self.trail.pop().unwrap();
             let var = bt.var();
-            self.value.set_none(var);
             if vsids {
-                self.vsids.push(var);
+                self.vsids.push(var, &mut self.state);
             }
-            self.phase_saving[var] = Lbool::from(bt.polarity());
+            self.state.unassign_save_phase(var, bt.polarity());
         }
         self.propagated = self.pos_in_trail[level];
         self.pos_in_trail.truncate(level);
@@ -51,8 +50,8 @@ impl DagCnfSolver {
                 self.vsids.enable_bucket = false;
                 self.vsids.heap.clear();
                 for d in self.domain.iter() {
-                    if self.value.var(*d).is_none() {
-                        self.vsids.push(*d);
+                    if self.state.value(*d).is_none() {
+                        self.vsids.push(*d, &mut self.state);
                     }
                 }
             }
@@ -102,7 +101,7 @@ impl DagCnfSolver {
                 self.clean_learnt(false);
                 while self.highest_level() < assumption.len() {
                     let a = assumption[self.highest_level()];
-                    match self.value.v(a) {
+                    match self.state.lit_value(a) {
                         Lbool::TRUE => {
                             self.new_level();
                             if self.highest_level() == assumption.len() {

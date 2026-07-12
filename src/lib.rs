@@ -1,4 +1,5 @@
 #![allow(non_snake_case)]
+#![cfg_attr(test, allow(linker_messages))]
 
 extern crate self as logicrs;
 

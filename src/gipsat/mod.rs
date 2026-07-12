@@ -4,6 +4,7 @@ mod domain;
 mod propagate;
 mod search;
 mod simplify;
+mod state;
 mod vsids;
 
 use analyze::Analyze;
@@ -12,11 +13,12 @@ use cdb::{CREF_NONE, CRef, ClauseDB};
 use domain::Domain;
 use logicrs::nckvec::NckVec;
 use logicrs::satif::Satif;
-use logicrs::{DagCnf, Lbool, VarAssign};
+use logicrs::{DagCnf, Lbool};
 use logicrs::{Lit, LitSet, LitVec, Var, VarMap};
 use propagate::Watchers;
 use rand::{SeedableRng, rngs::SmallRng};
 use simplify::Simplify;
+use state::VarState;
 use std::sync::Arc;
 use vsids::Vsids;
 
@@ -24,14 +26,13 @@ use vsids::Vsids;
 pub struct DagCnfSolver {
     cdb: ClauseDB,
     watchers: Watchers,
-    value: VarAssign,
+    state: VarState,
     trail: NckVec<Lit>,
     pos_in_trail: Vec<u32>,
     level: VarMap<u32>,
     reason: VarMap<CRef>,
     propagated: u32,
     vsids: Vsids,
-    phase_saving: VarMap<Lbool>,
     analyze: Analyze,
     simplify: Simplify,
     unsat_core: LitSet,
@@ -49,22 +50,23 @@ pub struct DagCnfSolver {
 impl DagCnfSolver {
     pub fn new(dc: Arc<DagCnf>) -> Self {
         let constrain_act = Var::new(dc.num_var());
+        let mut state = VarState::new_with(constrain_act);
+        let domain = Domain::new(&mut state);
         let mut solver = Self {
             dc: dc.clone(),
             cdb: Default::default(),
             watchers: Watchers::new_with(constrain_act),
-            value: VarAssign::new_with(constrain_act),
+            state,
             trail: Default::default(),
             pos_in_trail: Default::default(),
             level: VarMap::new_with(constrain_act),
             reason: VarMap::new_with(constrain_act),
             propagated: Default::default(),
             vsids: Vsids::new_with(constrain_act),
-            phase_saving: VarMap::new_with(constrain_act),
             analyze: Analyze::new_with(constrain_act),
             simplify: Default::default(),
             unsat_core: LitSet::new_with(constrain_act),
-            domain: Domain::new_with(constrain_act),
+            domain,
             temporary_domain: Default::default(),
             prepared_vsids: false,
             constrain_act,
@@ -84,12 +86,28 @@ impl DagCnfSolver {
         assert!(self.highest_level() == 0);
         let mut clause = logicrs::LitVec::from(clause);
         clause.sort();
-        let clause = clause.ordered_simp(&self.value)?;
-        if clause.is_empty() {
+        let mut simplified = LitVec::new_with_cap(clause.len());
+        for &lit in clause.iter() {
+            let value = self.state.lit_value(lit);
+            if value.is_true() {
+                return None;
+            } else if value.is_false() {
+                continue;
+            }
+            if let Some(&last) = (*simplified).last() {
+                if lit == last {
+                    continue;
+                } else if lit == !last {
+                    return None;
+                }
+            }
+            simplified.push(lit);
+        }
+        if simplified.is_empty() {
             self.trivial_unsat = true;
             return None;
         }
-        Some(clause)
+        Some(simplified)
     }
 
     fn add_clause_inner(&mut self, clause: &[Lit], mut kind: ClauseKind) -> CRef {
@@ -99,7 +117,7 @@ impl DagCnfSolver {
             }
             if clause.len() == 1 {
                 assert!(clause[0].var() != self.constrain_act);
-                match self.value.v(clause[0]) {
+                match self.state.lit_value(clause[0]) {
                     Lbool::TRUE | Lbool::FALSE => todo!(),
                     _ => {
                         self.assign(clause[0], CREF_NONE);
@@ -142,7 +160,7 @@ impl DagCnfSolver {
         self.backtrack(0, false);
         self.clean_temporary();
         self.prepared_vsids = false;
-        self.domain.reset();
+        self.domain.reset(&mut self.state);
         assert!(!self.temporary_domain);
     }
 
@@ -171,12 +189,12 @@ impl DagCnfSolver {
 
         if !self.temporary_domain {
             self.domain
-                .enable_local(domain, assump, constraint, &self.dc);
-            assert!(!self.domain.has(self.constrain_act));
-            self.domain.insert(self.constrain_act);
+                .enable_local(domain, assump, constraint, &self.dc, &mut self.state);
+            assert!(!self.state.get(self.constrain_act).in_domain());
+            self.domain.insert(self.constrain_act, &mut self.state);
             if bucket {
                 self.vsids.enable_bucket = true;
-                self.vsids.bucket.clear();
+                self.vsids.bucket.clear(&mut self.state);
             } else {
                 self.vsids.enable_bucket = false;
                 self.vsids.heap.clear();
@@ -261,15 +279,13 @@ impl Satif for DagCnfSolver {
         self.reset();
         let v = self.constrain_act;
         let var = Var::new(self.num_var() + 1);
-        self.value.reserve(var);
+        self.state.reserve(var);
         self.level.reserve(var);
         self.reason.reserve(var);
         self.watchers.reserve(var);
         self.vsids.reserve(var);
-        self.phase_saving.reserve(var);
         self.analyze.reserve(var);
         self.unsat_core.reserve(var);
-        self.domain.reserve(var);
         self.constrain_act = var;
         v
     }
@@ -297,7 +313,7 @@ impl Satif for DagCnfSolver {
 
     #[inline]
     fn sat_value(&self, lit: Lit) -> Option<bool> {
-        match self.value.v(lit) {
+        match self.state.lit_value(lit) {
             Lbool::TRUE => Some(true),
             Lbool::FALSE => Some(false),
             _ => None,
@@ -306,7 +322,7 @@ impl Satif for DagCnfSolver {
 
     #[inline]
     fn sat_value_var(&self, var: Var) -> Option<bool> {
-        match self.value.var(var) {
+        match self.state.value(var) {
             Lbool::TRUE => Some(true),
             Lbool::FALSE => Some(false),
             _ => None,

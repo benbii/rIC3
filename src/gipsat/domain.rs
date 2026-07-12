@@ -1,49 +1,42 @@
-use super::DagCnfSolver;
-use logicrs::{DagCnf, Lit, LitVec, Var, VarMap};
+use super::{DagCnfSolver, state::VarState};
+use logicrs::{DagCnf, Lit, LitVec, Var};
 use std::{ops::Index, slice};
 
 #[derive(Clone)]
 pub struct Domain {
     set: Vec<Var>,
-    has: VarMap<bool>,
     pub fixed: u32,
 }
 
 impl Domain {
-    pub fn new_with(var: Var) -> Self {
+    pub fn new(state: &mut VarState) -> Self {
         let mut res = Self {
             set: Vec::new(),
-            has: VarMap::new_with(var),
             fixed: 0,
         };
-        res.insert(Var::CONST);
+        res.insert(Var::CONST, state);
         res.fixed = 1;
         res
     }
 
-    pub fn reserve(&mut self, var: Var) {
-        self.has.reserve(var);
-    }
-
-    pub fn reset(&mut self) {
+    pub fn reset(&mut self, state: &mut VarState) {
         while self.len() > self.fixed {
             let v = self.set.pop().unwrap();
-            self.has[v] = false;
+            state.remove_domain(v);
         }
     }
 
     #[inline]
-    pub fn insert(&mut self, var: Var) {
-        if !self.has[var] {
+    pub fn insert(&mut self, var: Var, state: &mut VarState) {
+        if state.insert_domain(var) {
             self.set.push(var);
-            self.has[var] = true;
         }
     }
 
     #[inline]
-    fn remove(&mut self, i: u32) {
+    fn remove(&mut self, i: u32, state: &mut VarState) {
         let v = self.set.swap_remove(i as usize);
-        self.has[v] = false;
+        state.remove_domain(v);
     }
 
     #[inline]
@@ -62,17 +55,18 @@ impl Domain {
         assump: &[Lit],
         constraint: &[LitVec],
         dc: &DagCnf,
+        state: &mut VarState,
     ) {
-        self.reset();
+        self.reset(state);
         for &r in domain {
-            self.insert(r);
+            self.insert(r, state);
         }
         for l in assump {
-            self.insert(l.var());
+            self.insert(l.var(), state);
         }
         for c in constraint {
             for l in c.iter() {
-                self.insert(l.var());
+                self.insert(l.var(), state);
             }
         }
         let mut now = self.fixed;
@@ -81,15 +75,10 @@ impl Domain {
             now += 1;
             for d in dc.dep(v).iter() {
                 // if value.v(d.lit()).is_none() {
-                self.insert(*d);
+                self.insert(*d, state);
                 // }
             }
         }
-    }
-
-    #[inline]
-    pub fn has(&self, var: Var) -> bool {
-        self.has[var]
     }
 
     #[inline]
@@ -110,18 +99,18 @@ impl Index<u32> for Domain {
 impl DagCnfSolver {
     pub fn add_domain(&mut self, var: Var, deps: bool) {
         assert!(self.highest_level() == 0);
-        if !self.value.var(var).is_none() {
+        if !self.state.value(var).is_none() {
             return;
         }
-        self.domain.reset();
-        self.domain.insert(var);
+        self.domain.reset(&mut self.state);
+        self.domain.insert(var, &mut self.state);
         if deps {
             let mut queue = self.dc.dep(var).to_vec();
             while let Some(d) = queue.pop() {
-                if self.domain.has(d) {
+                if self.state.get(d).in_domain() {
                     continue;
                 }
-                self.domain.insert(d);
+                self.domain.insert(d, &mut self.state);
                 for dd in self.dc.dep(d).iter() {
                     queue.push(*dd);
                 }
@@ -132,7 +121,7 @@ impl DagCnfSolver {
 
     #[inline]
     pub fn domain_has(&self, var: Var) -> bool {
-        self.domain.has(var)
+        self.state.get(var).in_domain()
     }
 
     pub fn set_domain(&mut self, domain: impl IntoIterator<Item = Lit>) {
@@ -140,11 +129,11 @@ impl DagCnfSolver {
         self.temporary_domain = true;
         let domain: Vec<_> = domain.into_iter().map(|l| l.var()).collect();
         self.domain
-            .enable_local(&domain, &[], &[], &self.dc);
-        assert!(!self.domain.has(self.constrain_act));
-        self.domain.insert(self.constrain_act);
+            .enable_local(&domain, &[], &[], &self.dc, &mut self.state);
+        assert!(!self.state.get(self.constrain_act).in_domain());
+        self.domain.insert(self.constrain_act, &mut self.state);
         self.vsids.enable_bucket = true;
-        self.vsids.bucket.clear();
+        self.vsids.bucket.clear(&mut self.state);
         self.push_to_vsids();
     }
 
@@ -157,17 +146,17 @@ impl DagCnfSolver {
         let mut now = 0;
         while now < self.domain.fixed {
             let d = self.domain[now];
-            if self.value.var(d).is_none() {
-                self.vsids.push(d);
+            if self.state.value(d).is_none() {
+                self.vsids.push(d, &mut self.state);
                 now += 1;
             } else {
                 self.domain.swap(now, self.domain.fixed - 1);
-                self.domain.remove(self.domain.fixed - 1);
+                self.domain.remove(self.domain.fixed - 1, &mut self.state);
                 self.domain.fixed -= 1;
             }
         }
         while now < self.domain.len() {
-            self.vsids.push(self.domain[now]);
+            self.vsids.push(self.domain[now], &mut self.state);
             now += 1;
         }
     }
@@ -176,8 +165,8 @@ impl DagCnfSolver {
         if !self.prepared_vsids && !self.temporary_domain {
             self.prepared_vsids = true;
             for d in self.domain.iter() {
-                if self.value.var(*d).is_none() {
-                    self.vsids.push(*d);
+                if self.state.value(*d).is_none() {
+                    self.vsids.push(*d, &mut self.state);
                 }
             }
         }

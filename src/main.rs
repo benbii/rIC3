@@ -1,3 +1,7 @@
+// Native archives use the equivalent `x86_64-pc-linux-gnu` vendor triple,
+// which LLVM's plugin LTO otherwise reports once for every linked module.
+#![allow(linker_messages)]
+
 use clap::Parser;
 use log::{info, warn};
 use nix::{unistd::getpid, sys::signal::{Signal, kill}};

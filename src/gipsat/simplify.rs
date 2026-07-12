@@ -50,14 +50,14 @@ impl DagCnfSolver {
         self.simplify.last_simplify = self.num_solve;
     }
 
-    pub fn simplify_satisfied_clauses(&mut self, mut clauses: NckVec<CRef>) -> NckVec<CRef> {
+    pub(super) fn simplify_satisfied_clauses(&mut self, mut clauses: NckVec<CRef>) -> NckVec<CRef> {
         let mut i = 0;
         'm: while i < clauses.len() {
             let cid = clauses[i];
             let mut cls = self.cdb.get(cid);
             let mut j = 0;
             while j < cls.len() {
-                match self.value.v(cls[j]) {
+                match self.state.lit_value(cls[j]) {
                     Lbool::TRUE => {
                         clauses.swap_remove(i);
                         self.detach_clause(cid);
@@ -66,7 +66,9 @@ impl DagCnfSolver {
                     Lbool::FALSE => {
                         if j <= 1 {
                             debug_assert!(
-                                cls.slice().iter().any(|&l| self.value.v(l) == Lbool::TRUE)
+                                cls.slice()
+                                    .iter()
+                                    .any(|&l| self.state.lit_value(l) == Lbool::TRUE)
                             );
                             clauses.swap_remove(i);
                             self.detach_clause(cid);

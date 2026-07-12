@@ -129,7 +129,7 @@ impl DagCnfSolver {
         learnt
     }
 
-    pub fn analyze(&mut self, mut conflict: CRef) -> (LitVec, usize) {
+    pub(super) fn analyze(&mut self, mut conflict: CRef) -> (LitVec, usize) {
         let mut learnt = LitVec::from([Lit::default()]);
         let mut path = 0;
         let mut trail_idx = self.trail.len() - 1;

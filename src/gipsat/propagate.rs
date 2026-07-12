@@ -65,7 +65,7 @@ impl DagCnfSolver {
             let mut wtrs_p_len = unsafe { (*wtrs_p_vec).len() };
             'next_cls: while w < wtrs_p_len {
                 let blocker = unsafe { (*wtrs_p_dat.add(w)).blocker };
-                let blocker_value = self.value.v(blocker);
+                let blocker_value = self.state.lit_value(blocker);
                 if blocker_value == Lbool::TRUE {
                     w += 1;
                     continue;
@@ -78,7 +78,7 @@ impl DagCnfSolver {
                 let cref0 = cref[0];
                 let mut cref0_value = blocker_value;
                 if cref0 != blocker {
-                    cref0_value = self.value.v(cref0);
+                    cref0_value = self.state.lit_value(cref0);
                     if cref0_value == Lbool::TRUE {
                         unsafe {
                             (*wtrs_p_dat.add(w)).blocker = cref0;
@@ -90,7 +90,7 @@ impl DagCnfSolver {
                 let cref_len = cref.len();
                 for i in 2..cref_len {
                     let lit = cref[i];
-                    if !self.value.v(lit).is_false() {
+                    if !self.state.lit_value(lit).is_false() {
                         cref.swap(1, i);
                         wtrs_p_len -= 1;
                         unsafe {
@@ -120,6 +120,9 @@ impl DagCnfSolver {
     }
 
     fn propagate_domain(&mut self) -> CRef {
+        // Clause allocation is stable throughout propagation. Snapshotting its base also makes
+        // that invariant explicit to LLVM despite clause mutation through raw pointers below.
+        let cdb_data = self.cdb.allocator.data.as_mut_ptr();
         while self.propagated < self.trail.len() as u32 {
             let p = self.trail[self.propagated];
             self.propagated += 1;
@@ -129,21 +132,24 @@ impl DagCnfSolver {
             let mut wtrs_p_len = unsafe { (*wtrs_p_vec).len() };
             'next_cls: while w < wtrs_p_len {
                 let blocker = unsafe { (*wtrs_p_dat.add(w)).blocker };
-                let v = self.value.v(blocker);
-                if v == Lbool::TRUE || !self.domain.has(blocker.var()) {
+                let blocker_state = self.state.get(blocker.var());
+                let (skip, v) = blocker_state.domain_value(blocker);
+                if skip {
                     w += 1;
                     continue;
                 }
                 let cid = unsafe { (*wtrs_p_dat.add(w)).clause };
-                let mut cref = self.cdb.get(cid);
+                let mut cref = Clause { data: unsafe { cdb_data.add(cid.0 as usize) } };
                 if cref[0] == !p {
                     cref.swap(0, 1);
                 }
                 let cref0 = cref[0];
                 let mut cref0_value = v;
                 if cref0 != blocker {
-                    cref0_value = self.value.v(cref0);
-                    if cref0_value == Lbool::TRUE || !self.domain.has(cref0.var()) {
+                    let cref0_state = self.state.get(cref0.var());
+                    let (skip, value) = cref0_state.domain_value(cref0);
+                    cref0_value = value;
+                    if skip {
                         unsafe {
                             (*wtrs_p_dat.add(w)).blocker = cref0;
                         }
@@ -154,7 +160,7 @@ impl DagCnfSolver {
                 let cref_len = cref.len();
                 for i in 2..cref_len {
                     let lit = cref[i];
-                    if !self.value.v(lit).is_false() {
+                    if !self.state.lit_value(lit).is_false() {
                         cref.swap(1, i);
                         wtrs_p_len -= 1;
                         unsafe {
@@ -197,12 +203,12 @@ impl DagCnfSolver {
             return false;
         }
         let l = var.lit();
-        let l = match self.value.v(l) {
+        let l = match self.state.lit_value(l) {
             Lbool::TRUE => l,
             Lbool::FALSE => !l,
             _ => return true,
         };
-        self.value.set_none(var);
+        self.state.set_none(var);
         let mut w = 0;
         'next_cls: while w < self.watchers.wtrs[!l].len() {
             let watchers = &mut self.watchers.wtrs[!l];
@@ -213,23 +219,25 @@ impl DagCnfSolver {
             }
             debug_assert!(cref[1] == l);
             let new_watcher = Watcher::new(cid, cref[0]);
-            let v = self.value.v(cref[0]);
-            if v == Lbool::TRUE || (v != Lbool::FALSE && !self.domain.has(cref[0].var())) {
+            let cref0_state = self.state.get(cref[0].var());
+            let v = cref0_state.lit_value(cref[0]);
+            if v == Lbool::TRUE || (v != Lbool::FALSE && !cref0_state.in_domain()) {
                 watchers[w].blocker = cref[0];
                 w += 1;
                 continue;
             }
             for i in 2..cref.len() {
                 let lit = cref[i];
-                let v = self.value.v(lit);
-                if v.is_true() || (v.is_none() && !self.domain.has(lit.var())) {
+                let state = self.state.get(lit.var());
+                let v = state.lit_value(lit);
+                if v.is_true() || (v.is_none() && !state.in_domain()) {
                     cref.swap(1, i);
                     watchers.swap_remove(w);
                     self.watchers.wtrs[!cref[1]].push(new_watcher);
                     continue 'next_cls;
                 }
             }
-            self.value.set(l);
+            self.state.set(l);
             return false;
         }
         true

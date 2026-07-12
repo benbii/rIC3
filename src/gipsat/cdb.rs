@@ -22,7 +22,7 @@ struct Header {
 
 #[repr(C)]
 #[derive(Clone, Copy)]
-union Data {
+pub(super) union Data {
     header: Header,
     lit: Lit,
     act: f32,
@@ -30,8 +30,8 @@ union Data {
 }
 
 #[derive(Clone, Copy)]
-pub struct Clause {
-    data: *mut Data,
+pub(super) struct Clause {
+    pub(super) data: *mut Data,
 }
 
 impl Clause {
@@ -103,7 +103,7 @@ impl Index<usize> for Clause {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct CRef(u32);
+pub(super) struct CRef(pub(super) u32);
 
 pub const CREF_NONE: CRef = CRef(u32::MAX);
 
@@ -122,9 +122,9 @@ impl From<usize> for CRef {
 }
 
 #[derive(Clone)]
-struct Allocator {
-    data: Vec<Data>,
-    wasted: usize,
+pub(super) struct Allocator {
+    pub(super) data: Vec<Data>,
+    pub(super) wasted: usize,
 }
 
 impl Allocator {
@@ -220,12 +220,12 @@ pub enum ClauseKind {
 }
 
 #[derive(Clone)]
-pub struct ClauseDB {
-    allocator: Allocator,
-    pub lemmas: NckVec<CRef>,
-    pub trans: NckVec<CRef>,
-    pub learnt: NckVec<CRef>,
-    pub temporary: NckVec<CRef>,
+pub(super) struct ClauseDB {
+    pub(super) allocator: Allocator,
+    pub(super) lemmas: NckVec<CRef>,
+    pub(super) trans: NckVec<CRef>,
+    pub(super) learnt: NckVec<CRef>,
+    temporary: NckVec<CRef>,
     act_inc: f32,
 }
 
@@ -293,14 +293,14 @@ impl Default for ClauseDB {
 }
 
 impl DagCnfSolver {
-    pub fn attach_clause(&mut self, clause: &[Lit], kind: ClauseKind) -> CRef {
+    pub(super) fn attach_clause(&mut self, clause: &[Lit], kind: ClauseKind) -> CRef {
         debug_assert!(clause.len() > 1);
         let id = self.cdb.alloc(clause, kind);
         self.watchers.attach(id, self.cdb.get(id));
         id
     }
 
-    pub fn detach_clause(&mut self, cref: CRef) {
+    pub(super) fn detach_clause(&mut self, cref: CRef) {
         self.watchers.detach(cref, self.cdb.get(cref));
         self.cdb.free(cref);
     }
@@ -309,16 +309,16 @@ impl DagCnfSolver {
         while let Some(t) = self.cdb.temporary.pop() {
             self.detach_clause(t);
         }
-        if !self.value.var(self.constrain_act).is_none() {
+        if !self.state.value(self.constrain_act).is_none() {
             self.trail.retain(|l| l.var() != self.constrain_act);
-            self.value.set_none(self.constrain_act);
+            self.state.set_none(self.constrain_act);
         }
     }
 
     #[inline]
-    pub fn locked(&self, cref: CRef) -> bool {
+    pub(super) fn locked(&self, cref: CRef) -> bool {
         let cls = self.cdb.get(cref);
-        self.value.v(cls[0]).is_true() && self.reason[cls[0].var()] == cref
+        self.state.lit_value(cls[0]).is_true() && self.reason[cls[0].var()] == cref
     }
 
     pub fn clean_learnt(&mut self, full: bool) {
@@ -347,7 +347,7 @@ impl DagCnfSolver {
         }
     }
 
-    pub fn strengthen_clause(&mut self, cref: CRef, lit: Lit) {
+    pub(super) fn strengthen_clause(&mut self, cref: CRef, lit: Lit) {
         let mut cls = self.cdb.get(cref);
         debug_assert!(cls.len() > 2);
         let pos = cls.slice().iter().position(|l| l.eq(&lit)).unwrap();
