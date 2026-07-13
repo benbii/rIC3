@@ -15,7 +15,7 @@ use logicrs::nckvec::NckVec;
 use logicrs::satif::Satif;
 use logicrs::{DagCnf, Lbool};
 use logicrs::{Lit, LitSet, LitVec, Var, VarMap};
-use propagate::Watchers;
+use propagate::WatchArena;
 use rand::{SeedableRng, rngs::SmallRng};
 use simplify::Simplify;
 use state::VarState;
@@ -25,7 +25,7 @@ use vsids::Vsids;
 #[derive(Clone)]
 pub struct DagCnfSolver {
     cdb: ClauseDB,
-    watchers: Watchers,
+    watchers: WatchArena,
     state: VarState,
     trail: NckVec<Lit>,
     pos_in_trail: Vec<u32>,
@@ -55,7 +55,7 @@ impl DagCnfSolver {
         let mut solver = Self {
             dc: dc.clone(),
             cdb: Default::default(),
-            watchers: Watchers::new_with(constrain_act),
+            watchers: WatchArena::new_with(constrain_act),
             state,
             trail: Default::default(),
             pos_in_trail: Default::default(),
@@ -79,6 +79,7 @@ impl DagCnfSolver {
             solver.add_clause_inner(cls, ClauseKind::Trans);
         }
         assert!(solver.propagate() == CREF_NONE);
+        solver.watchers.maybe_compact();
         solver
     }
 
@@ -236,6 +237,7 @@ impl DagCnfSolver {
         };
         self.clean_learnt(true);
         self.simplify();
+        self.watchers.maybe_compact();
         let res = self.search_with_restart(search_assump, restart_limit);
         res
     }
@@ -276,6 +278,10 @@ impl DagCnfSolver {
 impl Satif for DagCnfSolver {
     #[inline]
     fn new_var(&mut self) -> Var {
+        assert_eq!(
+            self.num_solve, 0,
+            "cannot add GipSAT variables after solving starts"
+        );
         self.reset();
         let v = self.constrain_act;
         let var = Var::new(self.num_var() + 1);

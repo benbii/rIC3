@@ -361,11 +361,10 @@ impl DagCnfSolver {
             let mut to =
                 Allocator::with_capacity(self.cdb.allocator.len() - self.cdb.allocator.wasted);
 
-            for ws in self.watchers.wtrs.iter_mut() {
-                for w in ws.iter_mut() {
-                    w.clause = self.cdb.allocator.reloc(w.clause, &mut to);
-                }
-            }
+            let allocator = &mut self.cdb.allocator;
+            self.watchers.for_each_mut(|w| {
+                w.clause = allocator.reloc(w.clause, &mut to);
+            });
 
             let cls = self
                 .cdb
