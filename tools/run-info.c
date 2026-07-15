@@ -140,35 +140,40 @@ void run_one(struct RunInfo* info) {
     int ready_fds = poll(pfds, 3, -1);
     assert(ready_fds >= 0);
 
-    // Check if stdout_ pipe has data
-    if (pfds[0].revents & POLLIN) {
+    // POLLHUP remains set after the child closes a pipe.  Drain any buffered
+    // data and then stop polling the descriptor at EOF; otherwise poll()
+    // returns immediately and this loop spins until the timeout fires.
+    if (pfds[0].revents & (POLLIN | POLLHUP | POLLERR)) {
       ssize_t n = read(stdout_pipe[0], info->stdout_ + out_nread, out_cap - out_nread);
       if (n <= 0) {
         pfds[0].fd = -1;  // Stop monitoring this fd (EOF or error)
-        continue;
+      } else {
+        out_nread += n;
+        // Reallocate memory if necessary
+        if (out_nread == out_cap) {
+          out_cap *= 2;
+          info->stdout_ = realloc(info->stdout_, out_cap);
+          assert(info->stdout_);
+        }
       }
-      out_nread += n;
-      // Reallocate memory if necessary
-      if (out_nread == out_cap) {
-        out_cap *= 2;
-        info->stdout_ = realloc(info->stdout_, out_cap);
-        assert(info->stdout_);
-      }
+    } else if (pfds[0].revents & POLLNVAL) {
+      pfds[0].fd = -1;
     }
-    // Check if stderr pipe has data
-    if (pfds[1].revents & POLLIN) {
+    if (pfds[1].revents & (POLLIN | POLLHUP | POLLERR)) {
       ssize_t n = read(stderr_pipe[0], info->stderr_ + err_nread, err_cap - err_nread);
       if (n <= 0) {
         pfds[1].fd = -1;  // Stop monitoring this fd (EOF or error)
-        continue;
+      } else {
+        err_nread += n;
+        // Reallocate memory if necessary
+        if (err_nread == err_cap) {
+          err_cap *= 2;
+          info->stderr_ = realloc(info->stderr_, err_cap);
+          assert(info->stderr_);
+        }
       }
-      err_nread += n;
-      // Reallocate memory if necessary
-      if (err_nread == err_cap) {
-        err_cap *= 2;
-        info->stderr_ = realloc(info->stderr_, err_cap);
-        assert(info->stderr_);
-      }
+    } else if (pfds[1].revents & POLLNVAL) {
+      pfds[1].fd = -1;
     }
 
     // Get memory usage once per second
@@ -327,7 +332,7 @@ const char *run_group_from_str(struct RunInfo *info, size_t *nr_run,
     const size_t strsz = strend - str - 1;
     char cmd[strsz];
     memcpy(cmd, str, strsz);
-    for (size_t i = 0; i < strend - str; ++i)
+    for (size_t i = 0; i < strsz; ++i)
       if (cmd[i] == '\0') cmd[i] = ' ';
     if (chkpt && memmem(chkpt, chkpt_sz, cmd, strsz))
       free(info[n].argv);

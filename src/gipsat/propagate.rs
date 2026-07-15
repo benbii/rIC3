@@ -20,16 +20,77 @@ impl Watcher {
     }
 }
 
-#[repr(C)]
+const RANGE_BEGIN_BITS: u32 = 26;
+const RANGE_BEGIN_MASK: u32 = (1 << RANGE_BEGIN_BITS) - 1;
+const RANGE_RANK_SHIFT: u32 = RANGE_BEGIN_BITS;
+const RANGE_RANK_MASK: u32 = 0x3f;
+const RANGE_MAX_RANK: u32 = 44;
+const WATCHER_POOL_BYTES: usize = 500 * 1024 * 1024;
+const WATCHER_POOL_SLOTS: u32 = (WATCHER_POOL_BYTES / size_of::<Watcher>()) as u32;
+
+// Keep all 64 entries so the masked rank proves this lookup in bounds. Ranks
+// after RANGE_MAX_RANK are never emitted; repeating the physical pool limit
+// there avoids adding a bounds check to the insertion path.
+const RANGE_CAPS: [u32; 64] = {
+    let mut capacities = [WATCHER_POOL_SLOTS; 64];
+    capacities[0] = 0;
+    let mut rank = 1;
+    while rank < RANGE_MAX_RANK as usize {
+        let cap = capacities[rank - 1];
+        capacities[rank] = cap + (cap >> 1) + 1;
+        rank += 1;
+    }
+    capacities
+};
+
+// end is stored directly so propagation can update it with one 32-bit store.
+// The second word is [cap_rank:6, begin:26].
+#[repr(C, align(8))]
 #[derive(Clone, Copy, Default)]
 struct WatchRange {
-    begin: u32,
     end: u32,
-    cap_end: u32,
+    begin_rank: u32,
+}
+
+impl WatchRange {
+    fn new(begin: u32, len: u32, rank: u32) -> Self {
+        debug_assert!(begin <= RANGE_BEGIN_MASK);
+        debug_assert!(rank <= RANGE_MAX_RANK);
+        debug_assert!(len <= RANGE_CAPS[rank as usize]);
+        Self {
+            end: begin + len,
+            begin_rank: begin | (rank << RANGE_RANK_SHIFT),
+        }
+    }
+
+    fn begin(self) -> u32 {
+        self.begin_rank & RANGE_BEGIN_MASK
+    }
+
+    fn len(self) -> u32 {
+        self.end - self.begin()
+    }
+
+    fn rank(self) -> u32 {
+        (self.begin_rank >> RANGE_RANK_SHIFT) & RANGE_RANK_MASK
+    }
+
+    fn cap(self) -> u32 {
+        RANGE_CAPS[self.rank() as usize]
+    }
 }
 
 const _: () = assert!(size_of::<Watcher>() == 8);
-const _: () = assert!(size_of::<WatchRange>() == 12);
+const _: () = assert!(size_of::<WatchRange>() == 8);
+const _: () = assert!(RANGE_MAX_RANK <= RANGE_RANK_MASK);
+const _: () = assert!(WATCHER_POOL_SLOTS <= RANGE_BEGIN_MASK);
+const _: () = assert!(RANGE_CAPS[RANGE_MAX_RANK as usize] == WATCHER_POOL_SLOTS);
+const _: () = assert!(
+    RANGE_CAPS[RANGE_MAX_RANK as usize - 1]
+        + (RANGE_CAPS[RANGE_MAX_RANK as usize - 1] >> 1)
+        + 1
+        > WATCHER_POOL_SLOTS
+);
 
 pub(super) struct WatchArena {
     ranges: LitMap<WatchRange>,
@@ -41,15 +102,25 @@ pub(super) struct WatchArena {
 #[inline(never)]
 fn grow(range: *mut WatchRange, pool: *mut Watcher, cursor: *mut usize, watcher: Watcher) {
     let old = unsafe { *range };
-    let len = old.end - old.begin;
-    let cap = old.cap_end - old.begin;
-    let new_cap = cap + (cap >> 1) + 1;
+    let begin = old.begin();
+    let len = old.len();
+    let cap = old.cap();
+    debug_assert_eq!(len, cap);
+    let rank = old.rank();
+    debug_assert!(rank < RANGE_MAX_RANK);
+    let new_rank = rank + 1;
+    let new_cap = RANGE_CAPS[new_rank as usize];
     let old_cursor = unsafe { *cursor };
-    if cap != 0 && old.cap_end as usize == old_cursor {
+    let extends_tail = cap != 0 && (begin + cap) as usize == old_cursor;
+    let cursor_growth = if extends_tail { new_cap - cap } else { new_cap } as usize;
+    debug_assert!(
+        old_cursor <= WATCHER_POOL_SLOTS as usize - cursor_growth,
+        "watcher pool capacity overflow"
+    );
+    if extends_tail {
         unsafe {
-            pool.add(old.end as usize).write(watcher);
-            (*range).end += 1;
-            (*range).cap_end = old.begin + new_cap;
+            pool.add((begin + len) as usize).write(watcher);
+            range.write(WatchRange::new(begin, len + 1, new_rank));
             *cursor += (new_cap - cap) as usize;
         }
         return;
@@ -57,13 +128,9 @@ fn grow(range: *mut WatchRange, pool: *mut Watcher, cursor: *mut usize, watcher:
     let begin = old_cursor as u32;
     unsafe {
         let dst = pool.add(old_cursor);
-        ptr::copy_nonoverlapping(pool.add(old.begin as usize), dst, len as usize);
+        ptr::copy_nonoverlapping(pool.add(old.begin() as usize), dst, len as usize);
         dst.add(len as usize).write(watcher);
-        *range = WatchRange {
-            begin,
-            end: begin + len + 1,
-            cap_end: begin + new_cap,
-        };
+        range.write(WatchRange::new(begin, len + 1, new_rank));
         *cursor += new_cap as usize;
     }
 }
@@ -75,25 +142,24 @@ fn push(
     lit: Lit,
     watcher: Watcher,
 ) {
-    let range = unsafe { &mut *ranges.add(u32::from(lit) as usize) };
-    let end = range.end;
-    if end != range.cap_end {
+    let range = unsafe { ranges.add(u32::from(lit) as usize) };
+    let old = unsafe { *range };
+    let len = old.len();
+    if len != old.cap() {
         unsafe {
-            pool.add(end as usize).write(watcher);
+            pool.add(old.end as usize).write(watcher);
+            (*range).end = old.end + 1;
         }
-        range.end = end + 1;
         return;
     }
     grow(range, pool, cursor, watcher)
 }
 
-
 impl WatchArena {
-    // The hot insertion path intentionally has no global bound check. The inaccessible
-    // 12MB catches a runaway bump cursor before it can reach an unrelated mapping.
-    const USABLE_BYTES: usize = 500 * 1024 * 1024;
+    // The fast insertion path has no global bound check. The outlined growth path
+    // enforces the usable limit, and the inaccessible tail catches stray accesses.
     const GUARD_BYTES: usize = 12 * 1024 * 1024;
-    const MAPPING_BYTES: usize = Self::USABLE_BYTES + Self::GUARD_BYTES;
+    const MAPPING_BYTES: usize = WATCHER_POOL_BYTES + Self::GUARD_BYTES;
     const MIN_COMPACT: usize = 2 * 1024 * 1024 / size_of::<Watcher>();
 
     fn map_pool() -> *mut Watcher {
@@ -114,7 +180,7 @@ impl WatchArena {
         if unsafe {
             libc::mprotect(
                 mapping,
-                Self::USABLE_BYTES,
+                WATCHER_POOL_BYTES,
                 libc::PROT_READ | libc::PROT_WRITE,
             )
         } != 0
@@ -151,11 +217,15 @@ impl WatchArena {
         for l in 0..2 {
             let lit = !cls[l];
             let range = &mut self.ranges[lit];
-            for i in (range.begin..range.end).rev() {
+            let old = *range;
+            let begin = old.begin();
+            let mut end = old.end;
+            for i in (begin..end).rev() {
                 if unsafe { (*self.pool.add(i as usize)).clause == cref } {
-                    range.end -= 1;
+                    end -= 1;
                     unsafe {
-                        *self.pool.add(i as usize) = *self.pool.add(range.end as usize);
+                        *self.pool.add(i as usize) = *self.pool.add(end as usize);
+                        range.end = end;
                     }
                     break;
                 }
@@ -165,20 +235,22 @@ impl WatchArena {
 
     pub(super) fn for_each_mut(&mut self, mut f: impl FnMut(&mut Watcher)) {
         for range in self.ranges.iter() {
-            for i in range.begin..range.end {
+            let begin = range.begin();
+            for i in 0..range.len() {
                 unsafe {
-                    f(&mut *self.pool.add(i as usize));
+                    f(&mut *self.pool.add((begin + i) as usize));
                 }
             }
         }
     }
 
-    fn capacity_for(len: u32) -> u32 {
-        let mut cap = 0;
-        while cap < len {
-            cap += (cap >> 1) + 1;
+    fn capacity_rank_for(len: u32) -> u32 {
+        debug_assert!(len <= WATCHER_POOL_SLOTS, ">64M watcher in a var");
+        let mut rank = 0;
+        while RANGE_CAPS[rank] < len {
+            rank += 1;
         }
-        cap
+        rank as u32
     }
 
     pub(super) fn maybe_compact(&mut self) {
@@ -188,8 +260,8 @@ impl WatchArena {
 
         let mut live = Vec::new();
         for (index, range) in self.ranges.iter().enumerate() {
-            if range.begin != range.end {
-                live.push((range.begin, index as u32));
+            if range.len() != 0 {
+                live.push((range.begin(), index as u32));
             }
         }
         live.sort_unstable_by_key(|&(begin, _)| begin);
@@ -198,27 +270,25 @@ impl WatchArena {
         for (_, index) in live {
             let lit = Lit::new(Var(index >> 1), index & 1 == 0);
             let old = self.ranges[lit];
-            let len = old.end - old.begin;
-            let cap = Self::capacity_for(len);
-            debug_assert!(cap <= old.cap_end - old.begin);
-            debug_assert!(cursor <= old.begin as usize);
+            let begin = old.begin();
+            let len = old.len();
+            let rank = Self::capacity_rank_for(len);
+            let cap = RANGE_CAPS[rank as usize];
+            debug_assert!(cap <= old.cap());
+            debug_assert!(cursor <= begin as usize);
             unsafe {
                 ptr::copy(
-                    self.pool.add(old.begin as usize),
+                    self.pool.add(begin as usize),
                     self.pool.add(cursor),
                     len as usize,
                 );
             }
             let begin = cursor as u32;
-            self.ranges[lit] = WatchRange {
-                begin,
-                end: begin + len,
-                cap_end: begin + cap,
-            };
+            self.ranges[lit] = WatchRange::new(begin, len, rank);
             cursor += cap as usize;
         }
         for range in self.ranges.iter_mut() {
-            if range.begin == range.end {
+            if range.len() == 0 {
                 *range = WatchRange::default();
             }
         }
@@ -229,11 +299,11 @@ impl WatchArena {
             usize::try_from(unsafe { libc::sysconf(libc::_SC_PAGESIZE) }).unwrap_or(4096);
         let used = cursor * size_of::<Watcher>();
         let discard = used.div_ceil(page_size) * page_size;
-        if discard < Self::USABLE_BYTES {
+        if discard < WATCHER_POOL_BYTES {
             unsafe {
                 libc::madvise(
                     self.pool.cast::<u8>().add(discard).cast(),
-                    Self::USABLE_BYTES - discard,
+                    WATCHER_POOL_BYTES - discard,
                     libc::MADV_DONTNEED,
                 );
             }
@@ -251,25 +321,22 @@ impl Clone for WatchArena {
         };
         for range in cloned.ranges.iter_mut() {
             let old = *range;
-            let len = old.end - old.begin;
+            let len = old.len();
             if len == 0 {
                 *range = WatchRange::default();
                 continue;
             }
-            let cap = Self::capacity_for(len);
+            let rank = Self::capacity_rank_for(len);
+            let cap = RANGE_CAPS[rank as usize];
             unsafe {
                 ptr::copy_nonoverlapping(
-                    self.pool.add(old.begin as usize),
+                    self.pool.add(old.begin() as usize),
                     cloned.pool.add(cloned.cursor),
                     len as usize,
                 );
             }
             let begin = cloned.cursor as u32;
-            *range = WatchRange {
-                begin,
-                end: begin + len,
-                cap_end: begin + cap,
-            };
+            *range = WatchRange::new(begin, len, rank);
             cloned.cursor += cap as usize;
         }
         cloned.next_compact = Self::MIN_COMPACT.max(cloned.cursor.saturating_mul(2));
@@ -294,8 +361,9 @@ impl DagCnfSolver {
             let p = self.trail[self.propagated];
             self.propagated += 1;
             let range = unsafe { ranges.add(u32::from(p) as usize) };
-            let mut w = unsafe { (*range).begin };
-            let mut end = unsafe { (*range).end };
+            let packed = unsafe { *range };
+            let mut w = packed.begin();
+            let mut end = packed.end;
             'next_cls: while w < end {
                 let watcher = unsafe { pool.add(w as usize) };
                 let blocker = unsafe { (*watcher).blocker };
@@ -365,8 +433,9 @@ impl DagCnfSolver {
             let p = self.trail[propagated];
             propagated += 1;
             let range = unsafe { ranges.add(u32::from(p) as usize) };
-            let mut w = unsafe { (*range).begin };
-            let mut end = unsafe { (*range).end };
+            let packed = unsafe { *range };
+            let mut w = packed.begin();
+            let mut end = packed.end;
             'next_cls: while w < end {
                 let watcher = unsafe { pool.add(w as usize) };
                 let blocker = unsafe { (*watcher).blocker };
@@ -377,7 +446,9 @@ impl DagCnfSolver {
                     continue;
                 }
                 let cid = unsafe { (*watcher).clause };
-                let mut cref = Clause { data: unsafe { cdb_data.add(cid.0 as usize) } };
+                let mut cref = Clause {
+                    data: unsafe { cdb_data.add(cid.0 as usize) },
+                };
                 if cref[0] == !p {
                     cref.swap(0, 1);
                 }
@@ -454,8 +525,9 @@ impl DagCnfSolver {
         let range = unsafe { ranges.add(u32::from(source) as usize) };
         let pool = self.watchers.pool;
         let cursor = &mut self.watchers.cursor as *mut usize;
-        let mut w = unsafe { (*range).begin };
-        let mut end = unsafe { (*range).end };
+        let packed = unsafe { *range };
+        let mut w = packed.begin();
+        let mut end = packed.end;
         'next_cls: while w < end {
             let watcher = unsafe { pool.add(w as usize) };
             let cid = unsafe { (*watcher).clause };
@@ -507,12 +579,26 @@ mod tests {
 
     fn contents(arena: &WatchArena, lit: Lit) -> Vec<(u32, u32)> {
         let range = arena.ranges[lit];
-        (range.begin..range.end)
+        let begin = range.begin();
+        (0..range.len())
             .map(|i| unsafe {
-                let watcher = *arena.pool.add(i as usize);
+                let watcher = *arena.pool.add((begin + i) as usize);
                 (watcher.clause.0, watcher.blocker.into())
             })
             .collect()
+    }
+
+    #[test]
+    fn packed_range_end_preserves_begin_and_cap() {
+        let begin = RANGE_BEGIN_MASK - 17;
+        let rank = RANGE_MAX_RANK;
+        let cap = RANGE_CAPS[rank as usize];
+        let mut range = WatchRange::new(begin, cap - 3, rank);
+        range.end = begin + 7;
+        assert_eq!(range.begin(), begin);
+        assert_eq!(range.len(), 7);
+        assert_eq!(range.rank(), rank);
+        assert_eq!(range.cap(), cap);
     }
 
     #[test]
@@ -530,7 +616,13 @@ mod tests {
                 }
                 let lit = expected[index as usize].0;
                 let watcher = Watcher::new(CRef(index * 100 + item), lit.not_if(item & 1 != 0));
-                push(arena.ranges.as_mut_ptr(), arena.pool, &mut arena.cursor, lit, watcher);
+                push(
+                    arena.ranges.as_mut_ptr(),
+                    arena.pool,
+                    &mut arena.cursor,
+                    lit,
+                    watcher,
+                );
                 expected[index as usize]
                     .1
                     .push((watcher.clause.0, watcher.blocker.into()));

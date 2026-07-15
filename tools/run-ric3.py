@@ -153,7 +153,7 @@ else:
 testcases = []
 for path in inputdir.rglob("*"):
   if path.is_file() and path.suffix in (".aig", ".btor", ".aag", ".btor2"):
-    testcases.append(path.absolute().as_posix())
+    testcases.append(path.as_posix())
 random.Random(12345678).shuffle(testcases)
 if len(testcases) == 0:
   sys.exit(f"no .aig or .btor files found in {inputdir}")
