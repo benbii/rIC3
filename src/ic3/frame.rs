@@ -91,12 +91,6 @@ impl Deref for Frames {
 impl DerefMut for Frames {
     #[inline]
     fn deref_mut(&mut self) -> &mut Self::Target {
-        self.get_mut()
-    }
-}
-impl Frames {
-    #[inline]
-    pub fn get_mut(&mut self) -> &mut Vec<Frame> {
         &mut self.frames
     }
 }

@@ -21,6 +21,23 @@ set(cxx "${CMAKE_CXX_COMPILER_ID} ${CMAKE_CXX_COMPILER_VERSION}")
 set(license "ric3 internal. all gpl")
 configure_file(${S}/config.h.in ${CMAKE_CURRENT_BINARY_DIR}/config.h @ONLY)
 
+# This Bitwuzla revision predates CaDiCaL 3's explicit variable declaration
+# API.  Its SAT abstraction assigns variable IDs implicitly, which is not
+# compatible with CaDiCaL's factor/BVA pass adding variables of its own.
+# Keep the adapter's old ID semantics by disabling that pass.
+file(READ ${S}/sat/cadical.cpp BITWUZLA_CADICAL_SOURCE)
+string(REPLACE
+  "  d_solver->set(\"shrink\", 0);"
+  "  d_solver->set(\"shrink\", 0);\n  d_solver->set(\"factor\", 0);"
+  BITWUZLA_CADICAL_SOURCE "${BITWUZLA_CADICAL_SOURCE}")
+string(FIND "${BITWUZLA_CADICAL_SOURCE}"
+  "d_solver->set(\"factor\", 0);" BITWUZLA_CADICAL_PATCHED)
+if(BITWUZLA_CADICAL_PATCHED EQUAL -1)
+  message(FATAL_ERROR "failed to patch Bitwuzla's CaDiCaL adapter")
+endif()
+set(BITWUZLA_CADICAL_CPP ${CMAKE_CURRENT_BINARY_DIR}/cadical.cpp)
+file(WRITE ${BITWUZLA_CADICAL_CPP} "${BITWUZLA_CADICAL_SOURCE}")
+
 add_library(smtif-bitwuzla STATIC
   ${S}/util/hash.cpp
   ${S}/util/logger.cpp
@@ -90,7 +107,7 @@ add_library(smtif-bitwuzla STATIC
   ${S}/rewrite/rewrites_core.cpp
   ${S}/rewrite/rewrites_fp.cpp
   ${S}/resource_terminator.cpp
-  ${S}/sat/cadical.cpp
+  ${BITWUZLA_CADICAL_CPP}
   ${S}/sat/sat_solver_factory.cpp
   ${S}/solver/array/array_solver.cpp
   ${S}/solver/abstract/abstraction_lemmas.cpp

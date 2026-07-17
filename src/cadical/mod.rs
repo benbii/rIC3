@@ -4,6 +4,7 @@ use std::ffi::{c_int, c_void};
 unsafe extern "C" {
     fn cadical_solver_new() -> *mut c_void;
     fn cadical_solver_free(s: *mut c_void);
+    fn cadical_solver_declare_more_variables(s: *mut c_void, count: c_int) -> c_int;
     fn cadical_solver_add_clause(s: *mut c_void, clause: *mut c_int, len: c_int);
     fn cadical_solver_solve(s: *mut c_void, assumps: *mut c_int, len: c_int) -> c_int;
     fn cadical_solver_constrain(s: *mut c_void, constrain: *mut c_int, len: c_int);
@@ -48,8 +49,22 @@ impl CaDiCaL {
 impl Satif for CaDiCaL {
     #[inline]
     fn new_var(&mut self) -> Var {
+        let declared = unsafe { cadical_solver_declare_more_variables(self.solver, 1) };
         self.num_var += 1;
+        assert_eq!(declared as usize, self.num_var);
         Var::new(self.num_var - 1)
+    }
+
+    fn new_var_to(&mut self, var: Var) {
+        let target = usize::from(var) + 1;
+        if target <= self.num_var {
+            return;
+        }
+        let count = target - self.num_var;
+        let count = c_int::try_from(count).expect("too many CaDiCaL variables");
+        let declared = unsafe { cadical_solver_declare_more_variables(self.solver, count) };
+        self.num_var = target;
+        assert_eq!(declared as usize, self.num_var);
     }
 
     #[inline]

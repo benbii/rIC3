@@ -1,7 +1,7 @@
+use std::sync::Arc;
+
 use crate::{
-    gipsat::DagCnfSolver,
-    ic3::IC3,
-    transys::{Transys, lift::TsLift, unroll::TransysUnroll},
+    Var, VarRange, gipsat::DagCnfSolver, ic3::IC3, transys::{Transys, lift::TsLift, unroll::TransysUnroll},
 };
 use logicrs::{Lit, LitVec, satif::Satif};
 use rand::seq::SliceRandom;
@@ -15,7 +15,37 @@ pub struct PredProp {
 impl PredProp {
     pub fn new(uts: TransysUnroll, local_proof: usize, inn: bool, bad: &LitVec) -> Self {
         let mut bts = if inn {
-            uts.internal_signals_with_full_prime()
+            assert!(uts.num_unroll == 1);
+            let keep = uts.ts.rel.fanouts(uts.ts.input());
+            let mut rel = Arc::new((*uts.ts.rel).clone());
+            let mut input = uts.ts.input.clone();
+            input.extend(uts.ts.input().map(|v| uts.var_next(v, 1)));
+            let mut constraint = uts.ts.constraint.clone();
+            constraint.extend(uts.lits_next(uts.ts.constraint(), 1));
+            for old_v in VarRange::new_inclusive(Var(1), uts.ts.rel.max_var()) {
+                let v = uts.var_next(old_v, 1);
+                if v <= rel.max_var() && !rel.clauses_of_var(v).is_empty() {
+                    continue;
+                }
+                let cls = uts.ts.rel.clauses_of_var(old_v);
+                let cls: Vec<LitVec> = cls.map(|c| uts.lits_next(c, 1).collect()).collect();
+                Arc::get_mut(&mut rel).unwrap().add_rel(v, &cls);
+            }
+            assert!(uts.ts.justice.is_empty());
+            let bad: LitVec = uts.lits_next(&uts.ts.bad, 1).collect();
+            let mut ts = Transys {
+                input,
+                bad,
+                constraint,
+                rel,
+                ..Default::default()
+            };
+            for v in VarRange::new_inclusive(Var::new(1), uts.ts.max_var()) {
+                if !keep.contains(&v) {
+                    ts.add_latch(v, uts.ts.init(v), uts.lit_next(v.lit(), 1));
+                }
+            }
+            ts
         } else {
             uts.compile()
         };

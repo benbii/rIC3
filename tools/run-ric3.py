@@ -15,7 +15,7 @@ parser.add_argument("-t", "--timeout", type=int, default=3600)
 parser.add_argument("-M", "--memory", type=int, default=6500000)
 parser.add_argument("-n", "--numa", type=int, default=0)
 parser.add_argument("-s", "--solver")
-parser.add_argument("-r", "--run-info")
+parser.add_argument("-r", "--batchrunner")
 parser.add_argument("-o", "--out", "--basename", dest="log_basename")
 parser.add_argument("-a", "--listen-addr")
 parser.add_argument("-p", "--listen-port")
@@ -23,7 +23,7 @@ parser.add_argument("-S", "--secret")
 args = parser.parse_args()
 
 script_dir = Path(__file__).absolute().parent
-run_info = Path(args.run_info).absolute() if args.run_info else script_dir / "run-info"
+batchrunner = Path(args.batchrunner).absolute() if args.batchrunner else script_dir / "batchrunner"
 inputdir = Path(args.inputdir)
 ymdHMS = datetime.now().strftime("%y%m%d%H%M%S")
 log_basename = Path(args.log_basename if args.log_basename else f"{ymdHMS}-{args.preset}").absolute()
@@ -154,30 +154,30 @@ testcases = []
 for path in inputdir.rglob("*"):
   if path.is_file() and path.suffix in (".aig", ".btor", ".aag", ".btor2"):
     testcases.append(path.as_posix())
-random.Random(12345678).shuffle(testcases)
 if len(testcases) == 0:
   sys.exit(f"no .aig or .btor files found in {inputdir}")
 print(f'found {len(testcases)} testcases')
 
+groups = [(testcase, group) for testcase in testcases for group in cfg]
+random.Random(12345678).shuffle(groups)
 tmp = tempfile.NamedTemporaryFile(prefix="localRunRic3", delete=False)
-for testcase in testcases:
-  for group in cfg:
-    for cmd in group:
-      for arg in cmd:
-        arg = arg.replace("TESTCASE", testcase)
-        tmp.write(arg.encode())
-        tmp.write(b"\0")
+for testcase, group in groups:
+  for cmd in group:
+    for arg in cmd:
+      arg = arg.replace("TESTCASE", testcase)
+      tmp.write(arg.encode())
       tmp.write(b"\0")
     tmp.write(b"\0")
+  tmp.write(b"\0")
 tmp.close()
 
 if (args.listen_addr is None) != (args.listen_port is None):
   sys.exit("--listen-addr and --listen-port must be specified together")
 if args.listen_addr is None:
   os.execv(
-    str(run_info),
+    str(batchrunner),
     [
-      str(run_info),
+      str(batchrunner),
       "local",
       "-w", str(args.workers),
       "-t", str(args.timeout),
@@ -189,7 +189,7 @@ if args.listen_addr is None:
     ],
   )
 
-submit_argv = [str(run_info), "submit", args.listen_addr, args.listen_port, tmp.name]
+submit_argv = [str(batchrunner), "submit", args.listen_addr, args.listen_port, tmp.name]
 if args.secret is not None:
   submit_argv.append(args.secret)
-os.execv(str(run_info), submit_argv)
+os.execv(str(batchrunner), submit_argv)

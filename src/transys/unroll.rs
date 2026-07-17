@@ -211,42 +211,4 @@ impl TransysUnroll {
         assert!(self.ts.justice.is_empty());
         ts
     }
-
-    pub fn internal_signals_with_full_prime(&self) -> Transys {
-        assert!(self.num_unroll == 1);
-        let keep = self.ts.rel.fanouts(self.ts.input());
-        let mut rel = Arc::new((*self.ts.rel).clone());
-
-        let mut input = self.ts.input.clone();
-        input.extend(self.ts.input().map(|v| self.var_next(v, 1)));
-        let mut constraint = self.ts.constraint.clone();
-        constraint.extend(self.lits_next(self.ts.constraint(), 1));
-
-        for old_v in VarRange::new_inclusive(Var(1), self.ts.rel.max_var()) {
-            let v = self.var_next(old_v, 1);
-            if v <= rel.max_var() && !rel.clauses_of_var(v).is_empty() {
-                continue;
-            }
-            let cls = self.ts.rel.clauses_of_var(old_v);
-            let cls: Vec<LitVec> = cls.map(|c| self.lits_next(c, 1).collect()).collect();
-            Arc::get_mut(&mut rel).unwrap().add_rel(v, &cls);
-        }
-
-        assert!(self.ts.justice.is_empty());
-        let bad: LitVec = self.lits_next(&self.ts.bad, 1).collect();
-        let mut ts = Transys {
-            input,
-            bad,
-            constraint,
-            rel,
-            ..Default::default()
-        };
-        for v in VarRange::new_inclusive(Var::new(1), self.ts.max_var()) {
-            if !keep.contains(&v) {
-                ts.add_latch(v, self.ts.init(v), self.lit_next(v.lit(), 1));
-            }
-        }
-
-        ts
-    }
 }

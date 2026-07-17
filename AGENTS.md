@@ -782,11 +782,12 @@ Preprocessing rewrites variables. `Restore` maps proofs and witnesses back to th
 Portfolio-style benchmark are run by the scripts in `./tools`.
 `tools/run-ric3.py` expands presets such as `all-portfolio`,
 `ic3Only-portfolio`, `ctgDuel-portfolio`, and `kind-portfolio` into groups of
-`ric3 check ...` commands that can run concurrently under `tools/run-info`.
+`ric3 check ...` commands that can run concurrently under `tools/batchrunner`.
 
 ```sh
 # Compile the portfolio runner first
-cc -O2 tools/run-*.c -o tools/run-info -lnuma
+cc -O2 -pthread tools/batchrunner.c tools/batchrunner-main.c \
+  -o tools/batchrunner -lnuma
 # Default IC3:
 ric3 check model.aig ic3
 # No preprocessing and no CTG, for e.g. models taking too long to preprocess:

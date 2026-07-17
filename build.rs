@@ -12,10 +12,13 @@ fn main() -> io::Result<()> {
 
     let mut cadical = Config::new("src/cadical");
     if target_os == "windows" && target_env == "gnu" {
+        cadical.define("CMAKE_C_COMPILER", "x86_64-w64-mingw32-gcc");
         cadical.define("CMAKE_CXX_COMPILER", "x86_64-w64-mingw32-g++");
         cadical.define("CMAKE_SYSTEM_NAME", "Windows");
     } else {
+        cadical.define("CMAKE_C_COMPILER", "clang");
         cadical.define("CMAKE_CXX_COMPILER", "clang++");
+        cadical.define("CMAKE_C_FLAGS", "-flto");
         cadical.define("CMAKE_CXX_FLAGS", "-flto");
     }
     cadical.define("CMAKE_BUILD_TYPE", "Release");

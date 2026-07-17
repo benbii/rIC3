@@ -5,13 +5,23 @@ using namespace CaDiCaL;
 extern "C" {
 void *cadical_solver_new()
 {
-	return new Solver();
+	Solver *slv = new Solver();
+	// rIC3 assigns stable external variable IDs and can add variables after a
+	// solve.  CaDiCaL 3's factor/BVA pass may claim those IDs internally.
+	slv->set("factor", 0);
+	return slv;
 }
 
 void cadical_solver_free(void *s)
 {
 	Solver *slv = (Solver *)s;
 	delete slv;
+}
+
+int cadical_solver_declare_more_variables(void *s, int count)
+{
+	Solver *slv = (Solver *)s;
+	return slv->declare_more_variables(count);
 }
 
 void cadical_solver_add_clause(void *s, int *clause, int len)

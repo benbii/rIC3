@@ -17,7 +17,7 @@ add_library(satif-kissat
   ${S}propinitially.c ${S}proprobe.c ${S}propsearch.c ${S}queue.c ${S}reduce.c
   ${S}reluctant.c ${S}reorder.c ${S}rephase.c ${S}report.c ${S}resize.c
   ${S}resolve.c ${S}restart.c ${S}search.c ${S}shrink.c ${S}smooth.c ${S}sort.c
-  ${S}stack.c ${S}statistics.c ${S}strengthen.c ${S}substitute.c ${S}sweep.c
+  ${S}statistics.c ${S}strengthen.c ${S}substitute.c ${S}sweep.c
   ${S}terminate.c ${S}tiers.c ${S}trail.c ${S}transitive.c ${S}utilities.c
   ${S}vector.c ${S}vivify.c ${S}walk.c ${S}warmup.c ${S}watch.c ${S}weaken.c
 )
