@@ -168,6 +168,11 @@ impl IC3 {
             predprop = Some(PredProp::new(uts, cfg.local_proof, cfg.inn, &real_bad));
         }
 
+        // PredProp strengthens IC3 with !bad below. LocalAbs must validate
+        // witnesses against the original transition system, not that strengthening.
+        let localabs_ts =
+            (predprop.is_some() && (cfg.abs_cst || cfg.abs_trans)).then(|| Arc::new((*ts).clone()));
+
         let mut base_cex = None;
         if predprop.is_some() {
             let mut slv = ts.new_solver();
@@ -245,7 +250,11 @@ impl IC3 {
             lift: TsLift::new(TransysUnroll::new(Arc::clone(&ts))),
             obligations,
             frame: frames,
-            localabs: LocalAbs::new(Arc::clone(&ts), cfg.abs_cst, cfg.abs_trans),
+            localabs: LocalAbs::new(
+                localabs_ts.unwrap_or_else(|| Arc::clone(&ts)),
+                cfg.abs_cst,
+                cfg.abs_trans,
+            ),
             ts,
             ots,
             rst,
