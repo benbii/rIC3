@@ -98,12 +98,9 @@ impl VarState {
     #[inline]
     pub(super) fn insert_domain(&mut self, var: Var) -> bool {
         let state = &mut self.state[var].0;
-        if *state & IN_DOMAIN != 0 {
-            false
-        } else {
-            *state |= IN_DOMAIN;
-            true
-        }
+        let was_in_domain = *state & IN_DOMAIN != 0;
+        *state |= IN_DOMAIN;
+        !was_in_domain
     }
 
     #[inline]

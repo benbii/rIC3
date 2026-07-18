@@ -2,21 +2,38 @@ use super::{DagCnfSolver, state::VarState};
 use logicrs::{DagCnf, Lit, LitVec, Var};
 use std::{ops::Index, slice};
 
-#[derive(Clone)]
 pub struct Domain {
     set: Vec<Var>,
     pub fixed: u32,
 }
 
+impl Clone for Domain {
+    fn clone(&self) -> Self {
+        let mut set = Vec::with_capacity(self.set.capacity());
+        set.extend_from_slice(&self.set);
+        Self {
+            set,
+            fixed: self.fixed,
+        }
+    }
+}
+
 impl Domain {
-    pub fn new(state: &mut VarState) -> Self {
+    pub fn new(max_var: Var, state: &mut VarState) -> Self {
         let mut res = Self {
-            set: Vec::new(),
+            set: Vec::with_capacity(usize::from(max_var) + 2),
             fixed: 0,
         };
         res.insert(Var::CONST, state);
         res.fixed = 1;
         res
+    }
+
+    pub fn reserve(&mut self, max_var: Var) {
+        let required = usize::from(max_var) + 2;
+        if self.set.capacity() < required {
+            self.set.reserve_exact(required - self.set.len());
+        }
     }
 
     pub fn reset(&mut self, state: &mut VarState) {
@@ -28,8 +45,13 @@ impl Domain {
 
     #[inline]
     pub fn insert(&mut self, var: Var, state: &mut VarState) {
-        if state.insert_domain(var) {
-            self.set.push(var);
+        let inserted = usize::from(state.insert_domain(var));
+        let len = self.set.len();
+        debug_assert!(len < self.set.capacity());
+        // Construction, growth, and cloning keep one slot for this unconditional write.
+        unsafe {
+            self.set.as_mut_ptr().add(len).write(var);
+            self.set.set_len(len + inserted);
         }
     }
 
@@ -93,6 +115,36 @@ impl Index<u32> for Domain {
     #[inline]
     fn index(&self, index: u32) -> &Self::Output {
         &self.set[index as usize]
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn insertion_keeps_a_spare_slot() {
+        let max_var = Var::new(3);
+        let mut state = VarState::new_with(max_var);
+        let mut domain = Domain::new(max_var, &mut state);
+
+        for raw in 1..=usize::from(max_var) {
+            domain.insert(Var::new(raw), &mut state);
+        }
+        assert_eq!(domain.set.len(), usize::from(max_var) + 1);
+        assert!(domain.set.len() < domain.set.capacity());
+
+        domain.insert(Var::CONST, &mut state);
+        assert_eq!(domain.set.len(), usize::from(max_var) + 1);
+
+        let cloned = domain.clone();
+        assert!(cloned.set.len() < cloned.set.capacity());
+
+        let next_var = Var::new(usize::from(max_var) + 1);
+        state.reserve(next_var);
+        domain.reserve(next_var);
+        domain.insert(next_var, &mut state);
+        assert!(domain.set.len() < domain.set.capacity());
     }
 }
 

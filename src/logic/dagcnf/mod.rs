@@ -123,7 +123,15 @@ impl DagCnf {
     #[inline]
     pub fn dep(&self, n: Var) -> &[Var] {
         let (start, len) = self.dep_pos[n];
-        &self.dep_dat[start as usize..(start + len) as usize]
+        #[cfg(debug_assertions)]
+        {
+            &self.dep_dat[start as usize..(start + len) as usize]
+        }
+        #[cfg(not(debug_assertions))]
+        unsafe {
+            let start = start as usize;
+            self.dep_dat.get_unchecked(start..start + len as usize)
+        }
     }
 
     pub fn add_rel(&mut self, n: Var, rel: &[LitVec]) {

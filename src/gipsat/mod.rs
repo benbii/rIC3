@@ -51,7 +51,7 @@ impl DagCnfSolver {
     pub fn new(dc: Arc<DagCnf>) -> Self {
         let constrain_act = Var::new(dc.num_var());
         let mut state = VarState::new_with(constrain_act);
-        let domain = Domain::new(&mut state);
+        let domain = Domain::new(constrain_act, &mut state);
         let mut solver = Self {
             dc: dc.clone(),
             cdb: Default::default(),
@@ -292,6 +292,7 @@ impl Satif for DagCnfSolver {
         self.vsids.reserve(var);
         self.analyze.reserve(var);
         self.unsat_core.reserve(var);
+        self.domain.reserve(var);
         self.constrain_act = var;
         v
     }
