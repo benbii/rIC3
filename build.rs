@@ -1,14 +1,69 @@
 use cmake::Config;
 use std::{env, io, path::PathBuf, process::Command};
 
+fn rust_codegen_options() -> Vec<String> {
+    let flags: Vec<String> = env::var("CARGO_ENCODED_RUSTFLAGS")
+        .ok()
+        .filter(|flags| !flags.is_empty())
+        .map(|flags| flags.split('\x1f').map(str::to_owned).collect())
+        .or_else(|| {
+            env::var("RUSTFLAGS")
+                .ok()
+                .map(|flags| flags.split_ascii_whitespace().map(str::to_owned).collect())
+        })
+        .unwrap_or_default();
+
+    let mut options = Vec::new();
+    let mut flags = flags.into_iter();
+    while let Some(flag) = flags.next() {
+        if flag == "-C" || flag == "--codegen" {
+            if let Some(option) = flags.next() {
+                options.push(option);
+            }
+        } else if let Some(option) = flag.strip_prefix("-C") {
+            if !option.is_empty() {
+                options.push(option.to_owned());
+            }
+        } else if let Some(option) = flag.strip_prefix("--codegen=") {
+            options.push(option.to_owned());
+        }
+    }
+    options
+}
+
+fn sat_compiler_flags() -> String {
+    let mut flags = vec!["-flto".to_owned()];
+    for option in rust_codegen_options() {
+        if let Some(cpu) = option.strip_prefix("target-cpu=") {
+            flags.push(format!("-march={cpu}"));
+        } else if let Some(features) = option.strip_prefix("target-feature=") {
+            flags.extend(features.split(',').filter_map(|feature| {
+                let feature = feature.trim();
+                feature
+                    .strip_prefix('+')
+                    .map(|feature| format!("-m{feature}"))
+                    .or_else(|| {
+                        feature
+                            .strip_prefix('-')
+                            .map(|feature| format!("-mno-{feature}"))
+                    })
+            }));
+        }
+    }
+    flags.join(" ")
+}
+
 fn main() -> io::Result<()> {
     println!("cargo::rustc-check-cfg=cfg(bitwuzla_stub)");
+    println!("cargo:rerun-if-env-changed=CARGO_ENCODED_RUSTFLAGS");
+    println!("cargo:rerun-if-env-changed=RUSTFLAGS");
     println!("cargo:rerun-if-changed=src/cadical");
     println!("cargo:rerun-if-changed=src/kissat");
     println!("cargo:rerun-if-changed=deps/cadical");
     println!("cargo:rerun-if-changed=deps/kissat");
     let target_os = env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
     let target_env = env::var("CARGO_CFG_TARGET_ENV").unwrap_or_default();
+    let sat_compiler_flags = sat_compiler_flags();
 
     let mut cadical = Config::new("src/cadical");
     if target_os == "windows" && target_env == "gnu" {
@@ -18,8 +73,8 @@ fn main() -> io::Result<()> {
     } else {
         cadical.define("CMAKE_C_COMPILER", "clang");
         cadical.define("CMAKE_CXX_COMPILER", "clang++");
-        cadical.define("CMAKE_C_FLAGS", "-flto");
-        cadical.define("CMAKE_CXX_FLAGS", "-flto");
+        cadical.define("CMAKE_C_FLAGS", &sat_compiler_flags);
+        cadical.define("CMAKE_CXX_FLAGS", &sat_compiler_flags);
     }
     cadical.define("CMAKE_BUILD_TYPE", "Release");
     let cadical = cadical.build();
@@ -34,7 +89,7 @@ fn main() -> io::Result<()> {
         kissat.define("CMAKE_SYSTEM_NAME", "Windows");
     } else {
         kissat.define("CMAKE_C_COMPILER", "clang");
-        kissat.define("CMAKE_C_FLAGS", "-flto");
+        kissat.define("CMAKE_C_FLAGS", &sat_compiler_flags);
     }
     kissat.define("CMAKE_BUILD_TYPE", "Release");
     let kissat = kissat.build();
