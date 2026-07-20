@@ -121,6 +121,7 @@ impl Index<u32> for Domain {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Arc;
 
     #[test]
     fn insertion_keeps_a_spare_slot() {
@@ -145,6 +146,37 @@ mod tests {
         domain.reserve(next_var);
         domain.insert(next_var, &mut state);
         assert!(domain.set.len() < domain.set.capacity());
+    }
+
+    #[test]
+    fn constant_stays_in_the_domain_across_temporary_domains() {
+        let mut dc = DagCnf::new();
+        let x = dc.new_var();
+        let n = dc.new_var();
+        dc.add_rel(n, &[LitVec::from([n.lit(), x.lit(), Lit::constant(false)])]);
+        assert_eq!(dc.dep(n), &[x]);
+
+        let mut solver = DagCnfSolver::new(Arc::new(dc));
+        assert!(solver.domain_has(Var::CONST));
+
+        solver.set_domain([n.lit(), x.lit()]);
+        assert!(solver.domain_has(Var::CONST));
+        assert_eq!(solver.domain[0], Var::CONST);
+        assert!(solver.domain.fixed >= 1);
+        assert_eq!(
+            solver.solve_full(&[!n.lit(), !x.lit()], &[], &[], u32::MAX),
+            Some(false)
+        );
+        assert_eq!(
+            solver.solve_full(&[!n.lit(), x.lit()], &[], &[], u32::MAX),
+            Some(true)
+        );
+        assert!(solver.domain_has(Var::CONST));
+
+        solver.unset_domain();
+        solver.reset();
+        assert!(solver.domain_has(Var::CONST));
+        assert_eq!(solver.domain.len(), solver.domain.fixed);
     }
 }
 
@@ -198,7 +230,9 @@ impl DagCnfSolver {
         let mut now = 0;
         while now < self.domain.fixed {
             let d = self.domain[now];
-            if self.state.value(d).is_none() {
+            if d.is_constant() {
+                now += 1;
+            } else if self.state.value(d).is_none() {
                 self.vsids.push(d, &mut self.state);
                 now += 1;
             } else {

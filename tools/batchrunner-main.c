@@ -230,6 +230,7 @@ static int run_daemon_main(int argc, const char *argv[]) {
 
   char *groupbuf = malloc(32768);
   assert(groupbuf);
+  size_t outstanding = 0;
   for (;;) {
     int sock = -1;
     for (struct addrinfo *rp = res; rp; rp = rp->ai_next) {
@@ -242,7 +243,9 @@ static int run_daemon_main(int argc, const char *argv[]) {
     }
     if (sock < 0) {
       for (int i = 0; i < 5; ++i) {
-        (void)drain_finished(small, large);
+        size_t completed = drain_finished(small, large);
+        assert(completed <= outstanding);
+        outstanding -= completed;
         sleep(1);
       }
       continue;
@@ -255,17 +258,17 @@ static int run_daemon_main(int argc, const char *argv[]) {
       goto close_connection;
 
     size_t groupbuf_size = 0;
-    size_t queued = pending_count();
-    size_t headroom = queued >= 2 * nr_worker ? 0 : 2 * nr_worker - queued;
-    int slot = (int)(headroom > nr_worker ? nr_worker : headroom);
+    size_t headroom = outstanding >= nr_worker ? 0 : nr_worker - outstanding;
+    int slot = (int)headroom;
     if (send_exact(sock, &slot, sizeof(slot)) != 0)
       goto close_connection;
     bool paused = slot <= 0;
 
     for (;;) {
-      (void)drain_finished(small, large);
-      queued = pending_count();
-      if (queued >= 2 * nr_worker) {
+      size_t completed = drain_finished(small, large);
+      assert(completed <= outstanding);
+      outstanding -= completed;
+      if (outstanding >= nr_worker) {
         if (!paused) {
           slot = 0;
           if (send_exact(sock, &slot, sizeof(slot)) != 0)
@@ -277,27 +280,26 @@ static int run_daemon_main(int argc, const char *argv[]) {
       }
 
       if (paused) {
-        headroom = 2 * nr_worker - queued;
-        slot = (int)(headroom > nr_worker ? nr_worker : headroom);
+        headroom = nr_worker - outstanding;
+        slot = (int)headroom;
         if (send_exact(sock, &slot, sizeof(slot)) != 0)
           goto close_connection;
         paused = false;
       }
 
-      while (queued < 2 * nr_worker) {
+      while (outstanding < nr_worker) {
         if (memmem(groupbuf, groupbuf_size, "\0\0\0", 4) != NULL)
           goto close_connection;
         const char *next = memmem(groupbuf, groupbuf_size, "\0\0", 3);
         if (!next) break;
         next += 3;
-        (void)run_enqueue_group(groupbuf, (size_t)(next - groupbuf),
-                                   checkpoint, checkpoint_size);
+        outstanding += run_enqueue_group(groupbuf, (size_t)(next - groupbuf),
+                                         checkpoint, checkpoint_size);
         groupbuf_size -= (size_t)(next - groupbuf);
         memmove(groupbuf, next, groupbuf_size);
 
-        queued = pending_count();
-        headroom = queued >= 2 * nr_worker ? 0 : 2 * nr_worker - queued;
-        slot = (int)(headroom > nr_worker ? nr_worker : headroom);
+        headroom = outstanding >= nr_worker ? 0 : nr_worker - outstanding;
+        slot = (int)headroom;
         if (send_exact(sock, &slot, sizeof(slot)) != 0)
           goto close_connection;
         paused = slot <= 0;
@@ -326,7 +328,9 @@ close_connection:
     close(sock);
     puts("connection to server closed");
     for (int i = 0; i < 30; ++i) {
-      (void)drain_finished(small, large);
+      size_t completed = drain_finished(small, large);
+      assert(completed <= outstanding);
+      outstanding -= completed;
       sleep(1);
     }
   }

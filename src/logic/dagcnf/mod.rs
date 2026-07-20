@@ -151,7 +151,7 @@ impl DagCnf {
             self.cnf_dat[pos] = scratch.len() as u32;
             pos += 1;
             for &l in scratch.iter() {
-                deps.insert(l.var());
+                insert_dep(&mut deps, n, l.var());
                 self.cnf_dat[pos] = l.into();
                 pos += 1;
             }
@@ -184,7 +184,7 @@ impl DagCnf {
         self.cnf_dat[begin..pos].sort_unstable();
         debug_assert!(Lit(self.cnf_dat[pos - 1]).var() == nvar);
         for &raw in &self.cnf_dat[begin..pos] {
-            deps.insert(Lit(raw).var());
+            insert_dep(&mut deps, nvar, Lit(raw).var());
         }
         self.finish_rel(nvar, pos, end, deps);
     }
@@ -208,7 +208,7 @@ impl DagCnf {
         self.cnf_dat[begin..pos].sort_unstable();
         debug_assert!(Lit(self.cnf_dat[pos - 1]).var() == nvar);
         for &raw in &self.cnf_dat[begin..pos] {
-            deps.insert(Lit(raw).var());
+            insert_dep(&mut deps, nvar, Lit(raw).var());
         }
         self.finish_rel(nvar, pos, end, deps);
     }
@@ -442,7 +442,7 @@ impl DagCnf {
                 let begin = pos + 1;
                 let cls_end = begin + cls_len;
                 for i in begin..cls_end {
-                    deps.insert(Lit(self.cnf_dat[i]).var());
+                    insert_dep(&mut deps, v, Lit(self.cnf_dat[i]).var());
                 }
                 pos = cls_end;
             }
@@ -538,6 +538,7 @@ impl DagCnf {
     fn finish_rel(&mut self, n: Var, pos: usize, end: usize, mut deps: HashSet<Var>) {
         debug_assert_eq!(pos, end);
         deps.remove(&n);
+        deps.remove(&Var::CONST);
         let dep_start = self.dep_dat.len();
         self.dep_dat.extend(deps);
         let dep_len = self.dep_dat.len() - dep_start;
@@ -556,10 +557,17 @@ impl DagCnf {
         self.cnf_dat[*pos] = N as u32;
         *pos += 1;
         for l in cls {
-            deps.insert(l.var());
+            insert_dep(deps, n, l.var());
             self.cnf_dat[*pos] = l.into();
             *pos += 1;
         }
+    }
+}
+
+#[inline]
+fn insert_dep(deps: &mut HashSet<Var>, owner: Var, dep: Var) {
+    if dep != owner && !dep.is_constant() {
+        deps.insert(dep);
     }
 }
 
@@ -664,6 +672,36 @@ mod tests {
         for cls in dc.clauses_of_var(n.var()) {
             assert!(cls.iter().all(|l| l.var() != y.var()));
         }
+    }
+
+    #[test]
+    fn constant_is_not_a_dependency() {
+        let x = Var(1).lit();
+        let n = Var(2).lit();
+        let mut dc = DagCnf::new();
+        dc.add_rel(n.var(), &[LitVec::from([n, x, Lit::constant(false)])]);
+
+        assert_eq!(dc.dep(n.var()), &[x.var()]);
+    }
+
+    #[test]
+    fn replace_does_not_introduce_a_constant_dependency() {
+        let x = Var(1).lit();
+        let y = Var(2).lit();
+        let n = Var(3).lit();
+        let mut dc = DagCnf::new();
+        dc.add_cnf_and(n, &[x, y]);
+
+        let mut map = VarLMap::new();
+        map.insert_lit(y, Lit::constant(true));
+        dc.replace(&map);
+
+        assert_eq!(dc.dep(n.var()), &[x.var()]);
+        assert!(
+            dc.clauses_of_var(n.var())
+                .flatten()
+                .any(|l| l.is_constant(true))
+        );
     }
 
     #[test]
