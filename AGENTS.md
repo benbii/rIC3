@@ -112,9 +112,8 @@ Good cases:
 
 Bad cases:
 
-- Tiny bug-finding runs where preprocessing time dominates.
+- Tiny runs where preprocessing time dominates.
 - Designs where random/reachable simulation produces many false candidates.
-- Benchmark ablations where you need raw model behavior.
 
 ### Phase 3: `frts`
 
@@ -135,7 +134,7 @@ Good cases:
 
 Bad cases:
 
-- Very shallow unsafe instances, where BMC or default IC3 would find the bug before preprocessing pays back.
+- Very shallow instances, where BMC or default IC3 terminate before preprocessing pays back.
 - Instances where the candidate space is huge and few equivalences are real.
 
 ## Bit-Level IC3
@@ -276,7 +275,6 @@ Good cases:
 Bad cases:
 
 - Tiny cases where the activity signal has no time to become meaningful.
-- Runs where `--drop-po` behavior is desired. Dynamic mode requires `--drop-po=false`.
 
 MAB mode:
 
@@ -315,8 +313,6 @@ Good cases:
 Bad cases:
 
 - Short runs, shallow bugs, and tiny models.
-- Determinism-sensitive experiments unless `--rseed` and all benchmark context are fixed.
-- Any run that still wants `--drop-po=true`.
 
 ### Counterexample to Propagation, CTP
 
@@ -376,7 +372,6 @@ Good cases:
 Bad cases:
 
 - Models where adding internal signals explodes the state space more than it helps.
-- Runs using local abstraction: `--inn` is explicitly incompatible with `--abs-cst` and `--abs-trans`.
 - Very small models, where the overhead is unnecessary.
 
 Useful recipes:
@@ -425,8 +420,6 @@ Good cases:
 Bad cases:
 
 - Proofs needing most of the design from the start.
-- Runs with `--inn`, which is incompatible.
-- Debugging proof production. Abstraction changes the search shape and may make traces less direct.
 
 Useful recipes:
 
@@ -455,8 +448,6 @@ Good cases:
 
 Bad cases:
 
-- Evaluating CTG, EXCTG, dynamic, or MAB behavior. Those modes need persistent obligations and are incompatible or practically paired with `--drop-po=false`.
-- Research/debugging runs where you want textbook obligation handling.
 - Cases where a dropped branch is exactly the one that would have yielded the decisive lemma.
 
 Useful recipes:
@@ -495,7 +486,6 @@ Good cases:
 Bad cases:
 
 - Simple bad states where direct `get_bad` is already cheap.
-- Debugging the standard IC3 loop, because this changes the shape of frontier queries.
 
 Useful recipe:
 
@@ -529,7 +519,6 @@ Good cases:
 
 Bad cases:
 
-- Ablations where MIC order must be neutral.
 - Rare cases where parent resemblance over-biases MIC away from a smaller unrelated lemma.
 
 ### Miscellaneous IC3 Notes
@@ -539,7 +528,7 @@ Bad cases:
 - `Frame::trivial_contained` avoids adding or reblocking cubes already subsumed by known lemmas.
 - `add_lemma` removes subsumed lemmas in earlier frames and can detect an empty frame as proof.
 - `propagate_to_inf` tries to move frontier lemmas to an infinity frame and can recursively prove the CTP needed to do so.
-- `local-proof` is present but marked buggy in source. Do not build new workflows around it without first fixing/testing it.
+- `local-proof` is present but marked buggy in source.
 
 ## BMC
 
@@ -564,10 +553,9 @@ Current flags:
 
 Practical guidance:
 
-- The useful knobs are `--kissat` and the depth bound. The code calls the depth cap `--end`; there is no literal `--depth` flag in this checkout.
-- `--kissat` is often the better BMC choice for raw bug hunting.
+- `--kissat` is often the better BMC choice for large step raw bug hunting.
 - `--step` and `--dyn-step` are benchmark throughput knobs. They can skip the first failing depth if set too coarsely, although the engine reports the depth it actually checked.
-- BMC proves nothing beyond "no counterexample up to checked bound"; it returns `UNKNOWN(bound)` after the bound is exhausted.
+- Usually keep `--end` unset, i.e., loop till counterexample found.
 
 Good cases:
 
@@ -578,13 +566,13 @@ Good cases:
 Bad cases:
 
 - Safe instances.
-- Deep bugs unless the bound is known and affordable.
+- Deep bugs; IC3 can skip steps.
 
 Useful recipes:
 
 ```sh
-ric3 check model.aig bmc --kissat --end 50
-ric3 check model.aig bmc --kissat --end 500 --step 10
+ric3 check model.aig bmc --kissat
+ric3 check model.aig bmc --kissat --step 10
 ```
 
 ## K-Induction
@@ -608,7 +596,6 @@ Current flags:
 
 Practical guidance:
 
-- The useful knob is `--simple-path`, plus `--end` as a sanity cap.
 - `--simple-path` adds pairwise disequality constraints between the new state and all earlier states using XOR helper variables. This can make non-inductive properties inductive by ruling out loops.
 - Simple path is expensive: roughly O(k^2 * number_of_latches) extra structure over time.
 - `--skip-bmc` is only for special experiments. Normally keep the base check.
@@ -617,7 +604,7 @@ Good cases:
 
 - Small to medium systems where the property is close to K-inductive.
 - Counter-like systems where simple-path constraints eliminate recurrence artifacts.
-- Quick proof attempts before full IC3, when a small `--end` is enough.
+- Quick proof attempts where full IC3 is slower than a small `k`.
 
 Bad cases:
 
@@ -627,7 +614,8 @@ Bad cases:
 Useful recipe:
 
 ```sh
-ric3 check model.aig kind --simple-path --end 200
+ric3 check model.aig kind --simple-path
+ric3 check model.aig kind
 ```
 
 ## Danger Zones
@@ -804,7 +792,7 @@ ric3 check model.aig ic3 --inn --ctp
 ric3 check model.aig ic3 --abs-cst
 ric3 check model.aig ic3 --abs-cst --abs-trans
 # K-induction with simple path:
-ric3 check model.aig kind --simple-path --end 200
+ric3 check model.aig kind --simple-path
 # Shallow bug hunting:
 ric3 check model.aig bmc
 ```

@@ -18,6 +18,12 @@ unsafe extern "C" {
     fn cadical_set_seed(s: *mut c_void, seed: c_int);
 }
 
+const CADICAL_MAX_SEED: u64 = 2_000_000_000;
+
+fn cadical_seed(seed: u64) -> c_int {
+    (seed % (CADICAL_MAX_SEED + 1)) as c_int
+}
+
 fn lit_to_cadical_lit(lit: &Lit) -> i32 {
     let mut res = Into::<usize>::into(lit.var()) as i32 + 1;
     if !lit.polarity() {
@@ -166,7 +172,7 @@ impl Satif for CaDiCaL {
     }
 
     fn set_seed(&mut self, seed: u64) {
-        unsafe { cadical_set_seed(self.solver, seed as _) }
+        unsafe { cadical_set_seed(self.solver, cadical_seed(seed)) }
     }
 }
 
@@ -192,6 +198,14 @@ impl Default for CaDiCaL {
     fn default() -> Self {
         Self::new()
     }
+}
+
+#[test]
+fn seed_conversion_stays_in_range() {
+    assert_eq!(cadical_seed(0), 0);
+    assert_eq!(cadical_seed(CADICAL_MAX_SEED), 2_000_000_000);
+    assert_eq!(cadical_seed(CADICAL_MAX_SEED + 1), 0);
+    assert_eq!(cadical_seed(u64::MAX), 486_179_583);
 }
 
 #[test]

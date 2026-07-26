@@ -11,6 +11,10 @@ unsafe extern "C" {
     fn kissat_terminate(s: *mut c_void);
 }
 
+fn kissat_seed(seed: u64) -> c_int {
+    (seed & i32::MAX as u64) as c_int
+}
+
 fn lit_to_kissat_lit(lit: &Lit) -> i32 {
     let mut res = Into::<usize>::into(lit.var()) as i32 + 1;
     if !lit.polarity() {
@@ -95,7 +99,7 @@ impl Satif for Kissat {
             kissat_set_option(
                 self.solver,
                 CString::new("seed").unwrap().as_ptr() as *mut _,
-                seed as i32,
+                kissat_seed(seed),
             )
         };
     }
@@ -118,6 +122,15 @@ impl Default for Kissat {
         Self::new()
     }
 }
+
+#[test]
+fn seed_conversion_stays_in_range() {
+    assert_eq!(kissat_seed(0), 0);
+    assert_eq!(kissat_seed(i32::MAX as u64), i32::MAX);
+    assert_eq!(kissat_seed(i32::MAX as u64 + 1), 0);
+    assert_eq!(kissat_seed(u64::MAX), i32::MAX);
+}
+
 #[test]
 fn test() {
     use logicrs::LitVec;
