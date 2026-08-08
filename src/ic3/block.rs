@@ -1,4 +1,5 @@
 use super::solver::{inductive, inductive_core};
+use crate::Lit;
 use crate::ic3::mab::balanced_params;
 use crate::ic3::{IC3, mic::DropVarParameter, proofoblig::ProofObligation};
 use log::debug;
@@ -23,6 +24,7 @@ impl IC3 {
     }
 
     pub fn block(&mut self) -> BlockResult {
+        let mut assump = LitVec::new();
         while let Some(mut po) = self.obligations.pop(self.level()) {
             const MAX_ACT_BEFORE_DROP: f64 = 20.0;
             // intersects with init; failed if on frame 0
@@ -58,9 +60,14 @@ impl IC3 {
                 continue;
             }
 
-            let (blocked, ordered_cube) = self.blocked_with_ordered(po.frame, &po.state, false);
+            let mut ordered_cube = po.state.as_litvec().clone();
+            self.activity.sort_by_activity(&mut ordered_cube, false);
+            let solver_idx = po.frame - 1;
+            assump.clear();
+            assump.extend(ordered_cube.iter().map(|l| self.ts.next(*l)));
+            let blocked = !self.solvers[solver_idx].solve(&assump);
             if !blocked {
-                let (model, inputs) = self.get_pred(po.frame, true);
+                let (model, inputs) = self.get_pred(po.frame, &assump, true);
                 self.obligations.add(ProofObligation::new(
                     po.frame - 1,
                     LitOrdVec::new(model),
@@ -110,11 +117,22 @@ impl IC3 {
         BlockResult::Success
     }
 
+    pub(super) fn trivial_block(
+        &mut self,
+        frame: usize,
+        lemma: LitVec,
+        constraint: &[Lit],
+        parameter: DropVarParameter,
+    ) -> bool {
+        let mut limit = parameter.limit;
+        self.trivial_block_rec(frame, lemma, constraint, &mut limit, parameter)
+    }
+
     fn trivial_block_rec(
         &mut self,
         frame: usize,
         lemma: LitVec,
-        constraint: &[LitVec],
+        constraint: &[Lit],
         limit: &mut usize,
         parameter: DropVarParameter,
     ) -> bool {
@@ -128,41 +146,39 @@ impl IC3 {
             return false;
         }
         *limit -= 1;
+        let mut cube_cst = LitVec::new_with_cap(lemma.len());
+        let mut ordcube = LitVec::new_with_cap(lemma.len());
+        let mut assump = LitVec::new_with_cap(lemma.len());
         loop {
-            let (blocked, ordered_cube) = self.blocked_with_ordered_with_constrain(
-                frame,
-                &lemma,
-                false,
-                true,
-                constraint.to_vec(),
-            );
-            if blocked {
-                let mut mic =
-                    inductive_core(&mut self.solvers[frame - 1], &self.ts, &ordered_cube).unwrap();
+            ordcube.clear();
+            ordcube.extend_from_slice(&lemma);
+            self.activity.sort_by_activity(&mut ordcube, false);
+            assump.clear();
+            assump.extend(ordcube.iter().map(|l| self.ts.next(*l)));
+            cube_cst.clear();
+            cube_cst.extend(ordcube.iter().map(|l| !*l));
+            let slv = &mut self.solvers[frame - 1];
+            let allcst: &[&[Lit]] = if constraint.is_empty() {
+                &[cube_cst.as_slice()]
+            } else {
+                &[constraint, &cube_cst]
+            };
+            let core = (!slv.solve_with_constraint(&assump, &allcst))
+                    .then(|| inductive_core(slv, &self.ts, &ordcube).unwrap());
+
+            if let Some(mut mic) = core {
                 mic = self.mic(frame, mic, constraint, parameter);
                 let (frame, mic) = self.push_lemma(frame, mic);
                 self.add_lemma(frame - 1, mic, false, None);
                 return true;
-            } else {
-                if *limit == 0 {
-                    return false;
-                }
-                let model = self.get_pred(frame, false).0;
-                if !self.trivial_block_rec(frame - 1, model, constraint, limit, parameter) {
-                    return false;
-                }
+            }
+            if *limit == 0 {
+                return false;
+            }
+            let model = self.get_pred(frame, &assump, false).0;
+            if !self.trivial_block_rec(frame - 1, model, constraint, limit, parameter) {
+                return false;
             }
         }
-    }
-
-    pub fn trivial_block(
-        &mut self,
-        frame: usize,
-        lemma: LitVec,
-        constraint: &[LitVec],
-        parameter: DropVarParameter,
-    ) -> bool {
-        let mut limit = parameter.limit;
-        self.trivial_block_rec(frame, lemma, constraint, &mut limit, parameter)
     }
 }

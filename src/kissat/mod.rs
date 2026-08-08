@@ -1,4 +1,4 @@
-use logicrs::{Lit, LitVec, Var, satif::Satif};
+use logicrs::{Lit, Var, satif::Satif};
 use std::ffi::{CString, c_char, c_int, c_void};
 
 unsafe extern "C" {
@@ -68,11 +68,8 @@ impl Satif for Kissat {
         }
     }
 
-    fn solve_with_constraint(&mut self, assumps: &[Lit], constraint: &[LitVec]) -> bool {
-        self.try_solve(assumps, constraint).unwrap()
-    }
-
-    fn try_solve(&mut self, assumps: &[Lit], constraint: &[LitVec]) -> Option<bool> {
+    /// Kissat does not support solving with constraints
+    fn try_solve(&mut self, assumps: &[Lit], constraint: &[&[Lit]]) -> Option<bool> {
         debug_assert!(assumps.is_empty());
         debug_assert!(constraint.is_empty());
         match unsafe { kissat_solve(self.solver) } {
@@ -133,15 +130,14 @@ fn seed_conversion_stays_in_range() {
 
 #[test]
 fn test() {
-    use logicrs::LitVec;
     let mut solver = Kissat::new();
     let lit0: Lit = solver.new_var().into();
     let lit1: Lit = solver.new_var().into();
     let lit2: Lit = solver.new_var().into();
-    solver.add_clause(&LitVec::from([lit0, !lit2]));
-    solver.add_clause(&LitVec::from([lit1, !lit2]));
-    solver.add_clause(&LitVec::from([!lit0, !lit1, lit2]));
-    solver.add_clause(&LitVec::from([lit2]));
+    solver.add_clause(&[lit0, !lit2]);
+    solver.add_clause(&[lit1, !lit2]);
+    solver.add_clause(&[!lit0, !lit1, lit2]);
+    solver.add_clause(&[lit2]);
     if solver.solve(&[]) {
         assert!(solver.sat_value(lit0).unwrap());
         assert!(solver.sat_value(lit1).unwrap());

@@ -169,7 +169,7 @@ impl DagCnfSolver {
         &mut self,
         domain: &[Var],
         assump: &[Lit],
-        constraint: &[LitVec],
+        constraint: &[&[Lit]],
         bucket: bool,
     ) -> bool {
         self.backtrack(0, self.temporary_domain);
@@ -177,7 +177,7 @@ impl DagCnfSolver {
         self.prepared_vsids = false;
 
         for c in constraint {
-            let mut c = LitVec::from(c);
+            let mut c = LitVec::from(*c);
             c.push(!self.constrain_act.lit());
             if let Some(c) = self.simplify_clause(&c) {
                 assert!(!c.is_empty());
@@ -207,7 +207,7 @@ impl DagCnfSolver {
     pub fn solve_full(
         &mut self,
         assump: &[Lit],
-        constraint: &[LitVec],
+        constraint: &[&[Lit]],
         domain: &[Var],
         restart_limit: u32,
     ) -> Option<bool> {
@@ -242,19 +242,6 @@ impl DagCnfSolver {
         res
     }
 
-    pub fn solve_with_restart_limit(
-        &mut self,
-        assumps: &[Lit],
-        constraint: &[LitVec],
-        limit: u32,
-    ) -> Option<bool> {
-        self.solve_full(assumps, constraint, &[], limit)
-    }
-
-    pub fn solve_with_domain(&mut self, assumps: &[Lit], domain: &[Var]) -> bool {
-        self.solve_full(assumps, &[], domain, u32::MAX).unwrap()
-    }
-
     pub fn minimal_premise(
         &mut self,
         assump: &[Lit],
@@ -262,7 +249,7 @@ impl DagCnfSolver {
         consequent: &[Lit],
     ) -> Option<LitVec> {
         let assump = LitVec::from_iter(assump.iter().chain(premise.iter()).copied());
-        if self.solve_with_constraint(&assump, &[LitVec::from(consequent)]) {
+        if self.solve_with_constraint(&assump, &[consequent]) {
             return None;
         }
         Some(
@@ -314,7 +301,7 @@ impl Satif for DagCnfSolver {
         self.solve_full(assumps, &[], &[], u32::MAX).unwrap()
     }
 
-    fn solve_with_constraint(&mut self, assumps: &[Lit], constraint: &[LitVec]) -> bool {
+    fn solve_with_constraint(&mut self, assumps: &[Lit], constraint: &[&[Lit]]) -> bool {
         self.solve_full(assumps, constraint, &[], u32::MAX).unwrap()
     }
 

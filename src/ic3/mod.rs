@@ -93,7 +93,6 @@ impl Default for IC3Config {
 pub struct IC3 {
     ts: Arc<Transys>,
     solvers: Vec<DagCnfSolver>,
-    last_assump: Vec<LitVec>,
     inf_solver: DagCnfSolver,
     lift: TsLift,
     frame: Frames,
@@ -130,7 +129,6 @@ impl IC3 {
         }
         let solver = self.inf_solver.clone();
         self.solvers.push(solver);
-        self.last_assump.push(LitVec::new());
         self.frame.push(Frame::new());
     }
 }
@@ -207,7 +205,6 @@ impl IC3 {
         }
 
         let mut solvers = Vec::new();
-        let mut last_assump = Vec::new();
         let mut obligations = ProofObligationQueue::new();
         let frames = if let Some(po) = base_cex {
             obligations.add(po);
@@ -236,7 +233,6 @@ impl IC3 {
                     .add_init(i.var(), Lit::constant(i.polarity()));
             }
             solvers.push(solver);
-            last_assump.push(LitVec::new());
             let mut f = Frames::new(&ts);
             f.push(frame);
             f
@@ -245,7 +241,6 @@ impl IC3 {
         Self {
             activity: Activity::new(&ts),
             solvers,
-            last_assump,
             inf_solver: ts.new_solver(),
             lift: TsLift::new(TransysUnroll::new(Arc::clone(&ts))),
             obligations,

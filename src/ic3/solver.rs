@@ -11,11 +11,11 @@ pub(super) fn inductive(
     strengthen: bool,
 ) -> bool {
     let assump = ts.lits_next(cube);
-    let mut constraint = Vec::new();
     if strengthen {
-        constraint.push(LitVec::from_iter(cube.iter().map(|l| !*l)));
+        let cst = LitVec::from_iter(cube.iter().map(|l| !*l));
+        return !slv.solve_with_constraint(&assump, &[&cst]);
     }
-    !slv.solve_with_constraint(&assump, &constraint)
+    !slv.solve_with_constraint(&assump, &[])
 }
 
 pub(super) fn inductive_core(slv: &mut DagCnfSolver, ts: &Transys, cube: &[Lit]) -> Option<LitVec> {
@@ -58,54 +58,21 @@ impl IC3 {
             let assump = LitVec::from([self.ts.bad[0]]);
             let res = self.solvers.last_mut().unwrap().solve(&assump);
             if res {
-                self.last_assump[frame - 1] = assump;
-                Some(self.get_pred(frame, true))
+                Some(self.get_pred(frame, &assump, true))
             } else {
                 None
             }
         }
     }
 
-    pub(super) fn blocked_with_ordered(
+    pub(super) fn get_pred(
         &mut self,
         frame: usize,
-        cube: &LitVec,
+        assump: &[Lit],
         strengthen: bool,
-    ) -> (bool, LitVec) {
-        let mut ordered_cube = cube.clone();
-        self.activity.sort_by_activity(&mut ordered_cube, false);
-        let assump = self.ts.lits_next(&ordered_cube);
-        let mut constraint = Vec::new();
-        if strengthen {
-            constraint.push(LitVec::from_iter(ordered_cube.iter().map(|l| !*l)));
-        }
-        let blocked = !self.solvers[frame - 1].solve_with_constraint(&assump, &constraint);
-        self.last_assump[frame - 1] = assump;
-        (blocked, ordered_cube)
-    }
-
-    pub(super) fn blocked_with_ordered_with_constrain(
-        &mut self,
-        frame: usize,
-        cube: &LitVec,
-        ascending: bool,
-        strengthen: bool,
-        mut constraint: Vec<LitVec>,
-    ) -> (bool, LitVec) {
-        let mut ordered_cube = cube.clone();
-        self.activity.sort_by_activity(&mut ordered_cube, ascending);
-        let assump = self.ts.lits_next(&ordered_cube);
-        if strengthen {
-            constraint.push(LitVec::from_iter(ordered_cube.iter().map(|l| !*l)));
-        }
-        let blocked = !self.solvers[frame - 1].solve_with_constraint(&assump, &constraint);
-        self.last_assump[frame - 1] = assump;
-        (blocked, ordered_cube)
-    }
-
-    pub(super) fn get_pred(&mut self, frame: usize, strengthen: bool) -> (LitVec, Vec<LitVec>) {
+    ) -> (LitVec, Vec<LitVec>) {
         let solver = &mut self.solvers[frame - 1];
-        let mut cls: LitVec = self.last_assump[frame - 1].clone();
+        let mut cls = LitVec::from(assump);
         let mut cst = self.ts.constraint.clone();
         cls.retain(|l| self.localabs.refine_has(l.var()));
         cst.retain(|l| self.localabs.refine_has(l.var()));

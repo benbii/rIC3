@@ -50,7 +50,7 @@ impl TsLift {
             }
             inputs.push(input);
         }
-        self.slv.set_domain(cls.iter().cloned());
+        self.slv.set_domain(cls.iter().cloned(), &[]);
         let mut states = LitVec::new();
         for s in state.into_iter() {
             let s = *s.as_ref();

@@ -1,5 +1,5 @@
 use super::{DagCnfSolver, state::VarState};
-use logicrs::{DagCnf, Lit, LitVec, Var};
+use logicrs::{DagCnf, Lit, Var};
 use std::{ops::Index, slice};
 
 pub struct Domain {
@@ -75,7 +75,7 @@ impl Domain {
         &mut self,
         domain: &[Var],
         assump: &[Lit],
-        constraint: &[LitVec],
+        constraint: &[&[Lit]],
         dc: &DagCnf,
         state: &mut VarState,
     ) {
@@ -121,6 +121,8 @@ impl Index<u32> for Domain {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::LitVec;
+    use logicrs::satif::Satif;
     use std::sync::Arc;
 
     #[test]
@@ -159,7 +161,7 @@ mod tests {
         let mut solver = DagCnfSolver::new(Arc::new(dc));
         assert!(solver.domain_has(Var::CONST));
 
-        solver.set_domain([n.lit(), x.lit()]);
+        solver.set_domain([n.lit(), x.lit()], &[]);
         assert!(solver.domain_has(Var::CONST));
         assert_eq!(solver.domain[0], Var::CONST);
         assert!(solver.domain.fixed >= 1);
@@ -177,6 +179,28 @@ mod tests {
         solver.reset();
         assert!(solver.domain_has(Var::CONST));
         assert_eq!(solver.domain.len(), solver.domain.fixed);
+    }
+
+    #[test]
+    fn temporary_constraint_only_propagates_inside_preseeded_domain() {
+        let mut dc = DagCnf::new();
+        let a = dc.new_var();
+        let b = dc.new_var();
+        let c = dc.new_var();
+        let helper: &[Lit] = &[!a.lit(), !b.lit(), !c.lit()];
+        let mut solver = DagCnfSolver::new(Arc::new(dc));
+
+        solver.set_domain([a.lit(), b.lit()], &[]);
+        assert!(solver.solve_with_constraint(&[a.lit(), b.lit()], &[&helper]));
+        assert!(!solver.domain_has(c));
+        assert_eq!(solver.sat_value(!c.lit()), None);
+        solver.unset_domain();
+
+        solver.set_domain([a.lit(), b.lit()], &[c.lit()]);
+        assert!(solver.solve_with_constraint(&[a.lit(), b.lit()], &[&helper]));
+        assert!(solver.domain_has(c));
+        assert_eq!(solver.sat_value(!c.lit()), Some(true));
+        solver.unset_domain();
     }
 }
 
@@ -208,10 +232,18 @@ impl DagCnfSolver {
         self.state.get(var).in_domain()
     }
 
-    pub fn set_domain(&mut self, domain: impl IntoIterator<Item = Lit>) {
+    pub fn set_domain(
+        &mut self,
+        domain: impl IntoIterator<Item = Lit>,
+        extra_domain: &[Lit],
+    ) {
         self.reset();
         self.temporary_domain = true;
-        let domain: Vec<_> = domain.into_iter().map(|l| l.var()).collect();
+        let domain: Vec<_> = domain
+            .into_iter()
+            .chain(extra_domain.iter().copied())
+            .map(|l| l.var())
+            .collect();
         self.domain
             .enable_local(&domain, &[], &[], &self.dc, &mut self.state);
         assert!(!self.state.get(self.constrain_act).in_domain());

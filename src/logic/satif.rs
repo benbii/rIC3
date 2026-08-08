@@ -20,12 +20,12 @@ pub trait Satif {
 
     fn solve(&mut self, assumps: &[Lit]) -> bool;
 
-    fn solve_with_constraint(&mut self, _assumps: &[Lit], _constraint: &[LitVec]) -> bool {
+    fn solve_with_constraint(&mut self, _assumps: &[Lit], _constraint: &[&[Lit]]) -> bool {
         panic!("unsupport solve with constraint");
     }
 
     /// Maybe return unknown results
-    fn try_solve(&mut self, _assumps: &[Lit], _constraint: &[LitVec]) -> Option<bool> {
+    fn try_solve(&mut self, _assumps: &[Lit], _constraint: &[&[Lit]]) -> Option<bool> {
         panic!("unsupport try_solve");
     }
 

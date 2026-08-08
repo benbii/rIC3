@@ -95,11 +95,11 @@ impl Satif for CaDiCaL {
         }
     }
 
-    fn solve_with_constraint(&mut self, assumps: &[Lit], constraint: &[LitVec]) -> bool {
+    fn solve_with_constraint(&mut self, assumps: &[Lit], constraint: &[&[Lit]]) -> bool {
         self.try_solve(assumps, constraint).unwrap()
     }
 
-    fn try_solve(&mut self, assumps: &[Lit], constraint: &[LitVec]) -> Option<bool> {
+    fn try_solve(&mut self, assumps: &[Lit], constraint: &[&[Lit]]) -> Option<bool> {
         if constraint.len() > 1 {
             panic!("cadical does not support multiple temporary constraints");
         }
@@ -225,6 +225,6 @@ fn test() {
     } else {
         panic!()
     }
-    assert!(!solver.solve_with_constraint(&[lit2], &[LitVec::from([!lit0])]));
+    assert!(!solver.solve_with_constraint(&[lit2], &[&[!lit0]]));
     assert!(solver.unsat_has(lit2));
 }

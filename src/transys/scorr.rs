@@ -134,9 +134,10 @@ impl Scorr {
     }
 
     fn check_scorr(&mut self, x: Lit, y: Lit) -> bool {
+        let cst:[&[Lit]; 2] = [&[x, y], &[!x, !y]];
         if self
             .init_slv
-            .solve_with_restart_limit(&[], &[LitVec::from([x, y]), LitVec::from([!x, !y])], 10)
+            .solve_full(&[], &cst, &[], 10)
             .is_none_or(|r| r)
         {
             return false;
@@ -147,18 +148,8 @@ impl Scorr {
         } else {
             self.ts.next(y)
         };
-        self.ind_slv
-            .solve_with_restart_limit(
-                &[],
-                &[
-                    LitVec::from([x, !y]),
-                    LitVec::from([!x, y]),
-                    LitVec::from([xn, yn]),
-                    LitVec::from([!xn, !yn]),
-                ],
-                10,
-            )
-            .is_some_and(|r| !r)
+        let cst: [&[Lit]; 4] = [ &[x, !y], &[!x, y], &[xn, yn], &[!xn, !yn] ];
+        self.ind_slv.solve_full(&[], &cst, &[], 10).is_some_and(|r| !r)
     }
 
     pub fn scorr(mut self) -> (Transys, Restore) {

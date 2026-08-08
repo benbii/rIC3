@@ -1,13 +1,12 @@
 use super::IC3;
 use super::solver::inductive_core;
 use crate::RseedSet as HashSet;
-use log::trace;
 use logicrs::{Lit, LitOrdVec, LitVec, satif::Satif};
 use rand::{RngExt, seq::SliceRandom};
 
 #[derive(Clone, Copy, Debug, Default)]
-pub struct DropVarParameter {
-    pub limit: usize,
+pub(super) struct DropVarParameter {
+    pub(super) limit: usize,
     max: usize,
     level: usize,
 }
@@ -34,12 +33,20 @@ impl IC3 {
         cube: &LitVec,
         keep: &HashSet<Lit>,
         full: &LitVec,
-        constraint: &[LitVec],
+        constraint: &[Lit],
         cex: &mut Vec<(LitOrdVec, LitOrdVec)>,
     ) -> Option<LitVec> {
         let mut cube = cube.clone();
+        let state_cst = !self.ts.lits_next(full);
+        let mut cube_cst = LitVec::new_with_cap(cube.len());
+        let mut ordcube = LitVec::new_with_cap(cube.len());
+        let mut assump = LitVec::new_with_cap(cube.len());
+        let ts = &self.ts;
+        let activity = &mut self.activity;
+        let slv = &mut self.solvers[frame - 1];
+
         loop {
-            if self.ts.cube_subsume_init(&cube) {
+            if ts.cube_subsume_init(&cube) {
                 return None;
             }
             let lemma = LitOrdVec::new(cube.clone());
@@ -49,30 +56,35 @@ impl IC3 {
             {
                 return None;
             }
-            let (blocked, ordered_cube) = self.blocked_with_ordered_with_constrain(
-                frame,
-                &cube,
-                false,
-                true,
-                constraint.to_vec(),
-            );
-            if blocked {
-                return Some(
-                    inductive_core(&mut self.solvers[frame - 1], &self.ts, &ordered_cube).unwrap(),
-                );
+
+            ordcube.clear();
+            ordcube.extend_from_slice(&cube);
+            activity.sort_by_activity(&mut ordcube, false);
+            assump.clear();
+            assump.extend(ordcube.iter().map(|l| ts.next(*l)));
+            cube_cst.clear();
+            cube_cst.extend(ordcube.iter().map(|l| !*l));
+
+            let allcst: &[&[Lit]] = if constraint.is_empty() {
+                &[state_cst.as_slice(), &cube_cst]
+            } else {
+                &[constraint, &state_cst, &cube_cst]
+            };
+            if !slv.solve_with_constraint(&assump, allcst) {
+                return Some(inductive_core(slv, ts, &ordcube).unwrap());
             }
             let mut ret = false;
             let mut cube_new = LitVec::new();
             for lit in cube {
                 if keep.contains(&lit) {
-                    if let Some(true) = self.solvers[frame - 1].sat_value(lit) {
+                    if let Some(true) = slv.sat_value(lit) {
                         cube_new.push(lit);
                     } else {
                         ret = true;
                         break;
                     }
-                } else if let Some(true) = self.solvers[frame - 1].sat_value(lit)
-                    && !self.solvers[frame - 1].flip_to_none(lit.var())
+                } else if let Some(true) = slv.sat_value(lit)
+                    && !slv.flip_to_none(lit.var())
                 {
                     cube_new.push(lit);
                 }
@@ -81,12 +93,12 @@ impl IC3 {
             let mut s = LitVec::new();
             let mut t = LitVec::new();
             for l in full.iter() {
-                if let Some(v) = self.solvers[frame - 1].sat_value(*l)
-                    && self.solvers[frame - 1].flip_to_none(l.var())
+                if let Some(v) = slv.sat_value(*l)
+                    && slv.flip_to_none(l.var())
                 {
                     s.push(l.not_if(!v));
                 }
-                if let Some(v) = self.solvers[frame - 1].sat_value(self.ts.next(*l)) {
+                if let Some(v) = slv.sat_value(ts.next(*l)) {
                     t.push(l.not_if(!v));
                 }
             }
@@ -106,37 +118,57 @@ impl IC3 {
         parameter: DropVarParameter,
     ) -> Option<LitVec> {
         let mut cube = cube.clone();
+        let full = !full;
+        let state_cst = self.ts.lits_next(&full);
+        let mut cube_cst = LitVec::new_with_cap(cube.len());
+        let mut ordcube = LitVec::new_with_cap(cube.len());
+        let mut assump = LitVec::new_with_cap(cube.len());
         let mut ctg = 0;
+
         loop {
             if self.ts.cube_subsume_init(&cube) {
                 return None;
             }
-            let (blocked, ordered_cube) = self.blocked_with_ordered(frame, &cube, true);
-            if blocked {
-                return Some(
-                    inductive_core(&mut self.solvers[frame - 1], &self.ts, &ordered_cube).unwrap(),
-                );
+            ordcube.clear();
+            ordcube.extend_from_slice(&cube);
+            self.activity.sort_by_activity(&mut ordcube, false);
+            assump.clear();
+            assump.extend(ordcube.iter().map(|l| self.ts.next(*l)));
+            cube_cst.clear();
+            cube_cst.extend(ordcube.iter().map(|l| !*l));
+
+            let slv = &mut self.solvers[frame - 1];
+            // Preserve the baseline D/D' cone while attaching !K' below.
+            // The helper remains available to BCP but cannot seed the COI.
+            slv.set_domain(
+                assump.iter().copied().chain(ordcube.iter().copied()),
+                &state_cst,
+            );
+            let blocked = !slv.solve_with_constraint(&assump, &[&state_cst, &cube_cst]);
+            let core = blocked.then(|| inductive_core(slv, &self.ts, &ordcube).unwrap());
+            let keep_in_model = !blocked
+                && cube.iter().all(|lit| {
+                    !keep.contains(lit) || slv.sat_value(*lit).is_some_and(|value| value)
+                });
+            // Nested CTG blocking can push through this solver, so do not
+            // let the per-query temporary domain leak past this point.
+            slv.unset_domain();
+            if let Some(core) = core {
+                return Some(core);
             }
-            for lit in cube.iter() {
-                if keep.contains(lit) && !self.solvers[frame - 1].sat_value(*lit).is_some_and(|v| v)
-                {
-                    return None;
-                }
+            if !keep_in_model {
+                return None;
             }
-            let (model, _) = self.get_pred(frame, false);
+
+            let (model, _) = self.get_pred(frame, &assump, false);
             let cex_set: HashSet<Lit> = HashSet::from_iter(model.iter().cloned());
-            // for lit in cube.iter() {
-            //     if keep.contains(lit) && !cex_set.contains(lit) {
-            //         return None;
-            //     }
-            // }
             if ctg < parameter.max
                 && frame > 1
                 && !self.ts.cube_subsume_init(&model)
                 && self.trivial_block(
                     frame - 1,
                     model.clone(),
-                    &[!full.clone()],
+                    &full,
                     parameter.sub_level(),
                 )
             {
@@ -156,33 +188,11 @@ impl IC3 {
         }
     }
 
-    fn handle_down_success(
-        &mut self,
-        _frame: usize,
-        cube: LitVec,
-        i: usize,
-        mut new_cube: LitVec,
-    ) -> (LitVec, usize) {
-        new_cube = cube
-            .iter()
-            .filter(|l| new_cube.contains(l))
-            .cloned()
-            .collect();
-        let new_i = new_cube
-            .iter()
-            .position(|l| !(cube[0..i]).contains(l))
-            .unwrap_or(new_cube.len());
-        if new_i < new_cube.len() {
-            assert!(!(cube[0..=i]).contains(&new_cube[new_i]))
-        }
-        (new_cube, new_i)
-    }
-
-    fn mic_by_drop_var(
+    pub(super) fn mic(
         &mut self,
         frame: usize,
         mut cube: LitVec,
-        constraint: &[LitVec],
+        constraint: &[Lit],
         parameter: DropVarParameter,
     ) -> LitVec {
         if parameter.level == 0 {
@@ -192,6 +202,7 @@ impl IC3 {
                     .iter()
                     .copied()
                     .chain(cube.iter().copied()),
+                &[],
             );
         }
         let mut cex = Vec::new();
@@ -220,8 +231,20 @@ impl IC3 {
             } else {
                 self.ctg_down(frame, &removed_cube, &keep, &cube, parameter)
             };
-            if let Some(new_cube) = mic {
-                (cube, i) = self.handle_down_success(frame, cube, i, new_cube);
+            if let Some(mut new_cube) = mic {
+                new_cube = cube
+                    .iter()
+                    .filter(|lit| new_cube.contains(lit))
+                    .copied()
+                    .collect();
+                let new_i = new_cube
+                    .iter()
+                    .position(|lit| !cube[..i].contains(lit))
+                    .unwrap_or(new_cube.len());
+                if new_i < new_cube.len() {
+                    debug_assert!(!cube[..=i].contains(&new_cube[new_i]));
+                }
+                (cube, i) = (new_cube, new_i);
                 if parameter.level == 0 {
                     self.solvers[frame - 1].unset_domain();
                     self.solvers[frame - 1].set_domain(
@@ -230,6 +253,7 @@ impl IC3 {
                             .iter()
                             .copied()
                             .chain(cube.iter().copied()),
+                        &[],
                     );
                 }
             } else {
@@ -242,18 +266,5 @@ impl IC3 {
         }
         self.activity.bump_cube_activity(&cube);
         cube
-    }
-
-    pub(super) fn mic(
-        &mut self,
-        frame: usize,
-        cube: LitVec,
-        constraint: &[LitVec],
-        parameter: DropVarParameter,
-    ) -> LitVec {
-        let mic_olen = cube.len();
-        let r = self.mic_by_drop_var(frame, cube, constraint, parameter);
-        trace!("mic from {} to {} len", mic_olen, r.len());
-        r
     }
 }
