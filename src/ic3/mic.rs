@@ -165,12 +165,7 @@ impl IC3 {
             if ctg < parameter.max
                 && frame > 1
                 && !self.ts.cube_subsume_init(&model)
-                && self.trivial_block(
-                    frame - 1,
-                    model.clone(),
-                    &full,
-                    parameter.sub_level(),
-                )
+                && self.trivial_block(frame - 1, model.clone(), &full, parameter.sub_level())
             {
                 ctg += 1;
                 continue;

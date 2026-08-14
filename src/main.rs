@@ -4,7 +4,10 @@
 
 use clap::Parser;
 use log::{info, warn};
-use nix::{unistd::getpid, sys::signal::{Signal, kill}};
+use nix::{
+    sys::signal::{Signal, kill},
+    unistd::getpid,
+};
 use rIC3::{
     Engine, LitVec, McResult,
     aig::Aig,

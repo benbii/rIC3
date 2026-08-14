@@ -1,4 +1,4 @@
-use super::{IC3, proofoblig::ProofObligation, solver::inductive};
+use super::{IC3, proofoblig::Po, solver::inductive};
 use crate::transys::Transys;
 use logicrs::{Lit, LitOrdVec, LitSet, LitVec, Var, satif::Satif};
 use std::{
@@ -6,7 +6,7 @@ use std::{
     ops::{Deref, DerefMut},
 };
 
-pub type Frame = Vec<(LitOrdVec, Option<ProofObligation>)>;
+pub type Frame = Vec<(LitOrdVec, Option<Po>)>;
 
 pub struct Frames {
     frames: Vec<Frame>,
@@ -31,7 +31,7 @@ impl Frames {
         &'a mut self,
         frame: Option<usize>,
         lemma: &LitOrdVec,
-    ) -> Option<(Option<usize>, &'a mut Option<ProofObligation>)> {
+    ) -> Option<(Option<usize>, &'a mut Option<Po>)> {
         for l in lemma.iter() {
             self.tmp_lit_set.insert(*l);
         }
@@ -101,7 +101,7 @@ impl IC3 {
         frame: usize,
         lemma: LitVec,
         contained_check: bool,
-        po: Option<ProofObligation>,
+        po: Option<Po>,
     ) -> bool {
         let lemma = LitOrdVec::new(lemma);
         if frame == 0 {

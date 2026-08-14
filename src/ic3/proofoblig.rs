@@ -7,32 +7,32 @@ use std::ops::{Deref, DerefMut};
 use std::rc::Rc;
 
 #[derive(Default)]
-pub struct ProofObligationInner {
+pub struct PoInner {
     pub frame: usize,
     pub input: Vec<LitVec>,
     pub state: LitOrdVec,
     pub depth: usize,
-    pub next: Option<ProofObligation>,
+    pub next: Option<Po>,
     pub act: f64,
 }
 
-impl PartialEq for ProofObligationInner {
+impl PartialEq for PoInner {
     #[inline]
     fn eq(&self, other: &Self) -> bool {
         self.state == other.state
     }
 }
 
-impl Eq for ProofObligationInner {}
+impl Eq for PoInner {}
 
-impl PartialOrd for ProofObligationInner {
+impl PartialOrd for PoInner {
     #[inline]
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         Some(self.cmp(other))
     }
 }
 
-impl Ord for ProofObligationInner {
+impl Ord for PoInner {
     #[inline]
     fn cmp(&self, other: &Self) -> Ordering {
         match other.frame.cmp(&self.frame) {
@@ -48,7 +48,7 @@ impl Ord for ProofObligationInner {
     }
 }
 
-impl Debug for ProofObligationInner {
+impl Debug for PoInner {
     #[inline]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("ProofObligation")
@@ -60,11 +60,11 @@ impl Debug for ProofObligationInner {
 }
 
 #[derive(Clone, Default)]
-pub struct ProofObligation {
-    inner: Rc<ProofObligationInner>,
+pub struct Po {
+    inner: Rc<PoInner>,
 }
 
-impl ProofObligation {
+impl Po {
     pub fn new(
         frame: usize,
         lemma: LitOrdVec,
@@ -73,7 +73,7 @@ impl ProofObligation {
         next: Option<Self>,
     ) -> Self {
         Self {
-            inner: Rc::new(ProofObligationInner {
+            inner: Rc::new(PoInner {
                 frame,
                 input,
                 state: lemma,
@@ -92,8 +92,8 @@ impl ProofObligation {
     }
 }
 
-impl Deref for ProofObligation {
-    type Target = ProofObligationInner;
+impl Deref for Po {
+    type Target = PoInner;
 
     #[inline]
     fn deref(&self) -> &Self::Target {
@@ -101,37 +101,37 @@ impl Deref for ProofObligation {
     }
 }
 
-impl DerefMut for ProofObligation {
+impl DerefMut for Po {
     #[inline]
     fn deref_mut(&mut self) -> &mut Self::Target {
-        unsafe { &mut *(Rc::as_ptr(&self.inner) as *mut ProofObligationInner) }
+        unsafe { &mut *(Rc::as_ptr(&self.inner) as *mut PoInner) }
     }
 }
 
-impl PartialEq for ProofObligation {
+impl PartialEq for Po {
     #[inline]
     fn eq(&self, other: &Self) -> bool {
         Rc::ptr_eq(&self.inner, &other.inner)
     }
 }
 
-impl Eq for ProofObligation {}
+impl Eq for Po {}
 
-impl PartialOrd for ProofObligation {
+impl PartialOrd for Po {
     #[inline]
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         Some(self.cmp(other))
     }
 }
 
-impl Ord for ProofObligation {
+impl Ord for Po {
     #[inline]
     fn cmp(&self, other: &Self) -> Ordering {
         self.inner.cmp(&other.inner)
     }
 }
 
-impl Debug for ProofObligation {
+impl Debug for Po {
     #[inline]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.inner.fmt(f)
@@ -139,17 +139,17 @@ impl Debug for ProofObligation {
 }
 
 #[derive(Default, Debug)]
-pub struct ProofObligationQueue {
-    obligations: BTreeSet<ProofObligation>,
+pub struct Poq {
+    obligations: BTreeSet<Po>,
     num: Vec<usize>,
 }
 
-impl ProofObligationQueue {
+impl Poq {
     pub fn new() -> Self {
         Self::default()
     }
 
-    pub fn add(&mut self, po: ProofObligation) {
+    pub fn add(&mut self, po: Po) {
         if self.num.len() <= po.frame {
             self.num.resize(po.frame + 1, 0);
         }
@@ -158,7 +158,7 @@ impl ProofObligationQueue {
         assert!(self.obligations.insert(po));
     }
 
-    pub fn pop(&mut self, depth: usize) -> Option<ProofObligation> {
+    pub fn pop(&mut self, depth: usize) -> Option<Po> {
         if let Some(po) = self.obligations.last().filter(|po| po.frame <= depth) {
             self.num[po.frame] -= 1;
             self.obligations.pop_last()
@@ -167,11 +167,11 @@ impl ProofObligationQueue {
         }
     }
 
-    pub fn peak(&mut self) -> Option<ProofObligation> {
+    pub fn peak(&mut self) -> Option<Po> {
         self.obligations.last().cloned()
     }
 
-    pub fn remove(&mut self, po: &ProofObligation) -> bool {
+    pub fn remove(&mut self, po: &Po) -> bool {
         let ret = self.obligations.remove(po);
         if ret {
             self.num[po.frame] -= 1;

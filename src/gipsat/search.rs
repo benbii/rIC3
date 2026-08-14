@@ -56,14 +56,14 @@ impl DagCnfSolver {
                 }
             }
             let rest_base = luby(2.0, restarts);
-            match self.search(assumption, Some(rest_base * 100.0)) {
+            match self.search(assumption, rest_base * 100.0) {
                 None => restarts += 1,
                 Some(r) => return Some(r),
             }
         }
     }
 
-    pub fn search(&mut self, assumption: &[Lit], noc: Option<f64>) -> Option<bool> {
+    fn search(&mut self, assumption: &[Lit], noc: f64) -> Option<bool> {
         let mut num_conflict = 0.0_f64;
         'ml: loop {
             let conflict = self.propagate();
@@ -91,40 +91,39 @@ impl DagCnfSolver {
                 }
                 self.vsids.decay();
                 self.cdb.decay();
-            } else {
-                if let Some(noc) = noc
-                    && num_conflict >= noc
-                {
-                    self.backtrack(assumption.len(), true);
-                    return None;
-                }
-                self.clean_learnt(false);
-                while self.highest_level() < assumption.len() {
-                    let a = assumption[self.highest_level()];
-                    match self.state.lit_value(a) {
-                        Lbool::TRUE => {
-                            self.new_level();
-                            if self.highest_level() == assumption.len() {
-                                self.prepare_vsids();
-                            }
-                        }
-                        Lbool::FALSE => {
-                            self.analyze_unsat_core(a);
-                            return Some(false);
-                        }
-                        _ => {
-                            self.new_level();
-                            self.assign(a, CREF_NONE);
-                            if self.highest_level() == assumption.len() {
-                                self.prepare_vsids();
-                            }
-                            continue 'ml;
+                continue;
+            }
+
+            if num_conflict >= noc {
+                self.backtrack(assumption.len(), true);
+                return None;
+            }
+            self.clean_learnt(false);
+            while self.highest_level() < assumption.len() {
+                let a = assumption[self.highest_level()];
+                match self.state.lit_value(a) {
+                    Lbool::TRUE => {
+                        self.new_level();
+                        if self.highest_level() == assumption.len() {
+                            self.prepare_vsids();
                         }
                     }
+                    Lbool::FALSE => {
+                        self.analyze_unsat_core(a);
+                        return Some(false);
+                    }
+                    _ => {
+                        self.new_level();
+                        self.assign(a, CREF_NONE);
+                        if self.highest_level() == assumption.len() {
+                            self.prepare_vsids();
+                        }
+                        continue 'ml;
+                    }
                 }
-                if !self.decide() {
-                    return Some(true);
-                }
+            }
+            if !self.decide() {
+                return Some(true);
             }
         }
     }

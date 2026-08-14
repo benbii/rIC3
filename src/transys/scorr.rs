@@ -134,7 +134,7 @@ impl Scorr {
     }
 
     fn check_scorr(&mut self, x: Lit, y: Lit) -> bool {
-        let cst:[&[Lit]; 2] = [&[x, y], &[!x, !y]];
+        let cst: [&[Lit]; 2] = [&[x, y], &[!x, !y]];
         if self
             .init_slv
             .solve_full(&[], &cst, &[], 10)
@@ -148,8 +148,10 @@ impl Scorr {
         } else {
             self.ts.next(y)
         };
-        let cst: [&[Lit]; 4] = [ &[x, !y], &[!x, y], &[xn, yn], &[!xn, !yn] ];
-        self.ind_slv.solve_full(&[], &cst, &[], 10).is_some_and(|r| !r)
+        let cst: [&[Lit]; 4] = [&[x, !y], &[!x, y], &[xn, yn], &[!xn, !yn]];
+        self.ind_slv
+            .solve_full(&[], &cst, &[], 10)
+            .is_some_and(|r| !r)
     }
 
     pub fn scorr(mut self) -> (Transys, Restore) {

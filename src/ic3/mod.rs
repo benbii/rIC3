@@ -10,7 +10,7 @@ use clap::{ArgAction, Args, Parser};
 use frame::{Frame, Frames};
 use log::{debug, error, info, trace};
 use logicrs::{Lit, LitOrdVec, LitVec, satif::Satif};
-use proofoblig::{ProofObligation, ProofObligationQueue};
+use proofoblig::{Po, Poq};
 use rand::{SeedableRng, rngs::SmallRng};
 use serde::{Deserialize, Serialize};
 use std::{sync::Arc, time::Instant};
@@ -96,7 +96,7 @@ pub struct IC3 {
     inf_solver: DagCnfSolver,
     lift: TsLift,
     frame: Frames,
-    obligations: ProofObligationQueue,
+    obligations: Poq,
     activity: Activity,
     localabs: LocalAbs,
     ots: Transys,
@@ -149,7 +149,10 @@ impl IC3 {
             ts.bad = LitVec::from(ts.bad[cfg.local_proof]);
         }
         if ts.bad.len() != 1 {
-            error!("{} bads in IC3! Wrong preprocessed model load?", ts.bad.len());
+            error!(
+                "{} bads in IC3! Wrong preprocessed model load?",
+                ts.bad.len()
+            );
         }
         let mut ts = Arc::new(ts);
         let mut predprop = None;
@@ -190,13 +193,7 @@ impl IC3 {
                         bad.push(v);
                     }
                 }
-                base_cex = Some(ProofObligation::new(
-                    0,
-                    LitOrdVec::new(bad),
-                    vec![input],
-                    0,
-                    None,
-                ));
+                base_cex = Some(Po::new(0, LitOrdVec::new(bad), vec![input], 0, None));
             } else {
                 unsafe { &mut *(Arc::as_ptr(&mut ts) as *mut Transys) }
                     .constraint
@@ -205,7 +202,7 @@ impl IC3 {
         }
 
         let mut solvers = Vec::new();
-        let mut obligations = ProofObligationQueue::new();
+        let mut obligations = Poq::new();
         let frames = if let Some(po) = base_cex {
             obligations.add(po);
             Frames::new(&ts)
@@ -314,13 +311,8 @@ impl Engine for IC3 {
                     trace!("bad state {bad} found in frame {}", self.level());
                     let bad = LitOrdVec::new(bad);
                     let depth = inputs.len() - 1;
-                    self.obligations.add(ProofObligation::new(
-                        self.level(),
-                        bad,
-                        inputs,
-                        depth,
-                        None,
-                    ))
+                    self.obligations
+                        .add(Po::new(self.level(), bad, inputs, depth, None))
                 } else {
                     break;
                 }

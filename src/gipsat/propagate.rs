@@ -86,9 +86,7 @@ const _: () = assert!(RANGE_MAX_RANK <= RANGE_RANK_MASK);
 const _: () = assert!(WATCHER_POOL_SLOTS <= RANGE_BEGIN_MASK);
 const _: () = assert!(RANGE_CAPS[RANGE_MAX_RANK as usize] == WATCHER_POOL_SLOTS);
 const _: () = assert!(
-    RANGE_CAPS[RANGE_MAX_RANK as usize - 1]
-        + (RANGE_CAPS[RANGE_MAX_RANK as usize - 1] >> 1)
-        + 1
+    RANGE_CAPS[RANGE_MAX_RANK as usize - 1] + (RANGE_CAPS[RANGE_MAX_RANK as usize - 1] >> 1) + 1
         > WATCHER_POOL_SLOTS
 );
 

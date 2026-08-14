@@ -1,4 +1,4 @@
-use crate::ic3::{frame::Frames, mic::DropVarParameter, proofoblig::ProofObligation};
+use crate::ic3::{frame::Frames, mic::DropVarParameter, proofoblig::Po};
 use log::{trace, warn};
 use nalgebra::{SMatrix, SVector};
 
@@ -23,7 +23,7 @@ type Ic3MabMatrix = SMatrix<f64, CONTEXT_DIM, CONTEXT_DIM>;
 
 /// Max activity along the successor chain of the po (up to 3 hops), used by
 /// the dynamic arms to gauge the difficulty of blocking the current CTI.
-fn branch_act(po: &ProofObligation) -> Option<f64> {
+fn branch_act(po: &Po) -> Option<f64> {
     let n = po.next.as_ref()?;
     let mut act = n.act;
     if let Some(nn) = n.next.as_ref() {
@@ -36,7 +36,7 @@ fn branch_act(po: &ProofObligation) -> Option<f64> {
 }
 
 /// Balanced arm.
-pub(crate) fn balanced_params(po: &ProofObligation, x: f64) -> DropVarParameter {
+pub(crate) fn balanced_params(po: &Po, x: f64) -> DropVarParameter {
     let Some(act) = branch_act(po) else {
         return DropVarParameter::default();
     };
@@ -51,7 +51,7 @@ pub(crate) fn balanced_params(po: &ProofObligation, x: f64) -> DropVarParameter 
 }
 
 /// Aggressive dynamic arm: lower thresholds, stronger generalization effort.
-fn aggressive_params(po: &ProofObligation) -> DropVarParameter {
+fn aggressive_params(po: &Po) -> DropVarParameter {
     let Some(act) = branch_act(po) else {
         return DropVarParameter::new(1, 1, 1);
     };
@@ -66,7 +66,7 @@ fn aggressive_params(po: &ProofObligation) -> DropVarParameter {
 }
 
 /// Conservative dynamic arm: higher thresholds, capped generalization effort.
-fn conservative_params(po: &ProofObligation) -> DropVarParameter {
+fn conservative_params(po: &Po) -> DropVarParameter {
     let Some(act) = branch_act(po) else {
         return DropVarParameter::default();
     };
@@ -112,7 +112,7 @@ impl CtgMab {
     /// Proof-aware context vector: [relative level, relative cube size,
     /// push potential, relative depth, frame saturation, activity, bias].
     /// Also maintains the running average cube size used for normalization.
-    pub fn encode(&mut self, lvl: usize, frames: &Frames, po: &ProofObligation) -> Ic3MabVector {
+    pub fn encode(&mut self, lvl: usize, frames: &Frames, po: &Po) -> Ic3MabVector {
         debug_assert!(lvl > 0);
         let relative_level = po.frame as f64 / lvl as f64;
         let total_cube_size = self.cube_size_count as f64 * self.avg_cube_size;
@@ -142,7 +142,7 @@ impl CtgMab {
     }
 
     /// Select a generalization strategy with LinUCB
-    pub fn infer(&self, inp: &Ic3MabVector, po: &ProofObligation) -> (DropVarParameter, usize) {
+    pub fn infer(&self, inp: &Ic3MabVector, po: &Po) -> (DropVarParameter, usize) {
         let mut best_arm = 0;
         let mut best_score = f64::NEG_INFINITY;
         // LinUCB arm selection: argmax of theta^T x + alpha * sqrt(x^T A^-1 x).
@@ -170,7 +170,7 @@ impl CtgMab {
 
     pub fn reward(
         &mut self,
-        po: &ProofObligation,
+        po: &Po,
         original_cube_size: usize,
         generalized_cube_size: usize,
         pushed_frame: usize,

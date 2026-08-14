@@ -136,7 +136,7 @@ impl WlTransys {
         for (k, v) in v2t {
             b2w.insert(k, rst[&v].clone());
         }
-        (ts, BitblastMap { /* w2b, */ b2w })
+        (ts, BitblastMap { b2w })
     }
 }
 

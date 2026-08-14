@@ -1,7 +1,7 @@
 use super::solver::{inductive, inductive_core};
 use crate::Lit;
 use crate::ic3::mab::balanced_params;
-use crate::ic3::{IC3, mic::DropVarParameter, proofoblig::ProofObligation};
+use crate::ic3::{IC3, mic::DropVarParameter, proofoblig::Po};
 use log::debug;
 use logicrs::{LitOrdVec, LitVec, satif::Satif};
 
@@ -68,7 +68,7 @@ impl IC3 {
             let blocked = !self.solvers[solver_idx].solve(&assump);
             if !blocked {
                 let (model, inputs) = self.get_pred(po.frame, &assump, true);
-                self.obligations.add(ProofObligation::new(
+                self.obligations.add(Po::new(
                     po.frame - 1,
                     LitOrdVec::new(model),
                     inputs,
@@ -164,7 +164,7 @@ impl IC3 {
                 &[constraint, &cube_cst]
             };
             let core = (!slv.solve_with_constraint(&assump, &allcst))
-                    .then(|| inductive_core(slv, &self.ts, &ordcube).unwrap());
+                .then(|| inductive_core(slv, &self.ts, &ordcube).unwrap());
 
             if let Some(mut mic) = core {
                 mic = self.mic(frame, mic, constraint, parameter);

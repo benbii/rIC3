@@ -185,7 +185,7 @@ impl DagCnfSolver {
         (learnt, btl as usize)
     }
 
-    pub fn analyze_unsat_core(&mut self, mut p: Lit) {
+    pub(super) fn analyze_unsat_core(&mut self, mut p: Lit) {
         self.unsat_core.clear();
         self.unsat_core.insert(p);
         if self.highest_level() == 0 {

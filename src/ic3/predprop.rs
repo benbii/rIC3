@@ -1,7 +1,10 @@
 use std::sync::Arc;
 
 use crate::{
-    Var, VarRange, gipsat::DagCnfSolver, ic3::IC3, transys::{Transys, lift::TsLift, unroll::TransysUnroll},
+    Var, VarRange,
+    gipsat::DagCnfSolver,
+    ic3::IC3,
+    transys::{Transys, lift::TsLift, unroll::TransysUnroll},
 };
 use logicrs::{Lit, LitVec, satif::Satif};
 use rand::seq::SliceRandom;

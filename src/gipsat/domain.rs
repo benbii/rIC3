@@ -232,16 +232,12 @@ impl DagCnfSolver {
         self.state.get(var).in_domain()
     }
 
-    pub fn set_domain(
-        &mut self,
-        domain: impl IntoIterator<Item = Lit>,
-        extra_domain: &[Lit],
-    ) {
+    pub fn set_domain(&mut self, domain: impl IntoIterator<Item = Lit>, extra: &[Lit]) {
         self.reset();
         self.temporary_domain = true;
         let domain: Vec<_> = domain
             .into_iter()
-            .chain(extra_domain.iter().copied())
+            .chain(extra.iter().copied())
             .map(|l| l.var())
             .collect();
         self.domain

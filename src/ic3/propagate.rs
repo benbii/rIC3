@@ -14,17 +14,16 @@ impl IC3 {
             self.frame[frame_idx].sort_by_key(|(x, _)| x.len());
             let frame = self.frame[frame_idx].clone();
             for mut lemma in frame {
-                // HELP: semantic difference here? Is only .0 compared before?
-            if self.frame[frame_idx].iter().all(|l| l.ne(&lemma)) {
-                continue;
-            }
-            let mut assump = LitVec::new_with_cap(lemma.0.len());
-            for _ctp in 0..3 {
-                let mut ordered_cube = lemma.0.as_litvec().clone();
-                self.activity.sort_by_activity(&mut ordered_cube, false);
-                assump.clear();
-                assump.extend(ordered_cube.iter().map(|l| self.ts.next(*l)));
-                let blocked = !self.solvers[frame_idx].solve(&assump);
+                if self.frame[frame_idx].iter().all(|l| l.ne(&lemma)) {
+                    continue;
+                }
+                let mut assump = LitVec::new_with_cap(lemma.0.len());
+                for _ctp in 0..3 {
+                    let mut ordered_cube = lemma.0.as_litvec().clone();
+                    self.activity.sort_by_activity(&mut ordered_cube, false);
+                    assump.clear();
+                    assump.extend(ordered_cube.iter().map(|l| self.ts.next(*l)));
+                    let blocked = !self.solvers[frame_idx].solve(&assump);
                     if blocked {
                         let core =
                             inductive_core(&mut self.solvers[frame_idx], &self.ts, &ordered_cube)
