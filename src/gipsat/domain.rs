@@ -68,7 +68,7 @@ impl Domain {
         &mut self,
         domain: &[Var],
         assump: &[Lit],
-        constraint: &[&[Lit]],
+        constraint: &[&mut [Lit]],
         dc: &DagCnf,
         state: &mut VarState,
     ) {
@@ -80,7 +80,8 @@ impl Domain {
             self.insert(l.var(), state);
         }
         for c in constraint {
-            for l in c.iter() {
+            debug_assert!(!c.is_empty());
+            for l in c[..c.len() - 1].iter() {
                 self.insert(l.var(), state);
             }
         }
@@ -142,14 +143,8 @@ mod tests {
         assert!(solver.domain_has(Var::CONST));
         assert_eq!(solver.domain.set[0], Var::CONST);
         assert!(solver.domain.fixed >= 1);
-        assert_eq!(
-            solver.dcs_solve(&[!n.lit(), !x.lit()], &[], &[], u32::MAX),
-            Some(false)
-        );
-        assert_eq!(
-            solver.dcs_solve(&[!n.lit(), x.lit()], &[], &[], u32::MAX),
-            Some(true)
-        );
+        assert_eq!(solver.dcs_solve_nocst(&[!n.lit(), !x.lit()]), false);
+        assert_eq!(solver.dcs_solve_nocst(&[!n.lit(), x.lit()]), true);
         assert!(solver.domain_has(Var::CONST));
 
         solver.unset_domain();
@@ -164,17 +159,36 @@ mod tests {
         let a = dc.new_var();
         let b = dc.new_var();
         let c = dc.new_var();
-        let helper: &[Lit] = &[!a.lit(), !b.lit(), !c.lit()];
+        let mut helper = [!a.lit(), !b.lit(), !c.lit()];
+        helper.sort();
         let mut solver = DagCnfSolver::new(Arc::new(dc));
 
         solver.set_domain([a.lit(), b.lit()], &[]);
-        assert!(solver.dcs_solve(&[a.lit(), b.lit()], &[&helper], &[], u32::MAX).unwrap());
+        assert!(
+            solver
+                .dcs_solve(
+                    &mut [Lit::default(), a.lit(), b.lit()],
+                    &mut [&mut [helper[0], helper[1], helper[2], Lit::default()]],
+                    &[],
+                    u32::MAX,
+                )
+                .unwrap()
+        );
         assert!(!solver.domain_has(c));
         assert_eq!(solver.dcs_satval(!c.lit()), None);
         solver.unset_domain();
 
         solver.set_domain([a.lit(), b.lit()], &[c.lit()]);
-        assert!(solver.dcs_solve(&[a.lit(), b.lit()], &[&helper], &[], u32::MAX).unwrap());
+        assert!(
+            solver
+                .dcs_solve(
+                    &mut [Lit::default(), a.lit(), b.lit()],
+                    &mut [&mut [helper[0], helper[1], helper[2], Lit::default()]],
+                    &[],
+                    u32::MAX,
+                )
+                .unwrap()
+        );
         assert!(solver.domain_has(c));
         assert_eq!(solver.dcs_satval(!c.lit()), Some(true));
         solver.unset_domain();
@@ -247,7 +261,8 @@ impl DagCnfSolver {
             }
         }
         while now < self.domain.len() {
-            self.vsids.push(self.domain.set[now as usize], &mut self.state);
+            self.vsids
+                .push(self.domain.set[now as usize], &mut self.state);
             now += 1;
         }
     }

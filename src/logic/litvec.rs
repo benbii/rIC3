@@ -325,9 +325,11 @@ impl Not for LitVec {
     type Output = LitVec;
 
     #[inline]
-    fn not(self) -> Self::Output {
-        let lits = self.lits.iter().map(|lit| !*lit).collect();
-        LitVec { lits }
+    fn not(mut self) -> Self::Output {
+        // let lits = self.lits.iter().map(|lit| !*lit).collect();
+        // LitVec { lits }
+        self.lits.iter_mut().for_each(|l| (*l).0 ^= 1);
+        self
     }
 }
 

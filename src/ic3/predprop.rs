@@ -26,13 +26,7 @@ impl PredProp {
             let mut constraint = uts.ts.constraint.clone();
             constraint.extend(uts.lits_next(uts.ts.constraint(), 1));
             for old_v in VarRange::new_inclusive(Var(1), uts.ts.rel.max_var()) {
-                let v = uts.var_next(old_v, 1);
-                if v <= rel.max_var() && !rel.clauses_of_var(v).is_empty() {
-                    continue;
-                }
-                let cls = uts.ts.rel.clauses_of_var(old_v);
-                let cls: Vec<LitVec> = cls.map(|c| uts.lits_next(c, 1).collect()).collect();
-                Arc::get_mut(&mut rel).unwrap().add_rel(v, &cls);
+                uts.add_unrolled_rel(&mut rel, old_v, 1);
             }
             assert!(uts.ts.justice.is_empty());
             let bad: LitVec = uts.lits_next(&uts.ts.bad, 1).collect();
@@ -79,7 +73,7 @@ impl PredProp {
 impl IC3 {
     pub fn pred_prop_get_bad(&mut self) -> Option<(LitVec, Vec<LitVec>)> {
         let predprop = self.predprop.as_mut().unwrap();
-        let res = predprop.slv.dcs_solve(&predprop.bts.bad, &[], &[], u32::MAX).unwrap();
+        let res = predprop.slv.dcs_solve_nocst(&predprop.bts.bad);
         let order = |mut i: usize, cube: &mut [Lit]| -> bool {
             if self.inn {
                 if i == 0 {

@@ -444,17 +444,15 @@ independent solvers used at unrelated occations. `DagCnfSolver::dcs_solve` is
 its only solve entry and takes temporary constraints, an optional local domain,
 and a restart limit directly.
 
-For agent navigation, grep the full concrete names instead of `solve`,
-`sat_value`, or other generic fragments. These names are intentionally
-noise-free across the tree and lead directly to each concrete implementation
-and all of its call sites:
+For agent navigation, grep the full concrete names. These names are
+intentionally noise-free across the tree and lead directly to each concrete
+implementation and all of its call sites:
 - GipSAT: `dcs_solve`, `dcs_satval`, and `dcs_varsatval`.
 - CaDiCaL: `cad_solve` and `cad_satval`.
 - Kissat: `ksat_solve` and `ksat_satval`.
 - Bitwuzla: `bzla_solve` and `bzla_satval`.
 
 Core pieces:
-
 - `DagCnfSolver`: incremental SAT solver over `DagCnf`.
 - `ClauseDB`: stores transition clauses, IC3 lemmas, learnt clauses, and temporary clauses separately.
 - `Watchers`: watched-literal propagation.
@@ -462,7 +460,6 @@ Core pieces:
 - `Vsids`: decision heuristic, with a bucket mode for local-domain solving.
 - `Domain`: transparent cone-of-influence control for each query.
 - `Simplify`: periodic clause simplification, subsumption, equality cleanup, and garbage collection.
-- `Eqc`: equality tracking used by functional reduction and solver cleanup.
 
 ### Transparent COI pruning
 

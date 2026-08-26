@@ -1,6 +1,6 @@
 use super::Transys;
 use crate::{cadical::CaDiCaL, transys::certify::BlWitness};
-use logicrs::{Lit, LitMap, LitVec, Var, VarRange};
+use logicrs::{DagCnf, Lit, LitMap, LitVec, Var, VarRange};
 use std::{ops::Deref, sync::Arc};
 
 #[derive(Debug, Clone)]
@@ -61,6 +61,23 @@ impl TransysUnroll {
     ) -> impl Iterator<Item = Lit> {
         lits.into_iter()
             .map(move |l| self.lit_next(*l.as_ref(), num))
+    }
+
+    pub(crate) fn add_unrolled_rel(&self, rel: &mut Arc<DagCnf>, old_v: Var, num: usize) {
+        let v = self.var_next(old_v, num);
+        if v <= rel.max_var() && !rel.clauses_of_var(v).is_empty() {
+            return;
+        }
+        let cls = self.ts.rel.clauses_of_var(old_v);
+        let cls: Vec<LitVec> = cls
+            .map(|c| {
+                let mut c: LitVec = self.lits_next(c, num).collect();
+                c.sort();
+                c.dedup();
+                c
+            })
+            .collect();
+        Arc::get_mut(rel).unwrap().add_rel(v, &cls);
     }
 
     pub fn unroll(&mut self, no_conn_abst: bool) {
@@ -149,13 +166,7 @@ impl TransysUnroll {
                 constraint.push(c);
             }
             for old_v in VarRange::new_inclusive(Var(1), self.ts.rel.max_var()) {
-                let v = self.var_next(old_v, u);
-                if v <= rel.max_var() && !rel.clauses_of_var(v).is_empty() {
-                    continue;
-                }
-                let cls = self.ts.rel.clauses_of_var(old_v);
-                let cls: Vec<LitVec> = cls.map(|c| self.lits_next(c, u).collect()).collect();
-                Arc::get_mut(&mut rel).unwrap().add_rel(v, &cls);
+                self.add_unrolled_rel(&mut rel, old_v, u);
             }
         }
         assert!(self.ts.justice.is_empty());
@@ -185,13 +196,7 @@ impl TransysUnroll {
             if keep.contains(&old_v) {
                 continue;
             }
-            let v = self.var_next(old_v, 1);
-            if v <= rel.max_var() && !rel.clauses_of_var(v).is_empty() {
-                continue;
-            }
-            let cls = self.ts.rel.clauses_of_var(old_v);
-            let cls: Vec<LitVec> = cls.map(|c| self.lits_next(c, 1).collect()).collect();
-            Arc::get_mut(&mut rel).unwrap().add_rel(v, &cls);
+            self.add_unrolled_rel(&mut rel, old_v, 1);
         }
         let mut ts = Transys {
             input: self.ts.input.clone(),

@@ -121,7 +121,6 @@ impl Engine for BMC {
                     info!("cadical no cex at depth {d}");
                 }
             }
-
         } else if let S::K(k, rng) = &mut self.solver {
             for d in (self.start..=self.end).step_by(self.step) {
                 self.uts.unroll_to(d);

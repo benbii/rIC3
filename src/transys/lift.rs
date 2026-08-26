@@ -51,6 +51,7 @@ impl TsLift {
             inputs.push(input);
         }
         self.slv.set_domain(cls.iter().cloned(), &[]);
+        let mut consequent = LitVec::new_with_cap(cls.len() + 1);
         let mut states = LitVec::new();
         for s in state.into_iter() {
             let s = *s.as_ref();
@@ -70,10 +71,22 @@ impl TsLift {
                 break;
             }
             let olen = states.len();
-            states = self
-                .slv
-                .minimal_premise(&inputs_flatten, &states, &cls)
-                .unwrap();
+            let mut assump = LitVec::new_with_cap(inputs_flatten.len() + states.len() + 1);
+            assump.push(Lit::default());
+            assump.extend(inputs_flatten.iter().chain(states.iter()).copied());
+            consequent.clear();
+            consequent.extend_from_slice(&cls);
+            consequent.sort();
+            consequent.dedup();
+            consequent.push(Lit::default());
+            let mut constraints = [&mut consequent[..]];
+            assert!(
+                !self
+                    .slv
+                    .dcs_solve(&mut assump, &mut constraints, &[], u32::MAX)
+                    .unwrap()
+            );
+            states.retain(|l| self.slv.unsat_has(*l));
             if states.len() == olen {
                 break;
             }

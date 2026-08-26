@@ -75,7 +75,11 @@ impl DagCnfSolver {
             use_phase_saving: true,
         };
         for cls in dc.all_clauses() {
-            if let Some(cls) = solver.simplify_clause(cls) {
+            let mut cls = LitVec::from(cls);
+            cls.sort();
+            if let cls = solver.simplify_clause(&mut cls)
+                && !cls.is_empty()
+            {
                 solver.add_clause_inner(&cls, ClauseKind::Trans);
             }
         }
@@ -84,32 +88,32 @@ impl DagCnfSolver {
         solver
     }
 
-    fn simplify_clause(&mut self, clause: &[Lit]) -> Option<LitVec> {
-        assert!(self.highest_level() == 0);
-        let mut clause = logicrs::LitVec::from(clause);
-        clause.sort();
-        let mut simplified = LitVec::new_with_cap(clause.len());
+    fn simplify_clause<'a>(&mut self, clause: &'a mut [Lit]) -> &'a mut [Lit] {
+        debug_assert!(self.highest_level() == 0);
+        // the solver does not rely on this; the asserts are purely for aligning old semantics
+        debug_assert!(clause.is_sorted());
+        debug_assert!(clause.windows(2).all(|pair| pair[0] != pair[1]));
+        let mut prevneg = Lit(u32::MAX);
         for &lit in clause.iter() {
-            let value = self.state.lit_value(lit);
-            if value.is_true() {
-                return None;
-            } else if value.is_false() {
+            if prevneg == lit || self.state.lit_value(lit).is_true() {
+                return &mut [];
+            }
+            prevneg = !lit;
+        }
+
+        let mut end = 0;
+        for i in 0..clause.len() {
+            let lit = clause[i];
+            if self.state.lit_value(lit).is_false() {
                 continue;
             }
-            if let Some(&last) = (*simplified).last() {
-                if lit == last {
-                    continue;
-                } else if lit == !last {
-                    return None;
-                }
-            }
-            simplified.push(lit);
+            clause[end] = lit;
+            end += 1;
         }
-        if simplified.is_empty() {
+        if end == 0 {
             self.trivial_unsat = true;
-            return None;
         }
-        Some(simplified)
+        &mut clause[..end]
     }
 
     fn add_clause_inner(&mut self, clause: &[Lit], kind: ClauseKind) -> CRef {
@@ -135,14 +139,22 @@ impl DagCnfSolver {
         for l in clause.iter() {
             self.add_domain(l.var(), true);
         }
-        if let Some(clause) = self.simplify_clause(clause) {
+        let mut clause = LitVec::from(clause);
+        clause.sort();
+        if let clause = self.simplify_clause(&mut clause)
+            && !clause.is_empty()
+        {
             self.add_clause_inner(&clause, ClauseKind::Lemma);
         }
     }
 
     pub fn add_entailed_clause(&mut self, clause: &[Lit]) {
         self.reset();
-        if let Some(clause) = self.simplify_clause(clause) {
+        let mut clause = LitVec::from(clause);
+        clause.sort();
+        if let clause = self.simplify_clause(&mut clause)
+            && !clause.is_empty()
+        {
             self.add_clause_inner(&clause, ClauseKind::Lemma);
         }
     }
@@ -159,24 +171,12 @@ impl DagCnfSolver {
         &mut self,
         domain: &[Var],
         assump: &[Lit],
-        constraint: &[&[Lit]],
+        constraint: &mut [&mut [Lit]],
         bucket: bool,
     ) -> bool {
         self.backtrack(0, self.temporary_domain);
         self.clean_temporary();
         self.prepared_vsids = false;
-
-        for c in constraint {
-            let mut c = LitVec::from(*c);
-            c.push(!self.constrain_act.lit());
-            if let Some(c) = self.simplify_clause(&c) {
-                assert!(!c.is_empty());
-                if c.len() == 1 {
-                    return false;
-                }
-                self.add_clause_inner(&c, ClauseKind::Temporary);
-            }
-        }
 
         if !self.temporary_domain {
             self.domain
@@ -191,15 +191,31 @@ impl DagCnfSolver {
                 self.vsids.heap.clear();
             }
         }
+
+        for c in constraint.iter_mut() {
+            assert!(!c.is_empty());
+            // the original final slot is an activation
+            *c.last_mut().unwrap() = !self.constrain_act.lit();
+            let c = self.simplify_clause(c);
+            if c.is_empty() {
+                continue;
+            };
+            if c.len() == 1 {
+                return false;
+            }
+            self.add_clause_inner(c, ClauseKind::Temporary);
+        }
+
         true
     }
 
-    /// No other function in this repo has the exact name `dcs_solve`. No wrapper exists for it.
-    /// Grep for the full name to find its call sites without unrelated solver noise.
+    /// No other function in this repo has the exact name `dcs_solve`. Grep for the full name to
+    /// find its call sites without unrelated solver noise.
+    /// Constraints reserve `assump[0]` and each final literal.
     pub fn dcs_solve(
         &mut self,
-        assump: &[Lit],
-        constraint: &[&[Lit]],
+        assump: &mut [Lit],
+        constraint: &mut [&mut [Lit]],
         domain: &[Var],
         restart_limit: u32,
     ) -> Option<bool> {
@@ -208,23 +224,21 @@ impl DagCnfSolver {
             return Some(false);
         }
         self.num_solve += 1;
-        let mut assumption;
         if self.propagate() != CREF_NONE {
             self.trivial_unsat = true;
             self.unsat_core.clear();
             return Some(false);
         }
         let search_assump = if !constraint.is_empty() {
-            assumption = LitVec::new();
-            assumption.push(self.constrain_act.lit());
-            assumption.extend_from_slice(assump);
-            if !self.new_round(domain, assump, constraint, true) {
+            assert!(!assump.is_empty());
+            assump[0] = self.constrain_act.lit();
+            if !self.new_round(domain, &assump[1..], constraint, true) {
                 self.unsat_core.clear();
                 return Some(false);
             };
-            &assumption
+            assump
         } else {
-            assert!(self.new_round(domain, assump, &[], true));
+            assert!(self.new_round(domain, assump, constraint, true));
             assump
         };
         self.clean_learnt(true);
@@ -234,23 +248,23 @@ impl DagCnfSolver {
         res
     }
 
-    pub fn minimal_premise(
-        &mut self,
-        assump: &[Lit],
-        premise: &[Lit],
-        consequent: &[Lit],
-    ) -> Option<LitVec> {
-        let assump = LitVec::from_iter(assump.iter().chain(premise.iter()).copied());
-        if self.dcs_solve(&assump, &[consequent], &[], u32::MAX).unwrap() {
-            return None;
+    /// Unconstrained local-domain SAT query with the ordinary unlimited restart budget.
+    pub fn dcs_solve_nocst(&mut self, assump: &[Lit]) -> bool {
+        if self.trivial_unsat {
+            self.unsat_core.clear();
+            return false;
         }
-        Some(
-            premise
-                .iter()
-                .filter(|l| self.unsat_has(**l))
-                .copied()
-                .collect(),
-        )
+        self.num_solve += 1;
+        if self.propagate() != CREF_NONE {
+            self.trivial_unsat = true;
+            self.unsat_core.clear();
+            return false;
+        }
+        assert!(self.new_round(&[], assump, &mut [], true));
+        self.clean_learnt(true);
+        self.simplify();
+        self.watchers.maybe_compact();
+        self.search_with_restart(assump, u32::MAX).unwrap()
     }
 
     #[inline]

@@ -12,10 +12,18 @@ pub(super) fn inductive(
 ) -> bool {
     let assump = ts.lits_next(cube);
     if strengthen {
-        let cst = LitVec::from_iter(cube.iter().map(|l| !*l));
-        return !slv.dcs_solve(&assump, &[&cst], &[], u32::MAX).unwrap();
+        let mut cst = LitVec::from_iter(cube.iter().map(|l| !*l));
+        cst.sort();
+        cst.push(Lit::default());
+        let mut assump_with_act = LitVec::new_with_cap(assump.len() + 1);
+        assump_with_act.push(Lit::default());
+        assump_with_act.extend_from_slice(&assump);
+        let mut constraints = [&mut cst[..]];
+        return !slv
+            .dcs_solve(&mut assump_with_act, &mut constraints, &[], u32::MAX)
+            .unwrap();
     }
-    !slv.dcs_solve(&assump, &[], &[], u32::MAX).unwrap()
+    !slv.dcs_solve_nocst(&assump)
 }
 
 pub(super) fn inductive_core(slv: &mut DagCnfSolver, ts: &Transys, cube: &[Lit]) -> Option<LitVec> {
@@ -57,7 +65,7 @@ impl IC3 {
             let frame = self.solvers.len();
             let assump = LitVec::from([self.ts.bad[0]]);
             let slv = self.solvers.last_mut().unwrap();
-            let res = slv.dcs_solve(&assump, &[], &[], u32::MAX).unwrap();
+            let res = slv.dcs_solve_nocst(&assump);
             if res {
                 Some(self.get_pred(frame, &assump, true))
             } else {

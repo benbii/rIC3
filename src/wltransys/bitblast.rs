@@ -79,7 +79,14 @@ impl WlTransys {
         for v in self.input.iter().chain(self.latch.iter()) {
             nmap.insert(v.clone(), map[v].clone());
         }
-        let bitwl = Self { input, latch, init, next, bad, constraint };
+        let bitwl = Self {
+            input,
+            latch,
+            init,
+            next,
+            bad,
+            constraint,
+        };
 
         // Step 2: encode the boolean only WlTransys to bit level Transys
         let mut v2t = HashMap::default();

@@ -128,7 +128,6 @@ impl CaDiCaL {
     pub fn set_seed(&mut self, seed: u64) {
         unsafe { cadical_set_seed(self.solver, cadical_seed(seed)) }
     }
-
 }
 
 impl Drop for CaDiCaL {

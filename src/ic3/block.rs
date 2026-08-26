@@ -45,10 +45,7 @@ impl IC3 {
                     self.obligations.add(po.clone());
                     return BlockResult::Failure(po.depth);
                 }
-                debug_assert_eq!(
-                    self.solvers[0].dcs_solve(po.state.as_litvec(), &[], &[], u32::MAX),
-                    Some(false)
-                );
+                debug_assert_eq!(self.solvers[0].dcs_solve_nocst(po.state.as_litvec()), false);
             }
 
             if let Some((bf, _)) = self.frame.trivial_contained(Some(po.frame), &po.state) {
@@ -68,7 +65,7 @@ impl IC3 {
             let slv = &mut self.solvers[po.frame - 1];
             assump.clear();
             assump.extend(ordered_cube.iter().map(|l| self.ts.next(*l)));
-            let blocked = !slv.dcs_solve(&assump, &[], &[], u32::MAX).unwrap();
+            let blocked = !slv.dcs_solve_nocst(&assump);
             if !blocked {
                 let (model, inputs) = self.get_pred(po.frame, &assump, true);
                 self.obligations.add(Po::new(
@@ -97,7 +94,7 @@ impl IC3 {
                 inductive_core(&mut self.solvers[po.frame - 1], &self.ts, &ordered_cube)
             {
                 let old_sz = mic.len();
-                mic = self.mic(po.frame, mic, &[], parameter);
+                mic = self.mic(po.frame, mic, &mut LitVec::new(), parameter);
                 let (frame, mic) = self.push_lemma(po.frame, mic);
                 if let Some(input) = &mab_input {
                     let mab = self.mab.as_mut().unwrap();
@@ -124,10 +121,14 @@ impl IC3 {
         &mut self,
         frame: usize,
         lemma: LitVec,
-        constraint: &[Lit],
+        constraint: &mut LitVec,
         parameter: DropVarParameter,
     ) -> bool {
         let mut limit = parameter.limit;
+        // if constraint is empty, the entire transys is unsat.
+        // making constraint = [!act] will naturally trigger the unsat flow
+        constraint.sort();
+        constraint.push(Lit::default());
         self.trivial_block_rec(frame, lemma, constraint, &mut limit, parameter)
     }
 
@@ -135,7 +136,7 @@ impl IC3 {
         &mut self,
         frame: usize,
         lemma: LitVec,
-        constraint: &[Lit],
+        constraint: &mut LitVec,
         limit: &mut usize,
         parameter: DropVarParameter,
     ) -> bool {
@@ -149,25 +150,34 @@ impl IC3 {
             return false;
         }
         *limit -= 1;
-        let mut cube_cst = LitVec::new_with_cap(lemma.len());
+        let mut cube_cst = LitVec::new_with_cap(lemma.len() + 1);
         let mut ordcube = LitVec::new_with_cap(lemma.len());
-        let mut assump = LitVec::new_with_cap(lemma.len());
+        let mut assump = LitVec::new_with_cap(lemma.len() + 1);
         loop {
             ordcube.clear();
             ordcube.extend_from_slice(&lemma);
             self.activity.sort_by_activity(&mut ordcube, false);
             assump.clear();
+            assump.push(Lit::default());
             assump.extend(ordcube.iter().map(|l| self.ts.next(*l)));
             cube_cst.clear();
             cube_cst.extend(ordcube.iter().map(|l| !*l));
+            cube_cst.sort();
+            cube_cst.push(Lit::default());
             let slv = &mut self.solvers[frame - 1];
-            let allcst: &[&[Lit]] = if constraint.is_empty() {
-                &[cube_cst.as_slice()]
+            let core = if !constraint.is_empty() {
+                let mut allcst = [&mut constraint[..], &mut cube_cst[..]];
+                let core = !slv
+                    .dcs_solve(&mut assump, &mut allcst, &[], u32::MAX)
+                    .unwrap();
+                super::mic::trunc_cstact(constraint);
+                core
             } else {
-                &[constraint, &cube_cst]
+                let mut allcst = [&mut cube_cst[..]];
+                !slv.dcs_solve(&mut assump, &mut allcst, &[], u32::MAX)
+                    .unwrap()
             };
-            let core = (!slv.dcs_solve(&assump, &allcst, &[], u32::MAX).unwrap())
-                .then(|| inductive_core(slv, &self.ts, &ordcube).unwrap());
+            let core = core.then(|| inductive_core(slv, &self.ts, &ordcube).unwrap());
 
             if let Some(mut mic) = core {
                 mic = self.mic(frame, mic, constraint, parameter);
@@ -178,7 +188,7 @@ impl IC3 {
             if *limit == 0 {
                 return false;
             }
-            let model = self.get_pred(frame, &assump, false).0;
+            let model = self.get_pred(frame, &assump[1..], false).0;
             if !self.trivial_block_rec(frame - 1, model, constraint, limit, parameter) {
                 return false;
             }

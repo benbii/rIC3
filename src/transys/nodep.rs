@@ -151,7 +151,7 @@ macro_rules! cadkis_loadtrans {
             for c in self.ts.constraint() {
                 satif.add_clause(&[self.lit_next(c, u)]);
             }
-    }
+        }
     };
 }
 macro_rules! cadkis_witness {
@@ -254,7 +254,6 @@ impl NoDepTransysUnroll {
     cadkis_witness!(witness, CaDiCaL, cad_satval);
     cadkis_witness!(witness_k, Kissat, ksat_satval);
 }
-
 
 impl Transys {
     pub fn remove_dep(self) -> NoDepTransys {

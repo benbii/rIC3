@@ -180,7 +180,7 @@ impl IC3 {
             for init in ts.inits() {
                 slv.add_perma_clause(&init);
             }
-            if slv.dcs_solve(&[ts.bad[0]], &[], &[], u32::MAX).unwrap() {
+            if slv.dcs_solve_nocst(&[ts.bad[0]]) {
                 let mut input = LitVec::new();
                 for i in ts.input() {
                     if let Some(v) = slv.dcs_varsatval(i) {

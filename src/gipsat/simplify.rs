@@ -50,7 +50,7 @@ impl DagCnfSolver {
         self.simplify.last_simplify = self.num_solve;
     }
 
-    pub(super) fn simplify_satisfied_clauses(&mut self, mut clauses: NckVec<CRef>) -> NckVec<CRef> {
+    fn simplify_satisfied_clauses(&mut self, mut clauses: NckVec<CRef>) -> NckVec<CRef> {
         let mut i = 0;
         'm: while i < clauses.len() {
             let cid = clauses[i];

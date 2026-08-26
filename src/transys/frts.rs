@@ -95,10 +95,12 @@ pub fn combsweep(mut ts: Transys, cfg: &PreprocConfig, mut rst: Restore) -> (Tra
         };
         let lv = v.lit();
 
-        if solver.dcs_solve(&[m, !lv], &[], &[], 1) == Some(false) {
+        let mut assump = [m, !lv];
+        if solver.dcs_solve(&mut assump, &mut [], &[], 1) == Some(false) {
             trace!("{m}->{lv}");
             solver.add_entailed_clause(&[!m, lv]);
-            if solver.dcs_solve(&[!m, lv], &[], &[], 1) == Some(false) {
+            let mut assump = [!m, lv];
+            if solver.dcs_solve(&mut assump, &mut [], &[], 1) == Some(false) {
                 trace!("{lv}=={m}");
                 replace.insert_lit(lv, m);
                 solver.add_entailed_clause(&[m, !lv]);

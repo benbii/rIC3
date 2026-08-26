@@ -50,7 +50,7 @@ impl Scorr {
         let mut sim: VarMap<BitVec> = VarMap::new_with(self.ts.max_var());
         sim.reserve(self.ts.max_var());
         while sim[Var::CONST].len() < num_word * BitVec::WORD_SIZE {
-            if !slv.dcs_solve(&[], &[], &[], u32::MAX).unwrap() {
+            if !slv.dcs_solve_nocst(&[]) {
                 break;
             }
             let mut block = LitVec::new();
@@ -85,13 +85,16 @@ impl Scorr {
             consider: &[Var],
             domain: &[Var],
             num_word: usize,
-            assump: &[Lit],
+            mut assump: LitVec,
         ) {
             loop {
                 if sim[Var::CONST].len() >= num_word * BitVec::WORD_SIZE {
                     return;
                 }
-                if !slv.dcs_solve(assump, &[], domain, 5).is_some_and(|r| r) {
+                if !slv
+                    .dcs_solve(&mut assump, &mut [], domain, 5)
+                    .is_some_and(|r| r)
+                {
                     return;
                 }
                 sim[Var::CONST].push(false);
@@ -102,9 +105,11 @@ impl Scorr {
                     sim[v].push(value == n.polarity());
                     block.push(Lit::new(n.var(), !value));
                 }
+                block.sort();
+                block.dedup();
                 slv.add_perma_clause(&block);
                 let assump = assign(sim, sim[Var::CONST].len() - 1, consider);
-                dfs(ts, sim, slv, consider, domain, num_word, &assump);
+                dfs(ts, sim, slv, consider, domain, num_word, assump);
             }
         }
 
@@ -118,7 +123,9 @@ impl Scorr {
         }
         for i in 0..init[Var::CONST].len() {
             let block = !assign(init, i, &consider);
-            let block = self.ts.lits_next(block.iter());
+            let mut block = self.ts.lits_next(block.iter());
+            block.sort();
+            block.dedup();
             slv.add_perma_clause(&block);
         }
         slv.use_phase_saving = false;
@@ -131,17 +138,23 @@ impl Scorr {
         for from in 0..init[Var::CONST].len() {
             let assump = assign(init, from, &consider);
             dfs(
-                &self.ts, &mut sim, &mut slv, &consider, &domain, num_word, &assump,
+                &self.ts, &mut sim, &mut slv, &consider, &domain, num_word, assump,
             );
         }
         sim
     }
 
+    /// precondition: y < x, guaranteed by `if y.var() > x` later in line 225
     fn check_scorr(&mut self, x: Lit, y: Lit) -> bool {
-        let cst: [&[Lit]; 2] = [&[x, y], &[!x, !y]];
+        let mut assump = [Lit::default()];
+        let mut xy = [x, y, Lit::default()];
+        let mut nxy = [!x, !y, Lit::default()];
+        xy[..2].sort();
+        nxy[..2].sort();
+        let mut cst = [&mut xy[..], &mut nxy[..]];
         if self
             .init_slv
-            .dcs_solve(&[], &cst, &[], 10)
+            .dcs_solve(&mut assump, &mut cst, &[], 10)
             .is_none_or(|r| r)
         {
             return false;
@@ -152,9 +165,21 @@ impl Scorr {
         } else {
             self.ts.next(y)
         };
-        let cst: [&[Lit]; 4] = [&[x, !y], &[!x, y], &[xn, yn], &[!xn, !yn]];
+        if xn == yn {
+            return true;
+        }
+        let mut assump = [Lit::default()];
+        let mut xny = [x, !y, Lit::default()];
+        let mut nxy = [!x, y, Lit::default()];
+        let mut xnyn = [xn, yn, Lit::default()];
+        let mut nxnyn = [!xn, !yn, Lit::default()];
+        xny[..2].sort();
+        nxy[..2].sort();
+        xnyn[..2].sort();
+        nxnyn[..2].sort();
+        let mut cst = [&mut xny[..], &mut nxy[..], &mut xnyn[..], &mut nxnyn[..]];
         self.ind_slv
-            .dcs_solve(&[], &cst, &[], 10)
+            .dcs_solve(&mut assump, &mut cst, &[], 10)
             .is_some_and(|r| !r)
     }
 

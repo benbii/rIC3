@@ -26,6 +26,15 @@ impl DropVarParameter {
     }
 }
 
+/// `dcs_solve` replaces the final dummy with its fresh activation literal and
+/// `simplify_clause` may compact the prefix.  Restore the reusable guarded
+/// constraint to that compacted prefix plus its activation dummy.
+pub(super) fn trunc_cstact(lv: &mut LitVec) {
+    let cstact = lv.last();
+    let (at, _) = lv.iter().enumerate().find(|&(_, &l)| l == cstact).unwrap();
+    lv.truncate(at + 1);
+}
+
 impl IC3 {
     fn down(
         &mut self,
@@ -33,14 +42,17 @@ impl IC3 {
         cube: &LitVec,
         keep: &HashSet<Lit>,
         full: &LitVec,
-        constraint: &[Lit],
+        constraint: &mut LitVec,
         cex: &mut Vec<(LitOrdVec, LitOrdVec)>,
     ) -> Option<LitVec> {
         let mut cube = cube.clone();
-        let state_cst = !self.ts.lits_next(full);
-        let mut cube_cst = LitVec::new_with_cap(cube.len());
+        let mut state_cst = !self.ts.lits_next(full);
+        state_cst.sort();
+        state_cst.dedup();
+        state_cst.push(Lit::default());
+        let mut cube_cst = LitVec::new_with_cap(cube.len() + 1);
         let mut ordcube = LitVec::new_with_cap(cube.len());
-        let mut assump = LitVec::new_with_cap(cube.len());
+        let mut assump = LitVec::new_with_cap(cube.len() + 1);
         let ts = &self.ts;
         let activity = &mut self.activity;
         let slv = &mut self.solvers[frame - 1];
@@ -61,18 +73,30 @@ impl IC3 {
             ordcube.extend_from_slice(&cube);
             activity.sort_by_activity(&mut ordcube, false);
             assump.clear();
+            assump.push(Lit::default());
             assump.extend(ordcube.iter().map(|l| ts.next(*l)));
             cube_cst.clear();
             cube_cst.extend(ordcube.iter().map(|l| !*l));
+            cube_cst.sort();
+            cube_cst.push(Lit::default());
 
-            let allcst: &[&[Lit]] = if constraint.is_empty() {
-                &[state_cst.as_slice(), &cube_cst]
+            let blocked = if !constraint.is_empty() {
+                let mut allcst = [&mut constraint[..], &mut state_cst[..], &mut cube_cst[..]];
+                let r = !slv
+                    .dcs_solve(&mut assump, &mut allcst, &[], u32::MAX)
+                    .unwrap();
+                trunc_cstact(constraint);
+                r
             } else {
-                &[constraint, &state_cst, &cube_cst]
+                let mut allcst = [&mut state_cst[..], &mut cube_cst[..]];
+                !slv.dcs_solve(&mut assump, &mut allcst, &[], u32::MAX)
+                    .unwrap()
             };
-            if !slv.dcs_solve(&assump, allcst, &[], u32::MAX).unwrap() {
+            trunc_cstact(&mut state_cst);
+            if blocked {
                 return Some(inductive_core(slv, ts, &ordcube).unwrap());
             }
+
             let mut ret = false;
             let mut cube_new = LitVec::new();
             for lit in cube {
@@ -119,10 +143,13 @@ impl IC3 {
     ) -> Option<LitVec> {
         let mut cube = cube.clone();
         let full = !full;
-        let state_cst = self.ts.lits_next(&full);
-        let mut cube_cst = LitVec::new_with_cap(cube.len());
+        let mut state_cst = self.ts.lits_next(&full);
+        state_cst.sort();
+        state_cst.dedup();
+        state_cst.push(Lit::default());
+        let mut cube_cst = LitVec::new_with_cap(cube.len() + 1);
         let mut ordcube = LitVec::new_with_cap(cube.len());
-        let mut assump = LitVec::new_with_cap(cube.len());
+        let mut assump = LitVec::new_with_cap(cube.len() + 1);
         let mut ctg = 0;
 
         loop {
@@ -133,18 +160,24 @@ impl IC3 {
             ordcube.extend_from_slice(&cube);
             self.activity.sort_by_activity(&mut ordcube, false);
             assump.clear();
+            assump.push(Lit::default());
             assump.extend(ordcube.iter().map(|l| self.ts.next(*l)));
             cube_cst.clear();
             cube_cst.extend(ordcube.iter().map(|l| !*l));
-
+            cube_cst.sort();
+            cube_cst.push(Lit::default());
             let slv = &mut self.solvers[frame - 1];
             // Preserve the baseline D/D' cone while attaching !K' below.
             // The helper remains available to BCP but cannot seed the COI.
             slv.set_domain(
-                assump.iter().copied().chain(ordcube.iter().copied()),
-                &state_cst,
+                assump[1..].iter().copied().chain(ordcube.iter().copied()),
+                &state_cst[..state_cst.len() - 1],
             );
-            let blocked = !slv.dcs_solve(&assump, &[&state_cst, &cube_cst], &[], u32::MAX).unwrap();
+            let mut constraints = [&mut state_cst[..], &mut cube_cst[..]];
+            let blocked = !slv
+                .dcs_solve(&mut assump, &mut constraints, &[], u32::MAX)
+                .unwrap();
+            trunc_cstact(&mut state_cst);
             let core = blocked.then(|| inductive_core(slv, &self.ts, &ordcube).unwrap());
             let keep_in_model = !blocked
                 && cube.iter().all(|lit| {
@@ -160,12 +193,12 @@ impl IC3 {
                 return None;
             }
 
-            let (model, _) = self.get_pred(frame, &assump, false);
+            let (model, _) = self.get_pred(frame, &assump[1..], false);
             let cex_set: HashSet<Lit> = HashSet::from_iter(model.iter().cloned());
             if ctg < parameter.max
                 && frame > 1
                 && !self.ts.cube_subsume_init(&model)
-                && self.trivial_block(frame - 1, model.clone(), &full, parameter.sub_level())
+                && self.trivial_block(frame - 1, model, &mut full.clone(), parameter.sub_level())
             {
                 ctg += 1;
                 continue;
@@ -187,7 +220,7 @@ impl IC3 {
         &mut self,
         frame: usize,
         mut cube: LitVec,
-        constraint: &[Lit],
+        constraint: &mut LitVec,
         parameter: DropVarParameter,
     ) -> LitVec {
         if parameter.level == 0 {

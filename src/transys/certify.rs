@@ -123,7 +123,6 @@ impl BlWitness {
             })
             .unwrap();
     }
-
 }
 
 pub type BlProof = Transys;
@@ -261,5 +260,4 @@ impl Restore {
         }
         wit
     }
-
 }

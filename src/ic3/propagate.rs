@@ -24,7 +24,7 @@ impl IC3 {
                     assump.clear();
                     assump.extend(ordered_cube.iter().map(|l| self.ts.next(*l)));
                     let slv = &mut self.solvers[frame_idx];
-                    let blocked = !slv.dcs_solve(&assump, &[], &[], u32::MAX).unwrap();
+                    let blocked = !slv.dcs_solve_nocst(&assump);
                     if blocked {
                         let core =
                             inductive_core(&mut self.solvers[frame_idx], &self.ts, &ordered_cube)
@@ -48,7 +48,7 @@ impl IC3 {
                     {
                         let core = inductive_core(&mut self.solvers[frame_idx - 1], &self.ts, &ctp)
                             .unwrap();
-                        let mic = self.mic(frame_idx, core, &[], Default::default());
+                        let mic = self.mic(frame_idx, core, &mut LitVec::new(), Default::default());
                         if self.add_lemma(frame_idx, mic, false, None) {
                             return true;
                         }
