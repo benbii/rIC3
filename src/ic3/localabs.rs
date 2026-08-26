@@ -6,7 +6,7 @@ use crate::{
 };
 use crate::{RseedMap as HashMap, RseedSet as HashSet};
 use log::{debug, info};
-use logicrs::{LitVec, Var, satif::Satif};
+use logicrs::{LitVec, Var};
 use rand::seq::SliceRandom;
 use std::sync::Arc;
 
@@ -137,7 +137,7 @@ impl LocalAbs {
     fn check(&mut self, mut assumps: LitVec) -> Option<LitVec> {
         let olen = assumps.len();
         assumps.extend(self.uts.lits_next(&self.uts.ts.bad, self.uts.num_unroll));
-        if self.solver.solve(&assumps) {
+        if self.solver.cad_solve(&assumps) {
             None
         } else {
             assumps.truncate(olen);

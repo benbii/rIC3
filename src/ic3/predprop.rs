@@ -6,7 +6,7 @@ use crate::{
     ic3::IC3,
     transys::{Transys, lift::TsLift, unroll::TransysUnroll},
 };
-use logicrs::{Lit, LitVec, satif::Satif};
+use logicrs::{Lit, LitVec};
 use rand::seq::SliceRandom;
 
 pub struct PredProp {
@@ -65,13 +65,13 @@ impl PredProp {
     }
 
     pub fn add_lemma(&mut self, lemma: &LitVec) {
-        self.slv.add_clause(&!lemma);
+        self.slv.add_perma_clause(&!lemma);
     }
 
     pub fn extend<'a>(&'a mut self, lemmas: impl IntoIterator<Item = &'a LitVec>) {
         self.slv = self.bts.new_solver();
         for l in lemmas.into_iter() {
-            self.slv.add_clause(&!l);
+            self.slv.add_perma_clause(&!l);
         }
     }
 }
@@ -79,7 +79,7 @@ impl PredProp {
 impl IC3 {
     pub fn pred_prop_get_bad(&mut self) -> Option<(LitVec, Vec<LitVec>)> {
         let predprop = self.predprop.as_mut().unwrap();
-        let res = predprop.slv.solve(&predprop.bts.bad);
+        let res = predprop.slv.dcs_solve(&predprop.bts.bad, &[], &[], u32::MAX).unwrap();
         let order = |mut i: usize, cube: &mut [Lit]| -> bool {
             if self.inn {
                 if i == 0 {

@@ -1,7 +1,7 @@
 use super::solver::{inductive, inductive_core};
 use crate::ic3::{Frame, IC3};
 // use log::error;
-use logicrs::{LitOrdVec, LitVec, satif::Satif};
+use logicrs::{LitOrdVec, LitVec};
 // use nix::libc;
 use rand::seq::SliceRandom;
 // use std::{fs::OpenOptions, io::Write, os::fd::AsRawFd};
@@ -23,7 +23,8 @@ impl IC3 {
                     self.activity.sort_by_activity(&mut ordered_cube, false);
                     assump.clear();
                     assump.extend(ordered_cube.iter().map(|l| self.ts.next(*l)));
-                    let blocked = !self.solvers[frame_idx].solve(&assump);
+                    let slv = &mut self.solvers[frame_idx];
+                    let blocked = !slv.dcs_solve(&assump, &[], &[], u32::MAX).unwrap();
                     if blocked {
                         let core =
                             inductive_core(&mut self.solvers[frame_idx], &self.ts, &ordered_cube)

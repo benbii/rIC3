@@ -8,8 +8,8 @@ pub mod scorr;
 mod simp;
 pub mod unroll;
 
-use crate::gipsat::DagCnfSolver;
-use logicrs::{DagCnf, Lit, LitVec, OptionU32, Var, VarMap, satif::Satif};
+use crate::{cadical::CaDiCaL, gipsat::DagCnfSolver};
+use logicrs::{DagCnf, Lit, LitVec, OptionU32, Var, VarMap};
 use std::{
     fmt::{self, Display},
     sync::Arc,
@@ -148,14 +148,14 @@ impl Transys {
         cnf
     }
 
-    pub fn load_init<S: Satif + ?Sized>(&self, satif: &mut S) {
+    pub fn load_init(&self, satif: &mut CaDiCaL) {
         satif.new_var_to(self.max_var());
         for cls in self.inits() {
             satif.add_clause(&cls);
         }
     }
 
-    pub fn load_trans(&self, satif: &mut impl Satif, constraint: bool) {
+    pub fn load_trans(&self, satif: &mut CaDiCaL, constraint: bool) {
         satif.new_var_to(self.max_var());
         for c in self.trans() {
             satif.add_clause(c);
@@ -171,7 +171,7 @@ impl Transys {
     pub fn new_solver(&self) -> DagCnfSolver {
         let mut slv = DagCnfSolver::new(Arc::clone(&self.rel));
         for c in self.constraint.iter() {
-            slv.add_clause(&[*c]);
+            slv.add_perma_clause(&[*c]);
         }
         slv
     }

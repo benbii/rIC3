@@ -145,65 +145,6 @@ impl LitVec {
         (diff.is_none(), diff)
     }
 
-    /* unused functions
-    pub fn intersection(&self, cube: &LitVec) -> LitVec {
-        let x_lit_set = self.iter().collect::<HashSet<&Lit>>();
-        let y_lit_set = cube.iter().collect::<HashSet<&Lit>>();
-        Self {
-            lits: x_lit_set
-                .intersection(&y_lit_set)
-                .copied()
-                .copied()
-                .collect(),
-        }
-    }
-
-    #[inline]
-    pub fn ordered_intersection(&self, cube: &LitVec) -> LitVec {
-        debug_assert!(self.is_sorted());
-        debug_assert!(cube.is_sorted());
-        let mut res = LitVec::new();
-        let mut i = 0;
-        for l in self.iter() {
-            while i < cube.len() && cube[i] < *l {
-                i += 1;
-            }
-            if i == cube.len() {
-                break;
-            }
-            if *l == cube[i] {
-                res.push(*l);
-            }
-        }
-        res
-    }
-
-    #[inline]
-    pub fn resolvent(&self, other: &LitVec, v: Var) -> Option<LitVec> {
-        let (x, y) = if self.len() < other.len() {
-            (self, other)
-        } else {
-            (other, self)
-        };
-        let mut new = LitVec::new();
-        'n: for x in x.iter() {
-            if x.var() != v {
-                for y in y.iter() {
-                    if x.var() == y.var() {
-                        if *x == !*y {
-                            return None;
-                        } else {
-                            continue 'n;
-                        }
-                    }
-                }
-                new.push(*x);
-            }
-        }
-        new.extend(y.iter().filter(|l| l.var() != v).copied());
-        Some(new)
-    } */
-
     #[inline]
     pub fn ordered_resolvent(&self, other: &LitVec, v: Var) -> Option<LitVec> {
         debug_assert!(self.is_sorted());

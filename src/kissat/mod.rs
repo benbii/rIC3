@@ -1,4 +1,4 @@
-use logicrs::{Lit, Var, satif::Satif};
+use logicrs::{Lit, Var};
 use std::ffi::{CString, c_char, c_int, c_void};
 
 unsafe extern "C" {
@@ -8,7 +8,6 @@ unsafe extern "C" {
     fn kissat_solve(s: *mut c_void) -> c_int;
     fn kissat_value(s: *mut c_void, lit: c_int) -> c_int;
     fn kissat_set_option(s: *mut c_void, op: *mut c_char, v: c_int) -> c_int;
-    fn kissat_terminate(s: *mut c_void);
 }
 
 fn kissat_seed(seed: u64) -> c_int {
@@ -37,29 +36,20 @@ impl Kissat {
         };
         Self { solver, num_var: 0 }
     }
-}
 
-impl Satif for Kissat {
-    #[inline]
-    fn new_var(&mut self) -> Var {
-        self.num_var += 1;
-        Var::new(self.num_var - 1)
+    pub fn new_var_to(&mut self, n: Var) {
+        self.num_var = self.num_var.max(usize::from(n) + 1);
     }
 
     #[inline]
-    fn num_var(&self) -> usize {
-        self.num_var
-    }
-
-    #[inline]
-    fn add_clause(&mut self, clause: &[Lit]) {
+    pub fn add_clause(&mut self, clause: &[Lit]) {
         for lit in clause.iter().map(lit_to_kissat_lit) {
             unsafe { kissat_add(self.solver, lit) };
         }
         unsafe { kissat_add(self.solver, 0) };
     }
 
-    fn solve(&mut self, assumps: &[Lit]) -> bool {
+    pub fn ksat_solve(&mut self, assumps: &[Lit]) -> bool {
         debug_assert!(assumps.is_empty());
         match unsafe { kissat_solve(self.solver) } {
             10 => true,
@@ -68,18 +58,7 @@ impl Satif for Kissat {
         }
     }
 
-    /// Kissat does not support solving with constraints
-    fn try_solve(&mut self, assumps: &[Lit], constraint: &[&[Lit]]) -> Option<bool> {
-        debug_assert!(assumps.is_empty());
-        debug_assert!(constraint.is_empty());
-        match unsafe { kissat_solve(self.solver) } {
-            10 => Some(true),
-            20 => Some(false),
-            _ => panic!(),
-        }
-    }
-
-    fn sat_value(&self, lit: Lit) -> Option<bool> {
+    pub fn ksat_satval(&self, lit: Lit) -> Option<bool> {
         let lit = lit_to_kissat_lit(&lit);
         let res = unsafe { kissat_value(self.solver, lit) };
         if res == lit {
@@ -91,7 +70,7 @@ impl Satif for Kissat {
         }
     }
 
-    fn set_seed(&mut self, seed: u64) {
+    pub fn set_seed(&mut self, seed: u64) {
         unsafe {
             kissat_set_option(
                 self.solver,
@@ -99,12 +78,6 @@ impl Satif for Kissat {
                 kissat_seed(seed),
             )
         };
-    }
-}
-
-impl Kissat {
-    pub fn terminate(&mut self) {
-        unsafe { kissat_terminate(self.solver) }
     }
 }
 
@@ -131,17 +104,18 @@ fn seed_conversion_stays_in_range() {
 #[test]
 fn test() {
     let mut solver = Kissat::new();
-    let lit0: Lit = solver.new_var().into();
-    let lit1: Lit = solver.new_var().into();
-    let lit2: Lit = solver.new_var().into();
+    solver.new_var_to(Var(2));
+    let lit0 = Var(0).lit();
+    let lit1 = Var(1).lit();
+    let lit2 = Var(2).lit();
     solver.add_clause(&[lit0, !lit2]);
     solver.add_clause(&[lit1, !lit2]);
     solver.add_clause(&[!lit0, !lit1, lit2]);
     solver.add_clause(&[lit2]);
-    if solver.solve(&[]) {
-        assert!(solver.sat_value(lit0).unwrap());
-        assert!(solver.sat_value(lit1).unwrap());
-        assert!(solver.sat_value(lit2).unwrap());
+    if solver.ksat_solve(&[]) {
+        assert!(solver.ksat_satval(lit0).unwrap());
+        assert!(solver.ksat_satval(lit1).unwrap());
+        assert!(solver.ksat_satval(lit2).unwrap());
     } else {
         panic!()
     }

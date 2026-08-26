@@ -1,7 +1,9 @@
 use super::Transys;
 use crate::RseedMap as HashMap;
+use crate::cadical::CaDiCaL;
+use crate::kissat::Kissat;
 use crate::transys::certify::{BlWitness, Restore};
-use logicrs::{Cnf, Lit, LitMap, LitVec, Var, VarRange, satif::Satif};
+use logicrs::{Cnf, Lit, LitMap, LitVec, Var, VarRange};
 
 #[derive(Default, Debug, Clone)]
 pub struct NoDepTransys {
@@ -80,26 +82,6 @@ impl NoDepTransys {
         cnf
     }
 
-    pub fn load_init<S: Satif + ?Sized>(&self, satif: &mut S) {
-        satif.new_var_to(self.max_var());
-        for cls in self.inits() {
-            satif.add_clause(&cls);
-        }
-    }
-
-    pub fn load_trans<S: Satif + ?Sized>(&self, satif: &mut S, constraint: bool) {
-        satif.new_var_to(self.max_var());
-        for c in self.trans() {
-            satif.add_clause(c);
-        }
-        if !constraint {
-            return;
-        }
-        for c in self.constraint() {
-            satif.add_clause(&[c]);
-        }
-    }
-
     pub fn simplify(&mut self, rst: &mut Restore) {
         let mut simp_solver = crate::cadical::CaDiCaL::new();
         simp_solver.new_var_to(self.max_var());
@@ -153,6 +135,52 @@ pub(crate) struct NoDepTransysUnroll {
     pub(crate) num_unroll: usize,
     pub(crate) max_var: Var,
     next_map: LitMap<Vec<Lit>>,
+}
+
+macro_rules! cadkis_loadtrans {
+    ($method:ident, $satif:ty) => {
+        pub(crate) fn $method(&self, satif: &mut $satif, u: usize, constraint: bool) {
+            satif.new_var_to(self.max_var);
+            for c in self.ts.trans() {
+                let c: Vec<Lit> = c.iter().map(|l| self.lit_next(*l, u)).collect();
+                satif.add_clause(&c);
+            }
+            if !constraint {
+                return;
+            }
+            for c in self.ts.constraint() {
+                satif.add_clause(&[self.lit_next(c, u)]);
+            }
+    }
+    };
+}
+macro_rules! cadkis_witness {
+    ($method:ident, $satif:ty, $satval:ident) => {
+        pub fn $method(&self, satif: &$satif) -> BlWitness {
+            let mut wit = BlWitness::default();
+            for k in 0..=self.num_unroll {
+                let mut w = LitVec::new();
+                for l in self.ts.input() {
+                    let l = l.lit();
+                    let kl = self.lit_next(l, k);
+                    if let Some(v) = satif.$satval(kl) {
+                        w.push(l.not_if(!v));
+                    }
+                }
+                wit.input.push(w);
+                let mut w = LitVec::new();
+                for l in self.ts.latch() {
+                    let l = l.lit();
+                    let kl = self.lit_next(l, k);
+                    if let Some(v) = satif.$satval(kl) {
+                        w.push(l.not_if(!v));
+                    }
+                }
+                wit.state.push(w);
+            }
+            wit
+        }
+    };
 }
 
 impl NoDepTransysUnroll {
@@ -221,45 +249,12 @@ impl NoDepTransysUnroll {
         }
     }
 
-    pub(crate) fn load_trans<S: Satif + ?Sized>(&self, satif: &mut S, u: usize, constraint: bool) {
-        satif.new_var_to(self.max_var);
-        for c in self.ts.trans() {
-            let c: Vec<Lit> = c.iter().map(|l| self.lit_next(*l, u)).collect();
-            satif.add_clause(&c);
-        }
-        if !constraint {
-            return;
-        }
-        for c in self.ts.constraint() {
-            satif.add_clause(&[self.lit_next(c, u)]);
-        }
-    }
-
-    pub(crate) fn witness<S: Satif + ?Sized>(&self, satif: &S) -> BlWitness {
-        let mut wit = BlWitness::default();
-        for k in 0..=self.num_unroll {
-            let mut w = LitVec::new();
-            for l in self.ts.input() {
-                let l = l.lit();
-                let kl = self.lit_next(l, k);
-                if let Some(v) = satif.sat_value(kl) {
-                    w.push(l.not_if(!v));
-                }
-            }
-            wit.input.push(w);
-            let mut w = LitVec::new();
-            for l in self.ts.latch() {
-                let l = l.lit();
-                let kl = self.lit_next(l, k);
-                if let Some(v) = satif.sat_value(kl) {
-                    w.push(l.not_if(!v));
-                }
-            }
-            wit.state.push(w);
-        }
-        wit
-    }
+    cadkis_loadtrans!(load_trans, CaDiCaL);
+    cadkis_loadtrans!(load_trans_k, Kissat);
+    cadkis_witness!(witness, CaDiCaL, cad_satval);
+    cadkis_witness!(witness_k, Kissat, ksat_satval);
 }
+
 
 impl Transys {
     pub fn remove_dep(self) -> NoDepTransys {

@@ -1,6 +1,6 @@
 use super::{IC3, proofoblig::Po, solver::inductive};
 use crate::transys::Transys;
-use logicrs::{Lit, LitOrdVec, LitSet, LitVec, Var, satif::Satif};
+use logicrs::{Lit, LitOrdVec, LitSet, LitVec, Var};
 use std::{
     fmt::Write,
     ops::{Deref, DerefMut},
@@ -111,7 +111,7 @@ impl IC3 {
             {
                 predprop.add_lemma(&lemma);
             }
-            self.solvers[0].add_clause(&!lemma.as_litvec());
+            self.solvers[0].add_perma_clause(&!lemma.as_litvec());
             self.frame[0].push((lemma, po));
             return false;
         }
@@ -132,7 +132,7 @@ impl IC3 {
                     self.frame[i].swap_remove(j);
                     let clause = !lemma.as_litvec();
                     for k in i + 1..=frame {
-                        self.solvers[k].add_clause(&clause);
+                        self.solvers[k].add_perma_clause(&clause);
                     }
                     if self.level() == frame
                         && let Some(predprop) = self.predprop.as_mut()
@@ -157,7 +157,7 @@ impl IC3 {
         let clause = !lemma.as_litvec();
         let begin = begin.unwrap_or(1);
         for i in begin..=frame {
-            self.solvers[i].add_clause(&clause);
+            self.solvers[i].add_perma_clause(&clause);
         }
         if self.level() == frame
             && let Some(predprop) = self.predprop.as_mut()
@@ -176,7 +176,7 @@ impl IC3 {
         lastf.retain(|(l, _)| !l.eq(&lemma));
         assert!(lastf.len() + 1 == olen);
         let clause = !lemma.as_litvec();
-        self.inf_solver.add_clause(&clause);
+        self.inf_solver.add_perma_clause(&clause);
         self.frame.inf.push((lemma, None));
     }
 
@@ -210,10 +210,10 @@ impl IC3 {
             }
             let mut slv = self.ts.new_solver();
             for i in invariants.iter() {
-                slv.add_clause(&!i);
+                slv.add_perma_clause(&!i);
             }
             for c in cand.iter() {
-                slv.add_clause(&!c);
+                slv.add_perma_clause(&!c);
             }
             let mut new_cand = Vec::new();
             for c in cand.iter() {

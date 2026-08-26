@@ -1,7 +1,7 @@
 use super::IC3;
 use super::solver::inductive_core;
 use crate::RseedSet as HashSet;
-use logicrs::{Lit, LitOrdVec, LitVec, satif::Satif};
+use logicrs::{Lit, LitOrdVec, LitVec};
 use rand::{RngExt, seq::SliceRandom};
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -70,20 +70,20 @@ impl IC3 {
             } else {
                 &[constraint, &state_cst, &cube_cst]
             };
-            if !slv.solve_with_constraint(&assump, allcst) {
+            if !slv.dcs_solve(&assump, allcst, &[], u32::MAX).unwrap() {
                 return Some(inductive_core(slv, ts, &ordcube).unwrap());
             }
             let mut ret = false;
             let mut cube_new = LitVec::new();
             for lit in cube {
                 if keep.contains(&lit) {
-                    if let Some(true) = slv.sat_value(lit) {
+                    if let Some(true) = slv.dcs_satval(lit) {
                         cube_new.push(lit);
                     } else {
                         ret = true;
                         break;
                     }
-                } else if let Some(true) = slv.sat_value(lit)
+                } else if let Some(true) = slv.dcs_satval(lit)
                     && !slv.flip_to_none(lit.var())
                 {
                     cube_new.push(lit);
@@ -93,12 +93,12 @@ impl IC3 {
             let mut s = LitVec::new();
             let mut t = LitVec::new();
             for l in full.iter() {
-                if let Some(v) = slv.sat_value(*l)
+                if let Some(v) = slv.dcs_satval(*l)
                     && slv.flip_to_none(l.var())
                 {
                     s.push(l.not_if(!v));
                 }
-                if let Some(v) = slv.sat_value(ts.next(*l)) {
+                if let Some(v) = slv.dcs_satval(ts.next(*l)) {
                     t.push(l.not_if(!v));
                 }
             }
@@ -144,11 +144,11 @@ impl IC3 {
                 assump.iter().copied().chain(ordcube.iter().copied()),
                 &state_cst,
             );
-            let blocked = !slv.solve_with_constraint(&assump, &[&state_cst, &cube_cst]);
+            let blocked = !slv.dcs_solve(&assump, &[&state_cst, &cube_cst], &[], u32::MAX).unwrap();
             let core = blocked.then(|| inductive_core(slv, &self.ts, &ordcube).unwrap());
             let keep_in_model = !blocked
                 && cube.iter().all(|lit| {
-                    !keep.contains(lit) || slv.sat_value(*lit).is_some_and(|value| value)
+                    !keep.contains(lit) || slv.dcs_satval(*lit).is_some_and(|value| value)
                 });
             // Nested CTG blocking can push through this solver, so do not
             // let the per-query temporary domain leak past this point.

@@ -68,7 +68,7 @@ impl Engine for WlBMC {
             self.uts.unroll_to(k);
             self.load_trans_to(k);
             let assump = self.uts.next(&self.uts.ts.bad[0], k);
-            if self.solver.solve(&[assump]) {
+            if self.solver.bzla_solve(&[assump]) {
                 info!("wl-bmc found a counterexample at depth {k}");
                 return McResult::Unsafe(k);
             }
@@ -92,7 +92,7 @@ impl Engine for WlBMC {
             .collect();
         witness.bad_id = bads
             .into_iter()
-            .position(|b| self.solver.sat_value(&b).is_some_and(|v| v.bool()))
+            .position(|b| self.solver.bzla_satval(&b).is_some_and(|v| v.bool()))
             .unwrap();
         McWitness::Wl(witness)
     }

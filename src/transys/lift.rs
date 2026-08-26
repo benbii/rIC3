@@ -1,6 +1,6 @@
 use crate::RseedSet as HashSet;
 use crate::{gipsat::DagCnfSolver, transys::unroll::TransysUnroll};
-use logicrs::{Lit, LitVec, Var, satif::Satif};
+use logicrs::{Lit, LitVec, Var};
 use std::sync::Arc;
 
 pub struct TsLift {
@@ -17,7 +17,7 @@ impl TsLift {
 
     pub fn lift(
         &mut self,
-        satif: &mut impl Satif,
+        satif: &mut DagCnfSolver,
         target: impl IntoIterator<Item = impl AsRef<Lit>>,
         order: impl FnMut(usize, &mut [Lit]) -> bool,
     ) -> (LitVec, Vec<LitVec>) {
@@ -26,7 +26,7 @@ impl TsLift {
 
     pub fn complex_lift(
         &mut self,
-        satif: &mut impl Satif,
+        satif: &mut DagCnfSolver,
         state: impl IntoIterator<Item = impl AsRef<Var>>,
         target: impl IntoIterator<Item = impl AsRef<Lit>>,
         mut order: impl FnMut(usize, &mut [Lit]) -> bool,
@@ -43,7 +43,7 @@ impl TsLift {
             let mut input = LitVec::new();
             for i in self.ts.input() {
                 let lit = self.ts.lit_next(i.lit(), k);
-                if let Some(v) = satif.sat_value(lit) {
+                if let Some(v) = satif.dcs_satval(lit) {
                     input.push(i.lit().not_if(!v));
                     inputs_flatten.push(lit.not_if(!v));
                 }
@@ -56,7 +56,7 @@ impl TsLift {
             let s = *s.as_ref();
             let lit = s.lit();
             if self.slv.domain_has(s)
-                && let Some(v) = satif.sat_value(lit)
+                && let Some(v) = satif.dcs_satval(lit)
                 && (in_cls.contains(&s) || !satif.flip_to_none(s))
             {
                 states.push(lit.not_if(!v));

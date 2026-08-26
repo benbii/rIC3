@@ -218,7 +218,7 @@ impl Bitwuzla {
         unsafe { bitwuzla_assert(self.bitwuzla, term) }
     }
 
-    pub fn solve<'a>(&mut self, assumps: impl IntoIterator<Item = &'a Term>) -> bool {
+    pub fn bzla_solve<'a>(&mut self, assumps: impl IntoIterator<Item = &'a Term>) -> bool {
         let assumps: Vec<*mut c_void> = assumps
             .into_iter()
             .map(|t| {
@@ -245,7 +245,7 @@ impl Bitwuzla {
         unsafe { bitwuzla_pop(self.bitwuzla, nlevels as _) }
     }
 
-    pub fn sat_value(&mut self, term: &Term) -> Option<BitVec> {
+    pub fn bzla_satval(&mut self, term: &Term) -> Option<BitVec> {
         let t = self.convert_term(term);
         let val = unsafe { bitwuzla_get_value(self.bitwuzla, t) };
         debug_assert!(unsafe { bitwuzla_term_is_value(val) });

@@ -97,7 +97,7 @@ impl WlTransysUnroll {
             let mut w = Vec::new();
             for i in self.ts.input.iter() {
                 let ni = self.next(i, k);
-                if let Some(val) = slv.sat_value(&ni) {
+                if let Some(val) = slv.bzla_satval(&ni) {
                     w.push(BvTermValue::new(i.clone(), LboolVec::from(val)));
                 }
             }
@@ -105,7 +105,7 @@ impl WlTransysUnroll {
             let mut w = Vec::new();
             for l in self.ts.latch.iter() {
                 let nl = self.next(l, k);
-                if let Some(val) = slv.sat_value(&nl) {
+                if let Some(val) = slv.bzla_satval(&nl) {
                     w.push(TermValue::new(
                         l.clone(),
                         fol::Value::Bv(LboolVec::from(val)),

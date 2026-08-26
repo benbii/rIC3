@@ -6,7 +6,7 @@ use crate::{
 };
 use log::{debug, info};
 use logicrs::bitvec::BitVec;
-use logicrs::{Lit, LitVec, Var, VarLMap, VarMap, satif::Satif};
+use logicrs::{Lit, LitVec, Var, VarLMap, VarMap};
 use std::{sync::Arc, time::Instant};
 
 pub struct Scorr {
@@ -21,13 +21,15 @@ impl Scorr {
     pub fn new(ts: Transys, cfg: &PreprocConfig, rst: Restore) -> Self {
         let mut ind_slv = DagCnfSolver::new(Arc::clone(&ts.rel));
         for c in ts.constraint.iter() {
-            ind_slv.add_clause(&[*c]);
+            ind_slv.add_perma_clause(&[*c]);
         }
         let mut init_slv = DagCnfSolver::new(Arc::clone(&ts.rel));
         for c in ts.constraint.iter() {
-            init_slv.add_clause(&[*c]);
+            init_slv.add_perma_clause(&[*c]);
         }
-        ts.load_init(&mut init_slv);
+        for c in ts.inits() {
+            init_slv.add_perma_clause(&c);
+        }
         Self {
             ts,
             rst,
@@ -40,20 +42,22 @@ impl Scorr {
     fn init_simulation(&self, num_word: usize) -> VarMap<BitVec> {
         let mut slv = DagCnfSolver::new(Arc::clone(&self.ts.rel));
         for cls in self.ts.constraint() {
-            slv.add_clause(&[cls]);
+            slv.add_perma_clause(&[cls]);
         }
-        self.ts.load_init(&mut slv);
+        for c in self.ts.inits() {
+            slv.add_perma_clause(&c);
+        }
         let mut sim: VarMap<BitVec> = VarMap::new_with(self.ts.max_var());
         sim.reserve(self.ts.max_var());
         while sim[Var::CONST].len() < num_word * BitVec::WORD_SIZE {
-            if !slv.solve(&[]) {
+            if !slv.dcs_solve(&[], &[], &[], u32::MAX).unwrap() {
                 break;
             }
             let mut block = LitVec::new();
             for &v in self.ts.latch.iter() {
-                if let Some(value) = slv.sat_value_lit(v) {
-                    block.push(!value);
-                    sim[v].push(value.polarity());
+                if let Some(value) = slv.dcs_varsatval(v) {
+                    block.push(Lit::new(v, !value));
+                    sim[v].push(value);
                 } else {
                     sim[v].clear();
                 }
@@ -62,7 +66,7 @@ impl Scorr {
                 break;
             }
             sim[Var::CONST].push(false);
-            slv.add_clause(&block);
+            slv.add_perma_clause(&block);
         }
         sim
     }
@@ -87,18 +91,18 @@ impl Scorr {
                 if sim[Var::CONST].len() >= num_word * BitVec::WORD_SIZE {
                     return;
                 }
-                if !slv.solve_full(assump, &[], domain, 5).is_some_and(|r| r) {
+                if !slv.dcs_solve(assump, &[], domain, 5).is_some_and(|r| r) {
                     return;
                 }
                 sim[Var::CONST].push(false);
                 let mut block = LitVec::new();
                 for &v in consider {
                     let n = ts.var_next_lit(v);
-                    let value = slv.sat_value_lit(n.var()).unwrap();
-                    sim[v].push(value.polarity() == n.polarity());
-                    block.push(!value);
+                    let value = slv.dcs_varsatval(n.var()).unwrap();
+                    sim[v].push(value == n.polarity());
+                    block.push(Lit::new(n.var(), !value));
                 }
-                slv.add_clause(&block);
+                slv.add_perma_clause(&block);
                 let assump = assign(sim, sim[Var::CONST].len() - 1, consider);
                 dfs(ts, sim, slv, consider, domain, num_word, &assump);
             }
@@ -110,12 +114,12 @@ impl Scorr {
         sim.reserve(self.ts.max_var());
         let mut slv = DagCnfSolver::new(Arc::clone(&self.ts.rel));
         for cls in self.ts.constraint() {
-            slv.add_clause(&[cls]);
+            slv.add_perma_clause(&[cls]);
         }
         for i in 0..init[Var::CONST].len() {
             let block = !assign(init, i, &consider);
             let block = self.ts.lits_next(block.iter());
-            slv.add_clause(&block);
+            slv.add_perma_clause(&block);
         }
         slv.use_phase_saving = false;
         let domain: Vec<_> = self
@@ -137,7 +141,7 @@ impl Scorr {
         let cst: [&[Lit]; 2] = [&[x, y], &[!x, !y]];
         if self
             .init_slv
-            .solve_full(&[], &cst, &[], 10)
+            .dcs_solve(&[], &cst, &[], 10)
             .is_none_or(|r| r)
         {
             return false;
@@ -150,7 +154,7 @@ impl Scorr {
         };
         let cst: [&[Lit]; 4] = [&[x, !y], &[!x, y], &[xn, yn], &[!xn, !yn]];
         self.ind_slv
-            .solve_full(&[], &cst, &[], 10)
+            .dcs_solve(&[], &cst, &[], 10)
             .is_some_and(|r| !r)
     }
 

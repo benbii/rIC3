@@ -69,7 +69,7 @@ impl Engine for WlKind {
             if k > 0 {
                 self.load_bad_to(k - 1);
                 let bad_at_k = self.uts.next(&self.uts.ts.bad[0], k);
-                if !self.solver.solve(&[bad_at_k]) {
+                if !self.solver.bzla_solve(&[bad_at_k]) {
                     info!("wl-kind proved the property");
                     return McResult::Safe;
                 }
@@ -82,7 +82,7 @@ impl Engine for WlKind {
             let bad_at_k = self.uts.next(&self.uts.ts.bad[0], k);
             assump.push(bad_at_k);
 
-            if self.solver.solve(&assump) {
+            if self.solver.bzla_solve(&assump) {
                 info!("wl-kind found a counterexample at depth {k}");
                 return McResult::Unsafe(k);
             }
@@ -106,7 +106,7 @@ impl Engine for WlKind {
             .collect();
         witness.bad_id = bads
             .into_iter()
-            .position(|b| self.solver.sat_value(&b).is_some_and(|v| v.bool()))
+            .position(|b| self.solver.bzla_satval(&b).is_some_and(|v| v.bool()))
             .unwrap();
         McWitness::Wl(witness)
     }

@@ -1,4 +1,4 @@
-use logicrs::{Lit, LitVec, Var, satif::Satif};
+use logicrs::{Lit, LitVec, Var};
 use std::ffi::{c_int, c_void};
 
 unsafe extern "C" {
@@ -7,11 +7,8 @@ unsafe extern "C" {
     fn cadical_solver_declare_more_variables(s: *mut c_void, count: c_int) -> c_int;
     fn cadical_solver_add_clause(s: *mut c_void, clause: *mut c_int, len: c_int);
     fn cadical_solver_solve(s: *mut c_void, assumps: *mut c_int, len: c_int) -> c_int;
-    fn cadical_solver_constrain(s: *mut c_void, constrain: *mut c_int, len: c_int);
     fn cadical_solver_simplify(s: *mut c_void) -> c_int;
     fn cadical_solver_freeze(s: *mut c_void, lit: c_int);
-    fn cadical_set_polarity(s: *mut c_void, lit: c_int);
-    fn cadical_unset_polarity(s: *mut c_void, lit: c_int);
     fn cadical_solver_model_value(s: *mut c_void, lit: c_int) -> c_int;
     fn cadical_solver_conflict_has(s: *mut c_void, lit: c_int) -> bool;
     fn cadical_solver_clauses(s: *mut c_void, len: *mut c_int) -> *mut c_void;
@@ -50,18 +47,8 @@ impl CaDiCaL {
             num_var: 0,
         }
     }
-}
 
-impl Satif for CaDiCaL {
-    #[inline]
-    fn new_var(&mut self) -> Var {
-        let declared = unsafe { cadical_solver_declare_more_variables(self.solver, 1) };
-        self.num_var += 1;
-        assert_eq!(declared as usize, self.num_var);
-        Var::new(self.num_var - 1)
-    }
-
-    fn new_var_to(&mut self, var: Var) {
+    pub fn new_var_to(&mut self, var: Var) {
         let target = usize::from(var) + 1;
         if target <= self.num_var {
             return;
@@ -74,17 +61,12 @@ impl Satif for CaDiCaL {
     }
 
     #[inline]
-    fn num_var(&self) -> usize {
-        self.num_var
-    }
-
-    #[inline]
-    fn add_clause(&mut self, clause: &[Lit]) {
+    pub fn add_clause(&mut self, clause: &[Lit]) {
         let clause: Vec<i32> = clause.iter().map(lit_to_cadical_lit).collect();
         unsafe { cadical_solver_add_clause(self.solver, clause.as_ptr() as _, clause.len() as _) }
     }
 
-    fn solve(&mut self, assumps: &[Lit]) -> bool {
+    pub fn cad_solve(&mut self, assumps: &[Lit]) -> bool {
         let assumps: Vec<i32> = assumps.iter().map(lit_to_cadical_lit).collect();
         match unsafe {
             cadical_solver_solve(self.solver, assumps.as_ptr() as _, assumps.len() as _)
@@ -95,35 +77,7 @@ impl Satif for CaDiCaL {
         }
     }
 
-    fn solve_with_constraint(&mut self, assumps: &[Lit], constraint: &[&[Lit]]) -> bool {
-        self.try_solve(assumps, constraint).unwrap()
-    }
-
-    fn try_solve(&mut self, assumps: &[Lit], constraint: &[&[Lit]]) -> Option<bool> {
-        if constraint.len() > 1 {
-            panic!("cadical does not support multiple temporary constraints");
-        }
-        let assumps: Vec<i32> = assumps.iter().map(lit_to_cadical_lit).collect();
-        if !constraint.is_empty() {
-            let constraint: Vec<i32> = constraint[0].iter().map(lit_to_cadical_lit).collect();
-            unsafe {
-                cadical_solver_constrain(
-                    self.solver,
-                    constraint.as_ptr() as _,
-                    constraint.len() as _,
-                )
-            }
-        };
-        match unsafe {
-            cadical_solver_solve(self.solver, assumps.as_ptr() as _, assumps.len() as _)
-        } {
-            10 => Some(true),
-            20 => Some(false),
-            _ => None,
-        }
-    }
-
-    fn sat_value(&self, lit: Lit) -> Option<bool> {
+    pub fn cad_satval(&self, lit: Lit) -> Option<bool> {
         let lit = lit_to_cadical_lit(&lit);
         let res = unsafe { cadical_solver_model_value(self.solver, lit) };
         if res == lit {
@@ -135,12 +89,12 @@ impl Satif for CaDiCaL {
         }
     }
 
-    fn unsat_has(&self, lit: Lit) -> bool {
+    pub fn unsat_has(&self, lit: Lit) -> bool {
         let lit = lit_to_cadical_lit(&lit);
         unsafe { cadical_solver_conflict_has(self.solver, lit) }
     }
 
-    fn simplify(&mut self) -> Option<bool> {
+    pub fn simplify(&mut self) -> Option<bool> {
         match unsafe { cadical_solver_simplify(self.solver) } {
             10 => Some(true),
             20 => Some(false),
@@ -148,12 +102,12 @@ impl Satif for CaDiCaL {
         }
     }
 
-    fn set_frozen(&mut self, var: Var, frozen: bool) {
+    pub fn set_frozen(&mut self, var: Var, frozen: bool) {
         assert!(frozen);
         unsafe { cadical_solver_freeze(self.solver, lit_to_cadical_lit(&var.lit())) }
     }
 
-    fn clauses(&self) -> Vec<LitVec> {
+    pub fn clauses(&self) -> Vec<LitVec> {
         let mut cnf = Vec::new();
         unsafe {
             let mut len = 0;
@@ -171,21 +125,10 @@ impl Satif for CaDiCaL {
         cnf
     }
 
-    fn set_seed(&mut self, seed: u64) {
+    pub fn set_seed(&mut self, seed: u64) {
         unsafe { cadical_set_seed(self.solver, cadical_seed(seed)) }
     }
-}
 
-impl CaDiCaL {
-    pub fn set_polarity(&mut self, var: Var, pol: Option<bool>) {
-        match pol {
-            Some(p) => {
-                let p = var.lit().not_if(!p);
-                unsafe { cadical_set_polarity(self.solver, lit_to_cadical_lit(&p)) }
-            }
-            None => unsafe { cadical_unset_polarity(self.solver, lit_to_cadical_lit(&var.lit())) },
-        };
-    }
 }
 
 impl Drop for CaDiCaL {
@@ -212,19 +155,18 @@ fn seed_conversion_stays_in_range() {
 fn test() {
     use logicrs::LitVec;
     let mut solver = CaDiCaL::new();
-    let lit0: Lit = solver.new_var().into();
-    let lit1: Lit = solver.new_var().into();
-    let lit2: Lit = solver.new_var().into();
+    solver.new_var_to(Var(2));
+    let lit0 = Var(0).lit();
+    let lit1 = Var(1).lit();
+    let lit2 = Var(2).lit();
     solver.add_clause(&LitVec::from([lit0, !lit2]));
     solver.add_clause(&LitVec::from([lit1, !lit2]));
     solver.add_clause(&LitVec::from([!lit0, !lit1, lit2]));
-    if solver.solve(&[lit2]) {
-        assert!(solver.sat_value(lit0).unwrap());
-        assert!(solver.sat_value(lit1).unwrap());
-        assert!(solver.sat_value(lit2).unwrap());
+    if solver.cad_solve(&[lit2]) {
+        assert!(solver.cad_satval(lit0).unwrap());
+        assert!(solver.cad_satval(lit1).unwrap());
+        assert!(solver.cad_satval(lit2).unwrap());
     } else {
         panic!()
     }
-    assert!(!solver.solve_with_constraint(&[lit2], &[&[!lit0]]));
-    assert!(solver.unsat_has(lit2));
 }

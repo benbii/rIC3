@@ -28,7 +28,7 @@ mod tests {
         let a_add_b = a.op1(op::Add, &b);
         let b_add_a = b.op1(op::Add, &a);
         bzla.assert(&a_add_b.op1(op::Neq, &b_add_a));
-        assert!(!bzla.solve([]));
+        assert!(!bzla.bzla_solve([]));
     }
 
     #[test]
@@ -40,9 +40,9 @@ mod tests {
         let b = Term::new_var(Sort::Bv(2));
         let a_eq_2 = a.op1(op::Eq, &t_bv2c2);
         let a_eq_b = a.op1(op::Eq, &b);
-        assert!(bzla.solve(&[a_eq_2, a_eq_b]));
-        assert!(bzla.sat_value(&a).unwrap().eq(&bv2c2));
-        assert!(bzla.sat_value(&b).unwrap().eq(&bv2c2));
+        assert!(bzla.bzla_solve(&[a_eq_2, a_eq_b]));
+        assert!(bzla.bzla_satval(&a).unwrap().eq(&bv2c2));
+        assert!(bzla.bzla_satval(&b).unwrap().eq(&bv2c2));
     }
 
     #[test]
@@ -63,7 +63,7 @@ mod tests {
         let bv5c3 = BitVec::from_usize(5, 3);
         let t_bv5c3 = Term::bv_const(bv5c3);
         let tneq = t_bv5c3.tneq(&t_bv3c0.concat(&t_bv2c3));
-        assert!(!bzla.solve(&[tneq]));
+        assert!(!bzla.bzla_solve(&[tneq]));
     }
 
     #[test]
@@ -73,8 +73,8 @@ mod tests {
         let slice = a.slice(1, 3);
         let c14 = Term::bv_const(BitVec::from_usize(4, 14));
         bzla.assert(&a.teq(&c14));
-        assert!(bzla.solve([]));
-        let val = bzla.sat_value(&slice);
+        assert!(bzla.bzla_solve([]));
+        let val = bzla.bzla_satval(&slice);
         assert_eq!(val.unwrap(), BitVec::from_usize(3, 7));
     }
 }

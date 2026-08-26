@@ -20,11 +20,6 @@ impl BinaryHeap {
     }
 
     #[inline]
-    fn reserve(&mut self, var: Var) {
-        self.pos.reserve(var);
-    }
-
-    #[inline]
     pub fn clear(&mut self) {
         for v in self.heap.iter() {
             self.pos[*v] = OptionU32::NONE;
@@ -133,12 +128,6 @@ impl Activity {
     }
 
     #[inline]
-    pub fn reserve(&mut self, var: Var) {
-        self.activity.reserve(var);
-        self.bucket_heap.reserve(var);
-    }
-
-    #[inline]
     fn check(&mut self, var: Var) {
         let act = unsafe { &mut *(self as *mut Activity) };
         if self.bucket_heap.pos[var].is_none() {
@@ -201,12 +190,6 @@ impl Vsids {
             bucket: Bucket::new(),
             enable_bucket: true,
         }
-    }
-
-    #[inline]
-    pub fn reserve(&mut self, var: Var) {
-        self.heap.reserve(var);
-        self.activity.reserve(var);
     }
 
     #[inline]

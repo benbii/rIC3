@@ -1,6 +1,6 @@
 use super::{DagCnfSolver, state::VarState};
 use logicrs::{DagCnf, Lit, Var};
-use std::{ops::Index, slice};
+use std::slice;
 
 pub struct Domain {
     set: Vec<Var>,
@@ -27,13 +27,6 @@ impl Domain {
         res.insert(Var::CONST, state);
         res.fixed = 1;
         res
-    }
-
-    pub fn reserve(&mut self, max_var: Var) {
-        let required = usize::from(max_var) + 2;
-        if self.set.capacity() < required {
-            self.set.reserve_exact(required - self.set.len());
-        }
     }
 
     pub fn reset(&mut self, state: &mut VarState) {
@@ -93,7 +86,7 @@ impl Domain {
         }
         let mut now = self.fixed;
         while now < self.len() {
-            let v = self[now];
+            let v = self.set[now as usize];
             now += 1;
             for d in dc.dep(v).iter() {
                 // if value.v(d.lit()).is_none() {
@@ -109,20 +102,10 @@ impl Domain {
     }
 }
 
-impl Index<u32> for Domain {
-    type Output = Var;
-
-    #[inline]
-    fn index(&self, index: u32) -> &Self::Output {
-        &self.set[index as usize]
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::LitVec;
-    use logicrs::satif::Satif;
     use std::sync::Arc;
 
     #[test]
@@ -142,12 +125,6 @@ mod tests {
 
         let cloned = domain.clone();
         assert!(cloned.set.len() < cloned.set.capacity());
-
-        let next_var = Var::new(usize::from(max_var) + 1);
-        state.reserve(next_var);
-        domain.reserve(next_var);
-        domain.insert(next_var, &mut state);
-        assert!(domain.set.len() < domain.set.capacity());
     }
 
     #[test]
@@ -163,14 +140,14 @@ mod tests {
 
         solver.set_domain([n.lit(), x.lit()], &[]);
         assert!(solver.domain_has(Var::CONST));
-        assert_eq!(solver.domain[0], Var::CONST);
+        assert_eq!(solver.domain.set[0], Var::CONST);
         assert!(solver.domain.fixed >= 1);
         assert_eq!(
-            solver.solve_full(&[!n.lit(), !x.lit()], &[], &[], u32::MAX),
+            solver.dcs_solve(&[!n.lit(), !x.lit()], &[], &[], u32::MAX),
             Some(false)
         );
         assert_eq!(
-            solver.solve_full(&[!n.lit(), x.lit()], &[], &[], u32::MAX),
+            solver.dcs_solve(&[!n.lit(), x.lit()], &[], &[], u32::MAX),
             Some(true)
         );
         assert!(solver.domain_has(Var::CONST));
@@ -191,15 +168,15 @@ mod tests {
         let mut solver = DagCnfSolver::new(Arc::new(dc));
 
         solver.set_domain([a.lit(), b.lit()], &[]);
-        assert!(solver.solve_with_constraint(&[a.lit(), b.lit()], &[&helper]));
+        assert!(solver.dcs_solve(&[a.lit(), b.lit()], &[&helper], &[], u32::MAX).unwrap());
         assert!(!solver.domain_has(c));
-        assert_eq!(solver.sat_value(!c.lit()), None);
+        assert_eq!(solver.dcs_satval(!c.lit()), None);
         solver.unset_domain();
 
         solver.set_domain([a.lit(), b.lit()], &[c.lit()]);
-        assert!(solver.solve_with_constraint(&[a.lit(), b.lit()], &[&helper]));
+        assert!(solver.dcs_solve(&[a.lit(), b.lit()], &[&helper], &[], u32::MAX).unwrap());
         assert!(solver.domain_has(c));
-        assert_eq!(solver.sat_value(!c.lit()), Some(true));
+        assert_eq!(solver.dcs_satval(!c.lit()), Some(true));
         solver.unset_domain();
     }
 }
@@ -257,7 +234,7 @@ impl DagCnfSolver {
         assert!(self.highest_level() == 0);
         let mut now = 0;
         while now < self.domain.fixed {
-            let d = self.domain[now];
+            let d = self.domain.set[now as usize];
             if d.is_constant() {
                 now += 1;
             } else if self.state.value(d).is_none() {
@@ -270,7 +247,7 @@ impl DagCnfSolver {
             }
         }
         while now < self.domain.len() {
-            self.vsids.push(self.domain[now], &mut self.state);
+            self.vsids.push(self.domain.set[now as usize], &mut self.state);
             now += 1;
         }
     }

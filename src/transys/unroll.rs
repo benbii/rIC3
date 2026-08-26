@@ -1,6 +1,6 @@
 use super::Transys;
-use crate::transys::certify::BlWitness;
-use logicrs::{Lit, LitMap, LitVec, Var, VarRange, satif::Satif};
+use crate::{cadical::CaDiCaL, transys::certify::BlWitness};
+use logicrs::{Lit, LitMap, LitVec, Var, VarRange};
 use std::{ops::Deref, sync::Arc};
 
 #[derive(Debug, Clone)]
@@ -94,7 +94,7 @@ impl TransysUnroll {
         }
     }
 
-    pub fn load_trans<S: Satif + ?Sized>(&self, satif: &mut S, u: usize, constraint: bool) {
+    pub fn load_trans(&self, satif: &mut CaDiCaL, u: usize, constraint: bool) {
         satif.new_var_to(self.max_var);
         for c in self.ts.trans() {
             let c: Vec<Lit> = c.iter().map(|l| self.lit_next(*l, u)).collect();
@@ -108,14 +108,14 @@ impl TransysUnroll {
         }
     }
 
-    pub fn witness<S: Satif + ?Sized>(&self, satif: &S) -> BlWitness {
+    pub fn witness(&self, satif: &CaDiCaL) -> BlWitness {
         let mut wit = BlWitness::default();
         for k in 0..=self.num_unroll {
             let mut w = LitVec::new();
             for l in self.ts.input() {
                 let l = l.lit();
                 let kl = self.lit_next(l, k);
-                if let Some(v) = satif.sat_value(kl) {
+                if let Some(v) = satif.cad_satval(kl) {
                     w.push(l.not_if(!v));
                 }
             }
@@ -124,7 +124,7 @@ impl TransysUnroll {
             for l in self.ts.latch() {
                 let l = l.lit();
                 let kl = self.lit_next(l, k);
-                if let Some(v) = satif.sat_value(kl) {
+                if let Some(v) = satif.cad_satval(kl) {
                     w.push(l.not_if(!v));
                 }
             }

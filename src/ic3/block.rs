@@ -3,7 +3,7 @@ use crate::Lit;
 use crate::ic3::mab::balanced_params;
 use crate::ic3::{IC3, mic::DropVarParameter, proofoblig::Po};
 use log::debug;
-use logicrs::{LitOrdVec, LitVec, satif::Satif};
+use logicrs::{LitOrdVec, LitVec};
 
 pub enum BlockResult {
     Success,
@@ -45,7 +45,10 @@ impl IC3 {
                     self.obligations.add(po.clone());
                     return BlockResult::Failure(po.depth);
                 }
-                debug_assert!(!self.solvers[0].solve(po.state.as_litvec()));
+                debug_assert_eq!(
+                    self.solvers[0].dcs_solve(po.state.as_litvec(), &[], &[], u32::MAX),
+                    Some(false)
+                );
             }
 
             if let Some((bf, _)) = self.frame.trivial_contained(Some(po.frame), &po.state) {
@@ -62,10 +65,10 @@ impl IC3 {
 
             let mut ordered_cube = po.state.as_litvec().clone();
             self.activity.sort_by_activity(&mut ordered_cube, false);
-            let solver_idx = po.frame - 1;
+            let slv = &mut self.solvers[po.frame - 1];
             assump.clear();
             assump.extend(ordered_cube.iter().map(|l| self.ts.next(*l)));
-            let blocked = !self.solvers[solver_idx].solve(&assump);
+            let blocked = !slv.dcs_solve(&assump, &[], &[], u32::MAX).unwrap();
             if !blocked {
                 let (model, inputs) = self.get_pred(po.frame, &assump, true);
                 self.obligations.add(Po::new(
@@ -163,7 +166,7 @@ impl IC3 {
             } else {
                 &[constraint, &cube_cst]
             };
-            let core = (!slv.solve_with_constraint(&assump, &allcst))
+            let core = (!slv.dcs_solve(&assump, &allcst, &[], u32::MAX).unwrap())
                 .then(|| inductive_core(slv, &self.ts, &ordcube).unwrap());
 
             if let Some(mut mic) = core {

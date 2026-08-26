@@ -53,18 +53,3 @@ pub struct PreprocConfig {
     #[arg(long = "fake-preproc-wait", default_value_t = false)]
     pub fake_preproc_wait: bool,
 }
-
-// impl Default for PreprocConfig {
-//     fn default() -> Self {
-//         Self {
-//             preproc: true,
-//             frts: true,
-//             frts_tl: 1000,
-//             scorr: true,
-//             scorr_tl: 200,
-//             load: None,
-//             export: None,
-//             fake_preproc_wait: false,
-//         }
-//     }
-// }

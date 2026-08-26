@@ -292,23 +292,6 @@ impl DagCnf {
         }
     }
 
-    /* pub fn new_xor(&mut self, mut x: Lit, mut y: Lit) -> Lit {
-        if x.var() == y.var() {
-            return Lit::constant(x != y);
-        }
-        if x.var() > y.var() {
-            (x, y) = (y, x);
-        }
-        if x.is_constant(true) {
-            return !y;
-        } else if x.is_constant(false) {
-            return y;
-        }
-        let n = self.new_var().lit();
-        self.add_cnf_xor(n, x, y);
-        n
-    } */
-
     pub fn new_xnor(&mut self, mut x: Lit, mut y: Lit) -> Lit {
         if x.var() == y.var() {
             return Lit::constant(x == y);
@@ -331,30 +314,6 @@ impl DagCnf {
         self.add_cnf_or(n, &[!x, y]);
         n
     }
-
-    /* pub fn new_ite(&mut self, c: Lit, t: Lit, e: Lit) -> Lit {
-        let n = self.new_var().lit();
-        self.add_cnf_ite(n, c, t, e);
-        n
-    }
-
-    pub fn fanins(&self, var: impl IntoIterator<Item = impl AsRef<Var>>) -> HashSet<Var> {
-        let mut marked = HashSet::default();
-        let mut queue = vec![];
-        for v in var.into_iter().map(|v| *v.as_ref()) {
-            marked.insert(v);
-            queue.push(v);
-        }
-        while let Some(v) = queue.pop() {
-            for d in self.dep(v) {
-                if !marked.contains(d) {
-                    marked.insert(*d);
-                    queue.push(*d);
-                }
-            }
-        }
-        marked
-    } */
 
     pub fn fanouts(&self, var: impl IntoIterator<Item = impl AsRef<Var>>) -> HashSet<Var> {
         let mut marked = HashSet::from_iter(var.into_iter().map(|v| *v.as_ref()));

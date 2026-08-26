@@ -1,6 +1,6 @@
 use crate::RseedMap as HashMap;
 use crate::transys::{Transys, unroll::TransysUnroll};
-use logicrs::{Lit, LitVec, Var, VarVMap, satif::Satif};
+use logicrs::{Lit, LitVec, Var, VarVMap};
 use std::sync::Arc;
 
 #[derive(Clone, Debug, Default)]
@@ -80,14 +80,16 @@ impl BlWitness {
         let mut solver = crate::cadical::CaDiCaL::new();
         ts.load_init(&mut solver);
         ts.load_trans(&mut solver, true);
-        assert!(solver.solve(&assump));
+        assert!(solver.cad_solve(&assump));
         let mut state = LitVec::new();
-        for l in ts.latch() {
-            state.push(solver.sat_value_lit(l).unwrap());
+        for lat in ts.latch() {
+            let b = solver.cad_satval(lat.lit()).unwrap();
+            state.push(Lit::new(lat, b));
         }
         let mut input = LitVec::new();
         for i in ts.input() {
-            input.push(solver.sat_value_lit(i).unwrap());
+            let b = solver.cad_satval(i.lit()).unwrap();
+            input.push(Lit::new(i, b));
         }
         (self.input[0], self.state[0]) = (input, state);
     }
@@ -109,39 +111,19 @@ impl BlWitness {
                 solver.add_clause(&[l]);
             }
         }
-        assert!(solver.solve(&[]));
+        assert!(solver.cad_solve(&[]));
         *self = uts.witness(&solver);
         self.bad_id = ts
             .bad
             .iter()
             .position(|&b| {
                 solver
-                    .sat_value(uts.lit_next(b, uts.num_unroll))
+                    .cad_satval(uts.lit_next(b, uts.num_unroll))
                     .is_some_and(|v| v)
             })
             .unwrap();
     }
 
-    /* pub fn lift(&mut self, ts: &Transys, additional_target: Option<impl Fn(usize) -> LitVec>) {
-        let mut slv = DagCnfSolver::new(Arc::clone(&ts.rel));
-        let mut last_target = LitVec::from(ts.bad[self.bad_id]);
-        for k in (0..self.len()).rev() {
-            let assump: LitVec = self.input[k]
-                .iter()
-                .chain(self.state[k].iter())
-                .copied()
-                .collect();
-            let mut cls = ts.constraint.clone();
-            if let Some(at) = additional_target.as_ref() {
-                cls.extend(at(k));
-            }
-            cls.extend(last_target);
-            cls = !cls;
-            assert!(!slv.solve_with_constraint(&assump, &[cls]));
-            self.state[k].retain(|l| slv.unsat_has(*l));
-            last_target = ts.lits_next(&self.state[k]);
-        }
-    } */
 }
 
 pub type BlProof = Transys;
@@ -217,15 +199,6 @@ impl Restore {
         self.fvmap.filter_map_value(map);
     }
 
-    /* #[inline]
-    pub fn retain(&mut self, f: impl Fn(Var) -> bool) {
-        self.bvmap.retain(|&k, _| f(k));
-        self.fvmap.retain(|_, k| f(*k));
-        if let Some(iv) = self.init_var {
-            assert!(f(iv));
-        }
-    } */
-
     #[inline]
     pub fn replace(&mut self, x: Var, y: Lit) {
         let xm = self.bvmap[x].lit().not_if(!y.polarity());
@@ -289,31 +262,4 @@ impl Restore {
         wit
     }
 
-    /* pub fn restore_proof(&self, mut proof: BlProof, ts: &Transys) -> BlProof {
-        let mut res = ts.clone_with_independent_rel();
-        proof.constraint.clear();
-        res.merge(&proof, |v| self.bvmap.get(&v).copied());
-        let eqi = self.eq_invariant();
-        for cube in eqi {
-            let bad = res.rel_mut().new_and(cube);
-            res.bad.push(bad);
-        }
-        BlProof { proof: res }
-    }
-
-    pub fn forward_witness(&self, wit: &BlWitness) -> BlWitness {
-        assert!(self.eqmap.is_empty());
-        let mut res = wit.clone();
-        for k in 0..res.len() {
-            res.input[k] = res.input[k]
-                .iter()
-                .filter_map(|l| self.try_forward(*l))
-                .collect();
-            res.state[k] = res.state[k]
-                .iter()
-                .filter_map(|l| self.try_forward(*l))
-                .collect();
-        }
-        res
-    } */
 }

@@ -1,7 +1,7 @@
 use super::IC3;
 use crate::{gipsat::DagCnfSolver, transys::Transys};
 use log::trace;
-use logicrs::{Lit, LitVec, satif::Satif};
+use logicrs::{Lit, LitVec};
 use rand::seq::SliceRandom;
 
 pub(super) fn inductive(
@@ -13,9 +13,9 @@ pub(super) fn inductive(
     let assump = ts.lits_next(cube);
     if strengthen {
         let cst = LitVec::from_iter(cube.iter().map(|l| !*l));
-        return !slv.solve_with_constraint(&assump, &[&cst]);
+        return !slv.dcs_solve(&assump, &[&cst], &[], u32::MAX).unwrap();
     }
-    !slv.solve_with_constraint(&assump, &[])
+    !slv.dcs_solve(&assump, &[], &[], u32::MAX).unwrap()
 }
 
 pub(super) fn inductive_core(slv: &mut DagCnfSolver, ts: &Transys, cube: &[Lit]) -> Option<LitVec> {
@@ -56,7 +56,8 @@ impl IC3 {
             debug_assert!(self.ts.bad.len() == 1);
             let frame = self.solvers.len();
             let assump = LitVec::from([self.ts.bad[0]]);
-            let res = self.solvers.last_mut().unwrap().solve(&assump);
+            let slv = self.solvers.last_mut().unwrap();
+            let res = slv.dcs_solve(&assump, &[], &[], u32::MAX).unwrap();
             if res {
                 Some(self.get_pred(frame, &assump, true))
             } else {

@@ -28,10 +28,6 @@ impl Analyze {
         }
     }
 
-    pub fn reserve(&mut self, var: Var) {
-        self.mark.reserve(var)
-    }
-
     #[inline]
     pub fn seen_var(&self, var: Var) -> bool {
         !matches!(self.mark[var], Mark::Unseen)

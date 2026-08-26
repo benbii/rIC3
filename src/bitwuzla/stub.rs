@@ -14,7 +14,7 @@ impl Bitwuzla {
         unreachable!()
     }
 
-    pub fn solve<'a>(&mut self, _assumps: impl IntoIterator<Item = &'a Term>) -> bool {
+    pub fn bzla_solve<'a>(&mut self, _assumps: impl IntoIterator<Item = &'a Term>) -> bool {
         unreachable!()
     }
 
@@ -26,7 +26,7 @@ impl Bitwuzla {
         unreachable!()
     }
 
-    pub fn sat_value(&mut self, _term: &Term) -> Option<BitVec> {
+    pub fn bzla_satval(&mut self, _term: &Term) -> Option<BitVec> {
         unreachable!()
     }
 }

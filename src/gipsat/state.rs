@@ -58,11 +58,6 @@ impl VarState {
     }
 
     #[inline]
-    pub(super) fn reserve(&mut self, var: Var) {
-        self.state.reserve(var);
-    }
-
-    #[inline]
     pub(super) fn get(&self, var: Var) -> State {
         self.state[var]
     }

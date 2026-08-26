@@ -198,11 +198,6 @@ impl WatchArena {
         }
     }
 
-    #[inline]
-    pub(super) fn reserve(&mut self, var: Var) {
-        self.ranges.reserve(var)
-    }
-
     pub(super) fn attach(&mut self, cref: CRef, cls: Clause) {
         let ranges = self.ranges.as_mut_ptr();
         let pool = self.pool;
@@ -507,7 +502,7 @@ impl DagCnfSolver {
         }
     }
 
-    pub(super) fn flip_to_none_inner(&mut self, var: Var) -> bool {
+    pub fn flip_to_none(&mut self, var: Var) -> bool {
         if self.level[var] == 0 {
             return false;
         }

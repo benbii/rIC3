@@ -6,7 +6,7 @@ use crate::{
 };
 use clap::{Args, Parser};
 use log::{error, info};
-use logicrs::{Lit, LitVec, OptionU32, Var, VarMap, VarRange, satif::Satif};
+use logicrs::{Lit, LitVec, OptionU32, Var, VarMap, VarRange};
 use serde::{Deserialize, Serialize};
 
 #[derive(Args, Clone, Debug, Serialize, Deserialize)]
@@ -91,7 +91,7 @@ impl Engine for Kind {
         while k <= self.end {
             if !self.skip_bmc {
                 assump.push(self.uts.lit_next(bad0, k - 1));
-                if self.solver.solve(&assump) {
+                if self.solver.cad_solve(&assump) {
                     info!("bmc found a counterexample at depth {}", k - 1);
                     return McResult::Unsafe(k - 1);
                 }
@@ -132,7 +132,7 @@ impl Engine for Kind {
                 self.solver.add_clause(&[!b]);
             }
             let bad = self.uts.lit_next(bad0, k);
-            let res = self.solver.solve(&[bad]);
+            let res = self.solver.cad_solve(&[bad]);
             if !res {
                 info!("kind proved the property");
                 return McResult::Safe;

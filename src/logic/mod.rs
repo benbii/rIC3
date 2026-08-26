@@ -9,7 +9,6 @@ mod litvec;
 pub mod nckvec;
 pub(crate) mod occur;
 mod others;
-pub mod satif;
 mod varmap;
 
 pub use assign::*;

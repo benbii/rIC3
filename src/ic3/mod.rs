@@ -9,7 +9,7 @@ use activity::Activity;
 use clap::{ArgAction, Args, Parser};
 use frame::{Frame, Frames};
 use log::{debug, error, info, trace};
-use logicrs::{Lit, LitOrdVec, LitVec, satif::Satif};
+use logicrs::{Lit, LitOrdVec, LitVec};
 use proofoblig::{Po, Poq};
 use rand::{SeedableRng, rngs::SmallRng};
 use serde::{Deserialize, Serialize};
@@ -178,19 +178,19 @@ impl IC3 {
         if predprop.is_some() {
             let mut slv = ts.new_solver();
             for init in ts.inits() {
-                slv.add_clause(&init);
+                slv.add_perma_clause(&init);
             }
-            if slv.solve(&[ts.bad[0]]) {
+            if slv.dcs_solve(&[ts.bad[0]], &[], &[], u32::MAX).unwrap() {
                 let mut input = LitVec::new();
                 for i in ts.input() {
-                    if let Some(v) = slv.sat_value_lit(i) {
-                        input.push(v);
+                    if let Some(v) = slv.dcs_varsatval(i) {
+                        input.push(Lit::new(i, v));
                     }
                 }
                 let mut bad = LitVec::new();
-                for l in ts.latch() {
-                    if let Some(v) = slv.sat_value_lit(l) {
-                        bad.push(v);
+                for lat in ts.latch() {
+                    if let Some(v) = slv.dcs_varsatval(lat) {
+                        bad.push(Lit::new(lat, v));
                     }
                 }
                 base_cex = Some(Po::new(0, LitOrdVec::new(bad), vec![input], 0, None));
@@ -214,13 +214,13 @@ impl IC3 {
                 if let Some(predprop) = predprop.as_mut() {
                     predprop.add_lemma(&lemma);
                 }
-                solver.add_clause(&!lemma.as_litvec());
+                solver.add_perma_clause(&!lemma.as_litvec());
                 frame.push((lemma, None));
             }
             let mut init = LitVec::new();
             for l in ts.latch.iter() {
                 if ts.init(*l).is_none()
-                    && let Some(v) = solver.sat_value_var(*l)
+                    && let Some(v) = solver.dcs_varsatval(*l)
                 {
                     init.push(l.lit().not_if(!v));
                 }
