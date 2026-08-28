@@ -31,16 +31,16 @@ impl LocalAbs {
             refine.extend(ts.constraint.iter().map(|l| l.var()))
         }
         if !abs_trans {
-            refine.extend(ts.latch().map(|l| ts.var_next_lit(l).var()));
+            refine.extend(ts.latch.iter().map(|&l| ts.var_next_lit(l).var()));
         }
         let mut uts = TransysUnroll::new(Arc::clone(&ts));
         let mut opt = HashMap::default();
         let mut connect: Option<Vec<Vec<LitVec>>> = None;
         if abs_trans {
-            for v in uts.ts.latch() {
+            for &v in &uts.ts.latch {
                 let n = uts.ts.var_next_lit(v);
                 if let std::collections::hash_map::Entry::Vacant(e) = opt.entry(n.var()) {
-                    uts.max_var += 1;
+                    uts.max_var.0 += 1;
                     e.insert(uts.max_var);
                 }
             }
@@ -51,7 +51,7 @@ impl LocalAbs {
             let mut rel = Vec::new();
             for c in uts.ts.constraint() {
                 let cc = *opt.entry(c.var()).or_insert_with(|| {
-                    uts.max_var += 1;
+                    uts.max_var.0 += 1;
                     uts.max_var
                 });
                 rel.push(LitVec::from([!cc.lit(), c]));
@@ -106,7 +106,7 @@ impl LocalAbs {
         self.uts.unroll(self.connect.is_none());
         if let Some(crel) = self.connect.as_mut() {
             let mut cr = Vec::new();
-            for l in self.uts.ts.latch() {
+            for &l in &self.uts.ts.latch {
                 let l = l.lit();
                 let n = self.uts.ts.next(l);
                 let c = self.opt[&n.var()];

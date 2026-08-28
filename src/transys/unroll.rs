@@ -1,7 +1,7 @@
 use super::Transys;
 use crate::{cadical::CaDiCaL, transys::certify::BlWitness};
 use logicrs::{DagCnf, Lit, LitMap, LitVec, Var, VarRange};
-use std::{ops::Deref, sync::Arc};
+use std::sync::Arc;
 
 #[derive(Debug, Clone)]
 pub struct TransysUnroll {
@@ -9,15 +9,6 @@ pub struct TransysUnroll {
     pub num_unroll: usize,
     pub max_var: Var,
     pub next_map: LitMap<Vec<Lit>>,
-}
-
-impl Deref for TransysUnroll {
-    type Target = Transys;
-
-    #[inline]
-    fn deref(&self) -> &Self::Target {
-        self.ts.as_ref()
-    }
 }
 
 impl TransysUnroll {
@@ -39,7 +30,7 @@ impl TransysUnroll {
 
     #[inline]
     pub fn new_var(&mut self) -> Var {
-        self.max_var += 1;
+        self.max_var.0 += 1;
         self.max_var
     }
 
@@ -85,7 +76,7 @@ impl TransysUnroll {
         self.next_map[false_lit].push(false_lit);
         self.next_map[!false_lit].push(!false_lit);
         if no_conn_abst {
-            for l in self.ts.latch() {
+            for &l in &self.ts.latch {
                 let l = l.lit();
                 let next = self.lit_next(self.ts.next(l), self.num_unroll);
                 self.next_map[l].push(next);
@@ -95,7 +86,7 @@ impl TransysUnroll {
         for v in VarRange::new_inclusive(Var::CONST, self.ts.max_var()) {
             let l = v.lit();
             if self.next_map[l].len() == self.num_unroll + 1 {
-                self.max_var += 1;
+                self.max_var.0 += 1;
                 let new = self.max_var.lit();
                 self.next_map[l].push(new);
                 self.next_map[!l].push(!new);
@@ -129,7 +120,7 @@ impl TransysUnroll {
         let mut wit = BlWitness::default();
         for k in 0..=self.num_unroll {
             let mut w = LitVec::new();
-            for l in self.ts.input() {
+            for &l in &self.ts.input {
                 let l = l.lit();
                 let kl = self.lit_next(l, k);
                 if let Some(v) = satif.cad_satval(kl) {
@@ -138,7 +129,7 @@ impl TransysUnroll {
             }
             wit.input.push(w);
             let mut w = LitVec::new();
-            for l in self.ts.latch() {
+            for &l in &self.ts.latch {
                 let l = l.lit();
                 let kl = self.lit_next(l, k);
                 if let Some(v) = satif.cad_satval(kl) {
@@ -190,7 +181,7 @@ impl TransysUnroll {
 
     pub fn internal_signals(&self) -> Transys {
         assert!(self.num_unroll == 1);
-        let keep = self.ts.rel.fanouts(self.ts.input());
+        let keep = self.ts.rel.fanouts(&self.ts.input);
         let mut rel = Arc::new((*self.ts.rel).clone());
         for old_v in VarRange::new_inclusive(Var(1), self.ts.rel.max_var()) {
             if keep.contains(&old_v) {

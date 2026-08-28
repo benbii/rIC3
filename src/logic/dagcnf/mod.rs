@@ -75,7 +75,7 @@ impl DagCnf {
 
     #[inline]
     pub fn new_var(&mut self) -> Var {
-        self.max_var += 1;
+        self.max_var.0 += 1;
         self.dep_pos.reserve(self.max_var);
         self.cnf_pos.reserve(self.max_var);
         self.max_var
@@ -95,7 +95,7 @@ impl DagCnf {
 
     #[inline]
     pub fn num_var(&self) -> usize {
-        let n: usize = self.max_var().into();
+        let n = self.max_var.0 as usize;
         n + 1
     }
 
@@ -152,7 +152,7 @@ impl DagCnf {
             pos += 1;
             for &l in scratch.iter() {
                 insert_dep(&mut deps, n, l.var());
-                self.cnf_dat[pos] = l.into();
+                self.cnf_dat[pos] = l.0;
                 pos += 1;
             }
         }
@@ -175,10 +175,10 @@ impl DagCnf {
         self.cnf_dat[pos] = (lits.len() + 1) as u32;
         pos += 1;
         let begin = pos;
-        self.cnf_dat[pos] = n.into();
+        self.cnf_dat[pos] = n.0;
         pos += 1;
         for &l in lits {
-            self.cnf_dat[pos] = (!l).into();
+            self.cnf_dat[pos] = (!l).0;
             pos += 1;
         }
         self.cnf_dat[begin..pos].sort_unstable();
@@ -199,10 +199,10 @@ impl DagCnf {
         self.cnf_dat[pos] = (lits.len() + 1) as u32;
         pos += 1;
         let begin = pos;
-        self.cnf_dat[pos] = (!n).into();
+        self.cnf_dat[pos] = (!n).0;
         pos += 1;
         for &l in lits {
-            self.cnf_dat[pos] = l.into();
+            self.cnf_dat[pos] = l.0;
             pos += 1;
         }
         self.cnf_dat[begin..pos].sort_unstable();
@@ -383,7 +383,7 @@ impl DagCnf {
                 let cls_end = begin + cls_len;
                 for raw in self.cnf_dat[begin..cls_end].iter_mut() {
                     if let Some(new) = map.map_lit(Lit(*raw)) {
-                        *raw = new.into();
+                        *raw = new.0;
                     }
                 }
                 self.cnf_dat[begin..cls_end].sort_unstable();
@@ -517,7 +517,7 @@ impl DagCnf {
         *pos += 1;
         for l in cls {
             insert_dep(deps, n, l.var());
-            self.cnf_dat[*pos] = l.into();
+            self.cnf_dat[*pos] = l.0;
             *pos += 1;
         }
     }
@@ -541,7 +541,7 @@ impl Default for DagCnf {
             dep_dat: Vec::new(),
         };
         let start = res.cnf_dat.len();
-        res.cnf_dat.extend([1, 1, Lit::constant(true).into()]);
+        res.cnf_dat.extend([1, 1, Lit::constant(true).0]);
         res.cnf_pos[max_var] = (start as u32, 3);
         res
     }

@@ -83,7 +83,7 @@ impl Transys {
             ..Default::default()
         };
         for l in aig.latchs.iter() {
-            let lv = Var::from(l.input);
+            let lv = Var(l.input as u32);
             ts.add_latch(lv, l.init.map(|i| i.to_lit()), l.next.to_lit());
         }
         ts
@@ -165,14 +165,14 @@ impl Frontend for AigFrontend {
         let mut certifaiger = Aig::from(&proof);
         certifaiger = certifaiger.reencode();
         certifaiger.symbols.clear();
-        for (i, v) in proof.input().enumerate() {
+        for (i, &v) in proof.input.iter().enumerate() {
             if let Some(r) = rst.get(&v) {
-                certifaiger.set_symbol(certifaiger.inputs[i], &format!("= {}", (**r) * 2));
+                certifaiger.set_symbol(certifaiger.inputs[i], &format!("= {}", r.0 * 2));
             }
         }
-        for (i, v) in proof.latch().enumerate() {
+        for (i, &v) in proof.latch.iter().enumerate() {
             if let Some(r) = rst.get(&v) {
-                certifaiger.set_symbol(certifaiger.latchs[i].input, &format!("= {}", (**r) * 2));
+                certifaiger.set_symbol(certifaiger.latchs[i].input, &format!("= {}", r.0 * 2));
             }
         }
         certifaiger.to_string()

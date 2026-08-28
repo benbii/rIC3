@@ -82,7 +82,7 @@ pub fn combsweep(mut ts: Transys, cfg: &PreprocConfig, mut rst: Restore) -> (Tra
     let mut solver = DagCnfSolver::new(Arc::clone(&ts.rel));
     let mut half_impl = Vec::with_capacity(10000);
     while v < ts.max_var() {
-        v += 1;
+        v.0 += 1;
         if start.elapsed().as_secs() > cfg.frts_tl {
             info!("frts: timeout");
             break;
@@ -145,8 +145,8 @@ pub fn combsweep(mut ts: Transys, cfg: &PreprocConfig, mut rst: Restore) -> (Tra
     ts.rearrange(&mut rst);
     info!(
         "frts: eliminates {} out of {} vars in {:.2}s",
-        *before - *ts.max_var(),
-        *before,
+        before.0 - ts.max_var().0,
+        before.0,
         start.elapsed().as_secs_f32()
     );
     ts.simplify(&mut rst);

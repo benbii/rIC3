@@ -56,7 +56,7 @@ impl Transys {
         }
         for v in self.input.iter().chain(self.latch.iter()) {
             if !mark.contains(v) {
-                let idx: usize = (*v).into();
+                let idx: usize = v.0 as usize;
                 if idx < self.init.len() {
                     self.init[*v] = OptionU32::NONE;
                 }
@@ -68,7 +68,7 @@ impl Transys {
         self.input.retain(|i| mark.contains(i));
         self.latch.retain(|i| mark.contains(i));
         let mut removed = 0;
-        for v in VarRange::new_inclusive(Var::CONST + 1, self.max_var()) {
+        for v in VarRange::new_inclusive(Var(1), self.max_var()) {
             if !mark.contains(&v) {
                 removed += self.rel.clauses_of_var(v).len();
                 self.rel_mut().del_rel(v);
@@ -105,13 +105,13 @@ impl Transys {
             if let Some(i) = self.init(v) {
                 let mv = domain_map[v];
                 init.reserve(mv);
-                init[mv] = OptionU32::some(map_lit(i).into());
+                init[mv] = OptionU32::some(map_lit(i).0);
             }
         }
         for &l in old_latch.iter() {
             let ml = domain_map[l];
             next.reserve(ml);
-            next[ml] = OptionU32::some(map_lit(self.var_next_lit(l)).into());
+            next[ml] = OptionU32::some(map_lit(self.var_next_lit(l)).0);
         }
         self.input = self.input.iter().map(|v| domain_map[*v]).collect();
         self.latch = self.latch.iter().map(|v| domain_map[*v]).collect();

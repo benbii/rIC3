@@ -140,7 +140,7 @@ fn push(
     lit: Lit,
     watcher: Watcher,
 ) {
-    let range = unsafe { ranges.add(u32::from(lit) as usize) };
+    let range = unsafe { ranges.add(lit.0 as usize) };
     let old = unsafe { *range };
     let len = old.len();
     if len != old.cap() {
@@ -353,7 +353,7 @@ impl DagCnfSolver {
         while self.propagated < self.trail.len() as u32 {
             let p = self.trail[self.propagated];
             self.propagated += 1;
-            let range = unsafe { ranges.add(u32::from(p) as usize) };
+            let range = unsafe { ranges.add(p.0 as usize) };
             let packed = unsafe { *range };
             let mut w = packed.begin();
             let mut end = packed.end;
@@ -425,7 +425,7 @@ impl DagCnfSolver {
         while propagated < self.trail.len() {
             let p = self.trail[propagated];
             propagated += 1;
-            let range = unsafe { ranges.add(u32::from(p) as usize) };
+            let range = unsafe { ranges.add(p.0 as usize) };
             let packed = unsafe { *range };
             let mut w = packed.begin();
             let mut end = packed.end;
@@ -515,7 +515,7 @@ impl DagCnfSolver {
         self.state.set_none(var);
         let source = !l;
         let ranges = self.watchers.ranges.as_mut_ptr();
-        let range = unsafe { ranges.add(u32::from(source) as usize) };
+        let range = unsafe { ranges.add(source.0 as usize) };
         let pool = self.watchers.pool;
         let cursor = &mut self.watchers.cursor as *mut usize;
         let packed = unsafe { *range };
@@ -576,7 +576,7 @@ mod tests {
         (0..range.len())
             .map(|i| unsafe {
                 let watcher = *arena.pool.add((begin + i) as usize);
-                (watcher.clause.0, watcher.blocker.into())
+                (watcher.clause.0, watcher.blocker.0)
             })
             .collect()
     }
@@ -598,7 +598,7 @@ mod tests {
     fn arena_growth_compaction_and_clone_preserve_lists() {
         let max_var = Var(127);
         let mut arena = WatchArena::new_with(max_var);
-        let num_lit = u32::from(max_var.lit()) + 2;
+        let num_lit = max_var.lit().0 + 2;
         let mut expected: Vec<_> = (0..num_lit)
             .map(|index| (Lit::new(Var(index >> 1), index & 1 == 0), Vec::new()))
             .collect();
@@ -618,7 +618,7 @@ mod tests {
                 );
                 expected[index as usize]
                     .1
-                    .push((watcher.clause.0, watcher.blocker.into()));
+                    .push((watcher.clause.0, watcher.blocker.0));
             }
         }
 

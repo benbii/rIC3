@@ -23,7 +23,7 @@ impl Cnf {
 
     #[inline]
     pub fn new_var(&mut self) -> Var {
-        self.max_var += 1;
+        self.max_var.0 += 1;
         self.max_var
     }
 

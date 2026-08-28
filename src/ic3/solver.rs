@@ -56,6 +56,22 @@ pub(super) fn inductive_core(slv: &mut DagCnfSolver, ts: &Transys, cube: &[Lit])
 }
 
 impl IC3 {
+    pub(super) fn push_lemma(&mut self, frame: usize, mut cube: LitVec) -> (usize, LitVec) {
+        for i in frame + 1..=self.level() {
+            if inductive(&mut self.solvers[i - 1], &self.ts, &cube, true) {
+                cube = inductive_core(&mut self.solvers[i - 1], &self.ts, &cube).unwrap_or(cube);
+            } else {
+                return (i, cube);
+            }
+        }
+        (self.level() + 1, cube)
+    }
+
+    #[inline]
+    pub fn level(&self) -> usize {
+        self.solvers.len() - 1
+    }
+
     pub(super) fn get_bad(&mut self) -> Option<(LitVec, Vec<LitVec>)> {
         trace!("getting bad state in frame {}", self.level());
         if self.predprop.is_some() {
@@ -107,5 +123,12 @@ impl IC3 {
         };
         let (state, input) = self.lift.lift(solver, cls.iter().chain(cst.iter()), order);
         (state, input)
+    }
+
+    pub fn invariant(&self) -> Vec<LitVec> {
+        self.inner_invariant()
+            .iter()
+            .map(|l| l.map_var(|l| self.rst.restore_var(l)))
+            .collect()
     }
 }

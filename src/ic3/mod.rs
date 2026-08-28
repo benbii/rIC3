@@ -1,22 +1,25 @@
 use crate::{
-    BlWitness, Engine, McProof, McResult, McWitness,
     config::EngineConfig,
     gipsat::DagCnfSolver,
-    ic3::{block::BlockResult, localabs::LocalAbs, mab::CtgMab, predprop::PredProp},
+    ic3::{
+        localabs::LocalAbs,
+        mab::CtgMab,
+        predprop::PredProp,
+    },
     transys::{Transys, certify::Restore, lift::TsLift, unroll::TransysUnroll},
 };
 use activity::Activity;
 use clap::{ArgAction, Args, Parser};
 use frame::{Frame, Frames};
-use log::{debug, error, info, trace};
+use log::error;
 use logicrs::{Lit, LitOrdVec, LitVec};
 use proofoblig::{Po, Poq};
 use rand::{SeedableRng, rngs::SmallRng};
 use serde::{Deserialize, Serialize};
-use std::{sync::Arc, time::Instant};
+use std::sync::Arc;
 
 mod activity;
-mod block;
+mod mainloop;
 mod frame;
 mod localabs;
 mod mab;
@@ -116,24 +119,6 @@ pub struct IC3 {
 }
 
 impl IC3 {
-    #[inline]
-    pub fn level(&self) -> usize {
-        self.solvers.len() - 1
-    }
-
-    fn extend(&mut self) {
-        let nl = self.solvers.len();
-        debug!("extending IC3 to level {nl}");
-        if let Some(predprop) = self.predprop.as_mut() {
-            predprop.extend(self.frame.inf.iter().map(|(l, _)| l.as_litvec()));
-        }
-        let solver = self.inf_solver.clone();
-        self.solvers.push(solver);
-        self.frame.push(Frame::new());
-    }
-}
-
-impl IC3 {
     pub fn new(mut cfg: IC3Config, mut ts: Transys, ots: Transys, mut rst: Restore) -> Self {
         // validate config
         assert!(!cfg.dynamic || !cfg.mab, "dynamic & mab incompatible");
@@ -182,13 +167,13 @@ impl IC3 {
             }
             if slv.dcs_solve_nocst(&[ts.bad[0]]) {
                 let mut input = LitVec::new();
-                for i in ts.input() {
+                for &i in &ts.input {
                     if let Some(v) = slv.dcs_varsatval(i) {
                         input.push(Lit::new(i, v));
                     }
                 }
                 let mut bad = LitVec::new();
-                for lat in ts.latch() {
+                for &lat in &ts.latch {
                     if let Some(v) = slv.dcs_varsatval(lat) {
                         bad.push(Lit::new(lat, v));
                     }
@@ -267,136 +252,5 @@ impl IC3 {
             ctp: cfg.ctp,
             parent_lemma: cfg.parent_lemma,
         }
-    }
-
-    pub fn invariant(&self) -> Vec<LitVec> {
-        self.inner_invariant()
-            .iter()
-            .map(|l| l.map_var(|l| self.rst.restore_var(l)))
-            .collect()
-    }
-}
-
-impl Engine for IC3 {
-    fn check(&mut self) -> McResult {
-        if self.solvers.len() == 0 {
-            info!("ic3 found a counterexample at depth 0");
-            return McResult::Unsafe(0);
-        }
-        let start = Instant::now();
-        let mut last_sec = 0;
-        loop {
-            let now_sec = start.elapsed().as_secs();
-            if now_sec > self.time_limit {
-                return McResult::Unknown(Some(self.level()));
-            }
-            if now_sec - last_sec >= 10 {
-                info!("{}", self.frame.statistic(true));
-                last_sec = now_sec;
-            }
-
-            loop {
-                match self.block() {
-                    BlockResult::Failure(depth) => {
-                        info!("ic3 found a counterexample at depth {depth}");
-                        return McResult::Unsafe(depth);
-                    }
-                    BlockResult::Proved => {
-                        info!("ic3 proved the property");
-                        return McResult::Safe;
-                    }
-                    _ => (),
-                }
-                if let Some((bad, inputs)) = self.get_bad() {
-                    trace!("bad state {bad} found in frame {}", self.level());
-                    let bad = LitOrdVec::new(bad);
-                    let depth = inputs.len() - 1;
-                    self.obligations
-                        .add(Po::new(self.level(), bad, inputs, depth, None))
-                } else {
-                    break;
-                }
-            }
-
-            info!("ic3 found no counterexample up to depth {}", self.level());
-            self.extend();
-            let propagate = self.propagate(None);
-            if propagate {
-                info!("ic3 proved the property");
-                return McResult::Safe;
-            }
-            self.propagate_to_inf();
-        }
-    }
-
-    fn proof(&mut self) -> McProof {
-        let mut proof = self.ots.clone_deep();
-        if let Some(iv) = self.rst.init_var() {
-            let piv = proof.add_init_var();
-            self.rst.add_restore(iv, piv);
-        }
-        let mut invariants = self.inner_invariant();
-        for c in self.ts.constraint.clone() {
-            proof
-                .rel_mut()
-                .migrate(&self.ts.rel, c.var(), &mut self.rst.bvmap);
-            invariants.push(LitVec::from(!c));
-        }
-        let mut invariants: Vec<LitVec> = invariants
-            .iter()
-            .map(|l| LitVec::from_iter(l.iter().map(|l| self.rst.restore(*l))))
-            .collect();
-        invariants.extend(self.rst.eq_invariant());
-        let mut certifaiger_dnf = vec![];
-        for cube in invariants {
-            certifaiger_dnf.push(proof.rel_mut().new_and(cube));
-        }
-        let invariants = proof.rel_mut().new_or(certifaiger_dnf);
-        let proof_bad = std::mem::take(&mut proof.bad);
-        let bad = proof.rel_mut().new_or(proof_bad);
-        proof.bad = LitVec::from(proof.rel_mut().new_or([invariants, bad]));
-        McProof::Bl(proof)
-    }
-
-    fn witness(&mut self) -> McWitness {
-        let mut res = if let Some(res) = self.localabs.witness() {
-            res
-        } else {
-            let mut res = BlWitness::default();
-            let b = self.obligations.peak().unwrap();
-            assert!(b.frame == 0);
-            let mut b = Some(b);
-            while let Some(bad) = b {
-                res.state.push(bad.state.as_litvec().clone());
-                res.input.push(bad.input[0].clone());
-                for i in &bad.input[1..] {
-                    res.input.push(i.clone());
-                    res.state.push(LitVec::new());
-                }
-                b = bad.next.clone();
-            }
-            res
-        };
-        let iv = self.rst.init_var();
-        res = res.filter_map(|l| {
-            (iv != Some(l.var()))
-                .then(|| self.rst.try_restore(l))
-                .flatten()
-        });
-        for s in res.state.iter_mut() {
-            *s = self.rst.restore_eq_state(s);
-        }
-        res.exact_state(&self.ots, true);
-        McWitness::Bl(res)
-    }
-
-    fn statistic(&mut self) {
-        info!("obligations: {}", self.obligations.statistic());
-        info!("{}", self.frame.statistic(false));
-        let mut num_solve = 0;
-        for s in self.solvers.iter() {
-            num_solve += s.num_solve;
-        }
-        info!("num_solve: {num_solve:#?}");
     }
 }

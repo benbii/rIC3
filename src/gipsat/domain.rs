@@ -21,7 +21,7 @@ impl Clone for Domain {
 impl Domain {
     pub fn new(max_var: Var, state: &mut VarState) -> Self {
         let mut res = Self {
-            set: Vec::with_capacity(usize::from(max_var) + 2),
+            set: Vec::with_capacity(max_var.0 as usize + 2),
             fixed: 0,
         };
         res.insert(Var::CONST, state);
@@ -115,14 +115,14 @@ mod tests {
         let mut state = VarState::new_with(max_var);
         let mut domain = Domain::new(max_var, &mut state);
 
-        for raw in 1..=usize::from(max_var) {
+        for raw in 1..=max_var.0 as usize {
             domain.insert(Var::new(raw), &mut state);
         }
-        assert_eq!(domain.set.len(), usize::from(max_var) + 1);
+        assert_eq!(domain.set.len(), max_var.0 as usize + 1);
         assert!(domain.set.len() < domain.set.capacity());
 
         domain.insert(Var::CONST, &mut state);
-        assert_eq!(domain.set.len(), usize::from(max_var) + 1);
+        assert_eq!(domain.set.len(), max_var.0 as usize + 1);
 
         let cloned = domain.clone();
         assert!(cloned.set.len() < cloned.set.capacity());

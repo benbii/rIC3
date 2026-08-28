@@ -4,7 +4,7 @@ mod others;
 mod strash;
 mod ternary;
 
-use crate::RseedMap as HashMap;
+use crate::{RseedMap as HashMap, Var};
 use logicrs::Lit;
 use std::{
     mem::swap,
@@ -117,14 +117,14 @@ impl AigEdge {
     #[inline]
     pub fn from_lit(lit: Lit) -> Self {
         Self {
-            id: lit.var().into(),
+            id: lit.var().0 as usize,
             complement: !lit.polarity(),
         }
     }
 
     #[inline]
     pub fn to_lit(&self) -> Lit {
-        Lit::new(self.id.into(), !self.complement)
+        Lit::new(Var(self.id as u32), !self.complement)
     }
 
     #[inline]

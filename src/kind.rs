@@ -142,7 +142,7 @@ impl Engine for Kind {
             k += 1;
         }
         info!("kind reached bound {}, stopping search", self.end);
-        McResult::Unknown(Some(self.end))
+        McResult::Unknown(self.end)
     }
 
     fn proof(&mut self) -> McProof {
@@ -173,7 +173,7 @@ impl Engine for Kind {
         let mut next = proof.next.clone();
         let mut inits = proof.init.clone();
         let dense_lit = |map: &VarMap<OptionU32>, v: Var| -> Option<Lit> {
-            let idx: usize = v.into();
+            let idx = v.0 as usize;
             if idx >= map.len() {
                 return None;
             }
@@ -186,9 +186,13 @@ impl Engine for Kind {
         let mut bads = proof.bad.clone();
         let mut constrains = proof.constraint.clone();
         for _ in 1..k {
-            let offset = proof.max_var();
+            let offset = proof.max_var().0;
             let map = |x: Var| {
-                if x == Var::CONST { x } else { x + offset }
+                if x == Var::CONST {
+                    x
+                } else {
+                    Var(x.0 + offset)
+                }
             };
             proof.new_var_to(map(ts.max_var()));
             let lmap = |x: Lit| Lit::new(map(x.var()), x.polarity());
@@ -208,10 +212,10 @@ impl Engine for Kind {
                 let ml = map(l);
                 latchs.push(ml);
                 next.reserve(ml);
-                next[ml] = OptionU32::some(lmap(ts.var_next_lit(l)).into());
+                next[ml] = OptionU32::some(lmap(ts.var_next_lit(l)).0);
                 if let Some(i) = ts.init(l) {
                     inits.reserve(ml);
-                    inits[ml] = OptionU32::some(lmap(i).into());
+                    inits[ml] = OptionU32::some(lmap(i).0);
                 }
             }
             bads.extend(ts.bad.map(lmap));

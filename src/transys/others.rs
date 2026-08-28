@@ -85,7 +85,7 @@ impl Transys {
     }
 
     pub fn has_gate_init(&self) -> bool {
-        for l in self.input().chain(self.latch()) {
+        for &l in self.input.iter().chain(self.latch.iter()) {
             if let Some(i) = self.init(l)
                 && !(i.var().is_constant())
             {
@@ -98,7 +98,7 @@ impl Transys {
     pub fn remove_gate_init(&mut self, rst: &mut Restore) {
         let mut const_init = Vec::new();
         let mut eq = Vec::new();
-        for l in self.input().chain(self.latch()) {
+        for &l in self.input.iter().chain(self.latch.iter()) {
             if let Some(i) = self.init(l) {
                 if i.try_constant().is_some() {
                     const_init.push((l, i));
@@ -159,14 +159,14 @@ impl Transys {
             if let Some(i) = self.init(v) {
                 let i = map.map_lit(i).unwrap_or(i);
                 init.reserve(v);
-                init[v] = OptionU32::some(i.into());
+                init[v] = OptionU32::some(i.0);
             }
         }
         for &l in self.latch.iter() {
             let n = self.var_next_lit(l);
             let n = map.map_lit(n).unwrap_or(n);
             next.reserve(l);
-            next[l] = OptionU32::some(n.into());
+            next[l] = OptionU32::some(n.0);
         }
         self.init = init;
         self.next = next;
@@ -232,7 +232,7 @@ impl Transys {
             if let Some(i) = self.init(v) {
                 let mv = map[v];
                 init.reserve(mv);
-                init[mv] = OptionU32::some(i.map_var(|v| map[v]).into());
+                init[mv] = OptionU32::some(i.map_var(|v| map[v]).0);
             }
         }
 
@@ -240,7 +240,7 @@ impl Transys {
         for &l in old_latch.iter() {
             let ml = map[l];
             next.reserve(ml);
-            next[ml] = OptionU32::some(self.var_next_lit(l).map_var(|v| map[v]).into());
+            next[ml] = OptionU32::some(self.var_next_lit(l).map_var(|v| map[v]).0);
         }
 
         self.input = old_input.iter().map(|&v| map[v]).collect();

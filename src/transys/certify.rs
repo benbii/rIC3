@@ -82,12 +82,12 @@ impl BlWitness {
         ts.load_trans(&mut solver, true);
         assert!(solver.cad_solve(&assump));
         let mut state = LitVec::new();
-        for lat in ts.latch() {
+        for &lat in &ts.latch {
             let b = solver.cad_satval(lat.lit()).unwrap();
             state.push(Lit::new(lat, b));
         }
         let mut input = LitVec::new();
-        for i in ts.input() {
+        for &i in &ts.input {
             let b = solver.cad_satval(i.lit()).unwrap();
             input.push(Lit::new(i, b));
         }

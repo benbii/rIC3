@@ -20,7 +20,7 @@ impl AccidentalHeap {
     fn new(max_var: Var) -> Self {
         Self {
             heap: Vec::new(),
-            pos: vec![Self::NONE; usize::from(max_var) + 1],
+            pos: vec![Self::NONE; max_var.0 as usize + 1],
         }
     }
 
@@ -29,7 +29,7 @@ impl AccidentalHeap {
     }
 
     fn up(&mut self, v: Var, occur: &Occurs<LitOrdVec>) {
-        let mut idx = self.pos[usize::from(v)];
+        let mut idx = self.pos[v.0 as usize];
         if idx == Self::NONE {
             return;
         }
@@ -39,18 +39,18 @@ impl AccidentalHeap {
                 break;
             }
             self.heap[idx] = self.heap[pidx];
-            self.pos[usize::from(self.heap[idx])] = idx;
+            self.pos[self.heap[idx].0 as usize] = idx;
             idx = pidx;
         }
         if self.heap[idx] == v {
             return;
         }
         self.heap[idx] = v;
-        self.pos[usize::from(v)] = idx;
+        self.pos[v.0 as usize] = idx;
     }
 
     fn down(&mut self, v: Var, occur: &Occurs<LitOrdVec>) {
-        let mut idx = self.pos[usize::from(v)];
+        let mut idx = self.pos[v.0 as usize];
         if idx == Self::NONE {
             return;
         }
@@ -71,23 +71,23 @@ impl AccidentalHeap {
                 break;
             }
             self.heap[idx] = self.heap[child];
-            self.pos[usize::from(self.heap[idx])] = idx;
+            self.pos[self.heap[idx].0 as usize] = idx;
             idx = child;
         }
         if self.heap[idx] == v {
             return;
         }
         self.heap[idx] = v;
-        self.pos[usize::from(v)] = idx;
+        self.pos[v.0 as usize] = idx;
     }
 
     fn push(&mut self, v: Var, occur: &Occurs<LitOrdVec>) {
-        if self.pos[usize::from(v)] != Self::NONE {
+        if self.pos[v.0 as usize] != Self::NONE {
             return;
         }
         let idx = self.heap.len();
         self.heap.push(v);
-        self.pos[usize::from(v)] = idx;
+        self.pos[v.0 as usize] = idx;
         self.up(v, occur);
     }
 
@@ -97,8 +97,8 @@ impl AccidentalHeap {
         }
         let value = self.heap[0];
         self.heap[0] = self.heap[self.heap.len() - 1];
-        self.pos[usize::from(self.heap[0])] = 0;
-        self.pos[usize::from(value)] = Self::NONE;
+        self.pos[self.heap[0].0 as usize] = 0;
+        self.pos[value.0 as usize] = Self::NONE;
         self.heap.pop();
         if self.heap.len() > 1 {
             self.down(self.heap[0], occur);
@@ -550,8 +550,8 @@ mod test {
     fn test0() {
         let mut dc = DagCnf::new();
         dc.new_var_to(Var(4));
-        dc.new_and([Lit::from(1), Lit::from(2), Lit::from(3)]);
-        dc.new_and([Lit::from(1), Lit::from(2), Lit::from(3), Lit::from(4)]);
+        dc.new_and([Lit(1), Lit(2), Lit(3)]);
+        dc.new_and([Lit(1), Lit(2), Lit(3), Lit(4)]);
         println!("{dc}");
         let mut simp = DagCnfSimplify::new(&dc);
         for v in VarRange::new_inclusive(Var::CONST, dc.max_var()) {

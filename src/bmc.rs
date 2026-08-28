@@ -84,7 +84,7 @@ impl BMC {
             S::C(c)
         };
         let step = if cfg.dyn_step {
-            (10_000_000 / (*ts.max_var() as usize + ts.rel.clauses().len())).max(1)
+            (10_000_000 / (ts.max_var().0 as usize + ts.rel.clauses().len())).max(1)
         } else {
             cfg.step as usize
         };
@@ -153,7 +153,7 @@ impl Engine for BMC {
         }
 
         info!("bmc reached bound {}, stopping search", self.end);
-        McResult::Unknown(Some(self.end))
+        McResult::Unknown(self.end)
     }
 
     fn witness(&mut self) -> McWitness {

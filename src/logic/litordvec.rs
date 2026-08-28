@@ -42,7 +42,7 @@ impl LitOrdVec {
         debug_assert!(lv.is_sorted());
         let mut sign = 0;
         for l in lv.iter() {
-            sign |= 1 << (Into::<u32>::into(*l) % u128::BITS);
+            sign |= 1 << (Into::<u32>::into(l.0) % u128::BITS);
         }
         Self { cube: lv, sign }
     }

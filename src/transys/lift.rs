@@ -21,7 +21,7 @@ impl TsLift {
         target: impl IntoIterator<Item = impl AsRef<Lit>>,
         order: impl FnMut(usize, &mut [Lit]) -> bool,
     ) -> (LitVec, Vec<LitVec>) {
-        self.complex_lift(satif, self.ts.latch.clone(), target, order)
+        self.complex_lift(satif, self.ts.ts.latch.clone(), target, order)
     }
 
     pub fn complex_lift(
@@ -41,7 +41,7 @@ impl TsLift {
         let mut inputs_flatten = LitVec::new();
         for k in 0..=self.ts.num_unroll {
             let mut input = LitVec::new();
-            for i in self.ts.input() {
+            for &i in &self.ts.ts.input {
                 let lit = self.ts.lit_next(i.lit(), k);
                 if let Some(v) = satif.dcs_satval(lit) {
                     input.push(i.lit().not_if(!v));

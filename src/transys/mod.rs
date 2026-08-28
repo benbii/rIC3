@@ -59,18 +59,8 @@ impl Transys {
     }
 
     #[inline]
-    pub fn input(&self) -> impl Iterator<Item = Var> + '_ {
-        self.input.iter().copied()
-    }
-
-    #[inline]
-    pub fn latch(&self) -> impl Iterator<Item = Var> + '_ {
-        self.latch.iter().copied()
-    }
-
-    #[inline]
     pub fn is_latch(&self, v: Var) -> bool {
-        let idx: usize = v.into();
+        let idx = v.0 as usize;
         idx < self.next.len() && self.next[v].is_some()
     }
 
@@ -89,7 +79,7 @@ impl Transys {
 
     #[inline]
     pub fn init(&self, latch: Var) -> Option<Lit> {
-        let idx: usize = latch.into();
+        let idx = latch.0 as usize;
         if idx >= self.init.len() {
             return None;
         }
@@ -135,7 +125,7 @@ impl Transys {
 
     pub fn inits(&self) -> Vec<LitVec> {
         let mut cnf = Vec::new();
-        for l in self.latch() {
+        for &l in &self.latch {
             if let Some(i) = self.init(l) {
                 if let Some(i) = i.try_constant() {
                     cnf.push(LitVec::from([l.lit().not_if(!i)]));
@@ -180,8 +170,8 @@ impl Transys {
         format!(
             "{} vars, {} inputs, {} latches, {} clauses, {} constraints",
             self.max_var(),
-            self.input().count(),
-            self.latch().count(),
+            self.input.len(),
+            self.latch.len(),
             self.trans().count(),
             self.constraint().count(),
         )
@@ -197,19 +187,19 @@ impl Transys {
         self.latch.push(latch);
         self.next.reserve(latch);
         self.init.reserve(latch);
-        debug_assert!(u32::from(next) != u32::MAX);
-        self.next[latch] = OptionU32::some(next.into());
+        debug_assert!(next.0 != u32::MAX);
+        self.next[latch] = OptionU32::some(next.0);
         if let Some(i) = init {
-            debug_assert!(u32::from(i) != u32::MAX);
-            self.init[latch] = OptionU32::some(i.into());
+            debug_assert!(i.0 != u32::MAX);
+            self.init[latch] = OptionU32::some(i.0);
         }
     }
 
     #[inline]
     pub fn add_init(&mut self, latch: Var, init: Lit) {
         self.init.reserve(latch);
-        debug_assert!(u32::from(init) != u32::MAX);
-        self.init[latch] = OptionU32::some(init.into());
+        debug_assert!(init.0 != u32::MAX);
+        self.init[latch] = OptionU32::some(init.0);
     }
 
     pub fn new() -> Self {

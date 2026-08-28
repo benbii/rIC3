@@ -19,10 +19,10 @@ impl PredProp {
     pub fn new(uts: TransysUnroll, local_proof: usize, inn: bool, bad: &LitVec) -> Self {
         let mut bts = if inn {
             assert!(uts.num_unroll == 1);
-            let keep = uts.ts.rel.fanouts(uts.ts.input());
+            let keep = uts.ts.rel.fanouts(&uts.ts.input);
             let mut rel = Arc::new((*uts.ts.rel).clone());
             let mut input = uts.ts.input.clone();
-            input.extend(uts.ts.input().map(|v| uts.var_next(v, 1)));
+            input.extend(uts.ts.input.iter().map(|&v| uts.var_next(v, 1)));
             let mut constraint = uts.ts.constraint.clone();
             constraint.extend(uts.lits_next(uts.ts.constraint(), 1));
             for old_v in VarRange::new_inclusive(Var(1), uts.ts.rel.max_var()) {

@@ -32,10 +32,8 @@ use std::{
     collections::{HashMap, HashSet},
     fmt::{self, Debug, Display},
     hash::{BuildHasher, Hash},
-    ops::{Add, AddAssign, Deref, Not, Sub},
+    ops::Not,
 };
-
-pub const RIC3_HASH_SEED: [u64; 4] = [0, 0, 0, 0];
 
 #[derive(Clone)]
 pub struct Ric3RandomState(ahash::RandomState);
@@ -43,12 +41,7 @@ pub struct Ric3RandomState(ahash::RandomState);
 impl Default for Ric3RandomState {
     #[inline]
     fn default() -> Self {
-        Self(ahash::RandomState::with_seeds(
-            RIC3_HASH_SEED[0],
-            RIC3_HASH_SEED[1],
-            RIC3_HASH_SEED[2],
-            RIC3_HASH_SEED[3],
-        ))
+        Self(ahash::RandomState::with_seeds(0, 0, 0, 0))
     }
 }
 
@@ -72,8 +65,13 @@ impl BuildHasher for Ric3RandomState {
 pub type RseedMap<K, V> = HashMap<K, V, Ric3RandomState>;
 pub type RseedSet<T> = HashSet<T, Ric3RandomState>;
 
-#[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Default, Serialize, Deserialize)]
+#[derive(
+    Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Default, Serialize, Deserialize, Debug,
+)]
 pub struct Var(pub u32);
+#[repr(transparent)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Default, Serialize, Deserialize)]
+pub struct Lit(pub u32);
 
 impl Var {
     pub const CONST: Var = Var(0);
@@ -94,57 +92,9 @@ impl Var {
     }
 }
 
-impl Add<Var> for Var {
-    type Output = Var;
-
-    #[inline]
-    fn add(self, rhs: Var) -> Self::Output {
-        Self(self.0 + rhs.0)
-    }
-}
-
-impl Sub<Var> for Var {
-    type Output = Var;
-
-    #[inline]
-    fn sub(self, rhs: Var) -> Self::Output {
-        Self(self.0 - rhs.0)
-    }
-}
-
-impl AddAssign<Var> for Var {
-    #[inline]
-    fn add_assign(&mut self, rhs: Var) {
-        self.0 += rhs.0;
-    }
-}
-
-impl From<Lit> for Var {
-    #[inline]
-    fn from(value: Lit) -> Self {
-        value.var()
-    }
-}
-
-impl Deref for Var {
-    type Target = u32;
-
-    #[inline]
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
 impl AsRef<Var> for Var {
     #[inline]
     fn as_ref(&self) -> &Var {
-        self
-    }
-}
-
-impl AsMut<Var> for Var {
-    #[inline]
-    fn as_mut(&mut self) -> &mut Var {
         self
     }
 }
@@ -155,75 +105,6 @@ impl Display for Var {
         write!(f, "{}", self.0)
     }
 }
-
-impl Debug for Var {
-    #[inline]
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
-
-macro_rules! impl_var_traits {
-    ($T:ty) => {
-        impl PartialEq<$T> for Var {
-            #[inline]
-            fn eq(&self, other: &$T) -> bool {
-                self.0.eq(&(*other as u32))
-            }
-        }
-
-        impl PartialOrd<$T> for Var {
-            #[inline]
-            fn partial_cmp(&self, other: &$T) -> Option<std::cmp::Ordering> {
-                self.0.partial_cmp(&(*other as u32))
-            }
-        }
-
-        impl From<Var> for $T {
-            #[inline]
-            fn from(value: Var) -> Self {
-                value.0 as $T
-            }
-        }
-
-        impl From<$T> for Var {
-            #[inline]
-            fn from(value: $T) -> Self {
-                Self(value as u32)
-            }
-        }
-
-        impl Add<$T> for Var {
-            type Output = Var;
-
-            #[inline]
-            fn add(self, rhs: $T) -> Self::Output {
-                Self(self.0 + rhs as u32)
-            }
-        }
-
-        impl Sub<$T> for Var {
-            type Output = Var;
-
-            #[inline]
-            fn sub(self, rhs: $T) -> Self::Output {
-                Self(self.0 - rhs as u32)
-            }
-        }
-
-        impl AddAssign<$T> for Var {
-            #[inline]
-            fn add_assign(&mut self, rhs: $T) {
-                self.0 += rhs as u32;
-            }
-        }
-    };
-}
-
-impl_var_traits!(u32);
-impl_var_traits!(i32);
-impl_var_traits!(usize);
-impl_var_traits!(isize);
 
 /// An iterator over a range of `Var` values (stable Rust compatible replacement for RangeInclusive<Var>)
 #[derive(Clone, Debug)]
@@ -262,42 +143,6 @@ impl DoubleEndedIterator for VarRange {
 }
 
 impl ExactSizeIterator for VarRange {}
-
-#[repr(transparent)]
-#[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Default, Serialize, Deserialize)]
-pub struct Lit(u32);
-
-impl From<Var> for Lit {
-    #[inline]
-    fn from(value: Var) -> Self {
-        Self(value.0 << 1)
-    }
-}
-
-impl From<Lit> for u32 {
-    #[inline]
-    fn from(val: Lit) -> Self {
-        val.0
-    }
-}
-
-impl From<Lit> for i32 {
-    #[inline]
-    fn from(val: Lit) -> Self {
-        let mut v: i32 = val.var().into();
-        if !val.polarity() {
-            v = -v;
-        }
-        v
-    }
-}
-
-impl From<i32> for Lit {
-    #[inline]
-    fn from(value: i32) -> Self {
-        Self::new(Var(value.unsigned_abs()), value > 0)
-    }
-}
 
 impl Lit {
     #[inline]
@@ -372,13 +217,6 @@ impl AsRef<Lit> for Lit {
     }
 }
 
-impl AsMut<Lit> for Lit {
-    #[inline]
-    fn as_mut(&mut self) -> &mut Lit {
-        self
-    }
-}
-
 impl Debug for Lit {
     #[inline]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -404,7 +242,6 @@ use crate::{
     wltransys::certify::{WlProof, WlWitness},
 };
 use enum_as_inner::EnumAsInner;
-use std::ops::BitOr;
 
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, EnumAsInner)]
 pub enum McResult {
@@ -413,34 +250,7 @@ pub enum McResult {
     /// Unsafe with Cex Depth
     Unsafe(usize),
     /// Proved in Some(exact depth)
-    Unknown(Option<usize>),
-}
-
-impl Default for McResult {
-    fn default() -> Self {
-        McResult::Unknown(None)
-    }
-}
-
-impl BitOr for McResult {
-    type Output = Self;
-
-    fn bitor(self, rhs: Self) -> Self::Output {
-        use McResult::*;
-        match (self, rhs) {
-            (Safe, Unsafe(_)) | (Unsafe(_), Safe) => {
-                panic!("conflicting results: safe and unsafe")
-            }
-            (Safe, _) | (_, Safe) => Safe,
-            (Unsafe(a), Unsafe(b)) => Unsafe(a.max(b)),
-            (Unsafe(a), Unknown(_)) | (Unknown(_), Unsafe(a)) => Unsafe(a),
-            (Unknown(a), Unknown(b)) => Unknown(match (a, b) {
-                (Some(x), Some(y)) => Some(x.max(y)),
-                (Some(x), None) | (None, Some(x)) => Some(x),
-                (None, None) => None,
-            }),
-        }
-    }
+    Unknown(usize),
 }
 
 #[derive(Clone, Debug, EnumAsInner)]

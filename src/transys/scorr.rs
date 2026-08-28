@@ -115,7 +115,8 @@ impl Scorr {
 
         assert!(!init[Var::CONST].is_empty());
         let mut sim: VarMap<BitVec> = VarMap::new_with(self.ts.max_var());
-        let consider: Vec<_> = self.ts.latch().filter(|v| !init[*v].is_empty()).collect();
+        let consider = self.ts.latch.iter().copied();
+        let consider: Vec<Var> = consider.filter(|v| !init[*v].is_empty()).collect();
         sim.reserve(self.ts.max_var());
         let mut slv = DagCnfSolver::new(Arc::clone(&self.ts.rel));
         for cls in self.ts.constraint() {
@@ -129,11 +130,8 @@ impl Scorr {
             slv.add_perma_clause(&block);
         }
         slv.use_phase_saving = false;
-        let domain: Vec<_> = self
-            .ts
-            .latch()
-            .map(|l| self.ts.var_next_lit(l).var())
-            .collect();
+        let domain = self.ts.latch.iter().copied();
+        let domain: Vec<Var> = domain.map(|l| self.ts.var_next_lit(l).var()).collect();
 
         for from in 0..init[Var::CONST].len() {
             let assump = assign(init, from, &consider);
@@ -144,17 +142,16 @@ impl Scorr {
         sim
     }
 
-    /// precondition: y < x, guaranteed by `if y.var() > x` later in line 225
+    /// `if y.var() > x` later in line 225
     fn check_scorr(&mut self, x: Lit, y: Lit) -> bool {
-        let mut assump = [Lit::default()];
-        let mut xy = [x, y, Lit::default()];
-        let mut nxy = [!x, !y, Lit::default()];
+        let dummy = Lit(0);
+        let mut xy = [x, y, dummy];
+        let mut nxy = [!x, !y, dummy];
         xy[..2].sort();
         nxy[..2].sort();
-        let mut cst = [&mut xy[..], &mut nxy[..]];
         if self
             .init_slv
-            .dcs_solve(&mut assump, &mut cst, &[], 10)
+            .dcs_solve(&mut [dummy], &mut [&mut xy, &mut nxy], &[], 10)
             .is_none_or(|r| r)
         {
             return false;
@@ -168,18 +165,17 @@ impl Scorr {
         if xn == yn {
             return true;
         }
-        let mut assump = [Lit::default()];
-        let mut xny = [x, !y, Lit::default()];
-        let mut nxy = [!x, y, Lit::default()];
-        let mut xnyn = [xn, yn, Lit::default()];
-        let mut nxnyn = [!xn, !yn, Lit::default()];
+        let mut xny = [x, !y, dummy];
+        let mut nxy = [!x, y, dummy];
+        let mut xnyn = [xn, yn, dummy];
+        let mut nxnyn = [!xn, !yn, dummy];
         xny[..2].sort();
         nxy[..2].sort();
         xnyn[..2].sort();
         nxnyn[..2].sort();
-        let mut cst = [&mut xny[..], &mut nxy[..], &mut xnyn[..], &mut nxnyn[..]];
+        let mut cst = [&mut xny[..], &mut nxy, &mut xnyn, &mut nxnyn];
         self.ind_slv
-            .dcs_solve(&mut assump, &mut cst, &[], 10)
+            .dcs_solve(&mut [dummy], &mut cst, &[], 10)
             .is_some_and(|r| !r)
     }
 
@@ -200,17 +196,18 @@ impl Scorr {
             init[Var::CONST].len(),
             rt[Var::CONST].len()
         );
-        let mut latch: Vec<_> = self.ts.latch().filter(|v| !init[*v].is_empty()).collect();
+        let latch = self.ts.latch.iter().copied();
+        let mut latch: Vec<_> = latch.filter(|&v| !init[v].is_empty()).collect();
         latch.sort();
         for i in 0..init[Var::CONST].len() {
             rt[Var::CONST].push(false);
-            for &l in latch.iter() {
+            for &l in &latch {
                 rt[l].push(init[l].get(i));
             }
         }
         let mut cand: HashMap<BitVec, LitVec> = HashMap::default();
         cand.insert(rt[Var::CONST].clone(), LitVec::from([Lit::constant(false)]));
-        for &v in latch.iter() {
+        for &v in &latch {
             let l = v.lit();
             if let Some(c) = cand.get_mut(&rt[v]) {
                 c.push(l);
@@ -221,7 +218,7 @@ impl Scorr {
             }
         }
         let mut scorr = VarLMap::new();
-        'm: for x in latch {
+        'm: for &x in &latch {
             if let Some(n) = self.ts.init(x)
                 && !n.var().is_constant()
             {

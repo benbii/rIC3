@@ -75,7 +75,7 @@ impl Engine for WlBMC {
             info!("wl-bmc found no counterexample at exact depth {k}");
         }
         info!("bmc reached bound {}, stopping search", self.end);
-        McResult::Unknown(Some(self.end))
+        McResult::Unknown(self.end)
     }
 
     fn witness(&mut self) -> McWitness {

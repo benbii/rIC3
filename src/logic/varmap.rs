@@ -34,7 +34,7 @@ impl<T: Default> VarMap<T> {
 
     #[inline]
     pub fn reserve(&mut self, var: Var) {
-        let len = Into::<usize>::into(var) + 1;
+        let len = var.0 as usize + 1;
         if self.len() < len {
             self.map.resize_with(len, Default::default)
         }
@@ -114,7 +114,7 @@ impl<T: Default> LitMap<T> {
 
     #[inline]
     pub fn reserve(&mut self, var: Var) {
-        let len = (Into::<usize>::into(var) + 1) * 2;
+        let len = (var.0 as usize + 1) * 2;
         if self.len() < len {
             self.map.resize_with(len, Default::default)
         }

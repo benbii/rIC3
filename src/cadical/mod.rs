@@ -22,7 +22,7 @@ fn cadical_seed(seed: u64) -> c_int {
 }
 
 fn lit_to_cadical_lit(lit: &Lit) -> i32 {
-    let mut res = Into::<usize>::into(lit.var()) as i32 + 1;
+    let mut res = lit.var().0 as i32 + 1;
     if !lit.polarity() {
         res = -res;
     }
@@ -49,7 +49,7 @@ impl CaDiCaL {
     }
 
     pub fn new_var_to(&mut self, var: Var) {
-        let target = usize::from(var) + 1;
+        let target = var.0 as usize + 1;
         if target <= self.num_var {
             return;
         }

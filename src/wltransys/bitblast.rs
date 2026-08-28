@@ -258,10 +258,10 @@ impl BitblastMap {
         let mut new_latch = Vec::new();
         let mut map: HashMap<Var, Term> = HashMap::default();
         map.insert(Var::CONST, Term::bool_const(false));
-        for i in ts.input() {
+        for &i in &ts.input {
             map.insert(i, self.restore_var(i));
         }
-        for l in ts.latch() {
+        for &l in &ts.latch {
             if self.try_restore(l).is_none() {
                 let nl = Term::new_var(Sort::Bv(1));
                 new_latch.push((l, nl.clone()));

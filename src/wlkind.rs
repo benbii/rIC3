@@ -89,7 +89,7 @@ impl Engine for WlKind {
             info!("wl-kind found no counterexample at exact depth {k}");
         }
         info!("kind reached bound {}, stopping search", self.end);
-        McResult::Unknown(Some(self.end))
+        McResult::Unknown(self.end)
     }
 
     fn witness(&mut self) -> McWitness {
