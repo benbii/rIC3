@@ -151,9 +151,19 @@ else:
 # for grp in cfg: print(grp)
 
 testcases = []
-for path in inputdir.rglob("*"):
-  if path.is_file() and path.suffix in (".aig", ".btor", ".aag", ".btor2"):
-    testcases.append(path.as_posix())
+seen_dirs = set()
+for root, dirs, files in os.walk(inputdir.resolve(), followlinks=True):
+  root = Path(root)
+  real_root = root.resolve()
+  if real_root in seen_dirs:
+    dirs.clear()
+    continue
+  seen_dirs.add(real_root)
+  dirs[:] = [d for d in dirs if (root / d).resolve() not in seen_dirs]
+  for filename in files:
+    path = root / filename
+    if path.is_file() and path.suffix in (".aig", ".btor", ".aag", ".btor2"):
+      testcases.append(path.resolve().as_posix())
 if len(testcases) == 0:
   sys.exit(f"no .aig or .btor files found in {inputdir}")
 print(f'found {len(testcases)} testcases')
