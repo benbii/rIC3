@@ -136,16 +136,14 @@ impl Transys {
     }
 
     pub fn preproc(mut ts: Self, cfg: &PreprocConfig, mut rst: Restore) -> (Self, Restore) {
-        if cfg.preproc {
-            ts.simplify(&mut rst);
-            info!("trivial simplified ts: {}", ts.statistic());
-            if cfg.scorr {
-                let scorr = Scorr::new(ts, cfg, rst);
-                (ts, rst) = scorr.scorr();
-            }
-            if cfg.frts {
-                (ts, rst) = combsweep(ts, cfg, rst);
-            }
+        ts.simplify(&mut rst);
+        info!("trivial simplified ts: {}", ts.statistic());
+        if cfg.scorr {
+            let scorr = Scorr::new(ts, cfg, rst);
+            (ts, rst) = scorr.scorr();
+        }
+        if cfg.frts {
+            (ts, rst) = combsweep(ts, cfg, rst);
         }
         info!("preprocessed ts has {}", ts.statistic());
         (ts, rst)

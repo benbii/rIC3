@@ -126,7 +126,11 @@ impl Engine for IC3 {
                 self.obligations
                     .add(Po::new(self.level(), bad, inputs, depth, None))
             } else {
-                info!("ic3 found no counterexample up to depth {}", self.level());
+                let depth = self.level();
+                // Denser than BMC: every depth below 16, then geometrically sparser.
+                if depth ^ depth.wrapping_add(1) > depth >> 4 {
+                    info!("ic3 found no counterexample up to depth {depth}");
+                }
                 let nl = self.solvers.len();
                 debug!("extending IC3 to level {nl}");
                 if let Some(predprop) = self.predprop.as_mut() {

@@ -20,6 +20,7 @@ parser.add_argument("-o", "--out", "--basename", dest="log_basename")
 parser.add_argument("-a", "--listen-addr")
 parser.add_argument("-p", "--listen-port")
 parser.add_argument("-S", "--secret")
+parser.add_argument("--preproc-file-fmt", help="Preprocessed path template, e.g. TESTCASE.preproc; TESTCASE expands to the model path")
 args = parser.parse_args()
 
 script_dir = Path(__file__).absolute().parent
@@ -41,12 +42,12 @@ bmc65 = [solver, "check", "TESTCASE", "bmc", "--step", "65", "--rseed", "14"]
 bmc_dyn = [solver, "check", "TESTCASE", "bmc", "--dyn-step", "--rseed", "15"]
 ic3_basic = [solver, "check", "TESTCASE", "ic3", "--rseed", "1"]
 ic3_no_ctg = [
-  solver, "check", "TESTCASE", "--frts=false", "--scorr=false",
-  "ic3", "--ctg=false", "--drop-po=false", "--rseed", "2",
+  solver, "check", "TESTCASE", "--no-frts", "--no-scorr",
+  "ic3", "--no-ctg", "--no-drop-po", "--rseed", "2",
 ]
 ic3_no_drop = [
-  solver, "check", "TESTCASE", "ic3", "--drop-po=false",
-  "--parent-lemma=false", "--rseed", "3",
+  solver, "check", "TESTCASE", "ic3", "--no-drop-po",
+  "--no-parent-lemma", "--rseed", "3",
 ]
 ic3_abs_cst = [solver, "check", "TESTCASE", "ic3", "--abs-cst", "--rseed", "4"]
 ic3_abs_cst_trans = [
@@ -55,14 +56,14 @@ ic3_abs_cst_trans = [
 ic3_pred_prop = [solver, "check", "TESTCASE", "ic3", "--pred-prop", "--rseed", "6"]
 ic3_ctg = [
   solver, "check", "TESTCASE", "ic3", "--ctg-max", "5",
-  "--ctg-limit", "15", "--drop-po=false", "--rseed", "7",
+  "--ctg-limit", "15", "--no-drop-po", "--rseed", "7",
 ]
 ic3_inn = [solver, "check", "TESTCASE", "ic3", "--inn", "--rseed", "8"]
 ic3_inn_ctp = [solver, "check", "TESTCASE", "ic3", "--inn", "--ctp", "--rseed", "9"]
-ic3_inn_no_ctg = [solver, "check", "TESTCASE", "ic3", "--inn", "--ctg=false", "--rseed", "10"]
+ic3_inn_no_ctg = [solver, "check", "TESTCASE", "ic3", "--inn", "--no-ctg", "--rseed", "10"]
 ic3_inn_dyn = [
   solver, "check", "TESTCASE", "ic3", "--inn", "--dynamic",
-  "--drop-po=false", "--rseed", "11",
+  "--no-drop-po", "--rseed", "11",
 ]
 kind = [solver, "check", "TESTCASE", "kind"]
 kind_simple = [solver, "check", "TESTCASE", "kind", "--simple-path"]
@@ -87,13 +88,13 @@ ic3_commands = [
   ic3_pred_prop,
   ic3_inn, ic3_inn_ctp, ic3_inn_no_ctg, ic3_inn_dyn,
 ]
-ctg_duel_base = [solver, "check", "TESTCASE", "ic3", "--drop-po=false"]
+ctg_duel_base = [solver, "check", "TESTCASE", "ic3", "--no-drop-po"]
 ctg_duel_commands = [
-  ctg_duel_base + ["--ctg=false", "--rseed", "2101"],
+  ctg_duel_base + ["--no-ctg", "--rseed", "2101"],
   ctg_duel_base + ["--ctg-max", "5", "--ctg-limit", "15", "--rseed", "2102"],
   ctg_duel_base + ["--dynamic", "--rseed", "2103"],
   ctg_duel_base + ["--mab", "--rseed", "2104"],
-  ctg_duel_base + ["--inn", "--ctg=false", "--rseed", "2111"],
+  ctg_duel_base + ["--inn", "--no-ctg", "--rseed", "2111"],
   ctg_duel_base + ["--inn", "--ctg-max", "5", "--ctg-limit", "15", "--rseed", "2112"],
   ctg_duel_base + ["--inn", "--dynamic", "--rseed", "2113"],
   ctg_duel_base + ["--inn", "--mab", "--rseed", "2114"],
@@ -150,20 +151,16 @@ else:
   sys.exit("unknown preset; read the script for a list (it's easy!)")
 # for grp in cfg: print(grp)
 
+# Insert before the engine subcommand; TESTCASE is expanded when writing argv.
+if args.preproc_file_fmt is not None:
+  cfg = [[x[:3] + ["--preproc-file", args.preproc_file_fmt] + x[3:]
+          if x[1] in ("check", "preprocess") else x for x in inner]
+         for inner in cfg]
+
 testcases = []
-seen_dirs = set()
-for root, dirs, files in os.walk(inputdir.resolve(), followlinks=True):
-  root = Path(root)
-  real_root = root.resolve()
-  if real_root in seen_dirs:
-    dirs.clear()
-    continue
-  seen_dirs.add(real_root)
-  dirs[:] = [d for d in dirs if (root / d).resolve() not in seen_dirs]
-  for filename in files:
-    path = root / filename
-    if path.is_file() and path.suffix in (".aig", ".btor", ".aag", ".btor2"):
-      testcases.append(path.resolve().as_posix())
+for path in inputdir.rglob("*"):
+  if path.is_file() and path.suffix in (".aig", ".btor", ".aag", ".btor2"):
+    testcases.append(path.as_posix())
 if len(testcases) == 0:
   sys.exit(f"no .aig or .btor files found in {inputdir}")
 print(f'found {len(testcases)} testcases')

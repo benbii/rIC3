@@ -45,8 +45,8 @@ pub struct IC3Config {
     /// LinUCB regularization parameter lambda
     #[arg(long = "mab-lambda", default_value_t = 0.1)]
     pub mab_lambda: f64,
-    /// counterexample to generalization
-    #[arg(long = "ctg", action = ArgAction::Set, default_value_t = true)]
+    /// Disable counterexample to generalization
+    #[arg(long = "no-ctg", action = ArgAction::SetFalse)]
     pub ctg: bool,
     /// max number of ctg
     #[arg(long = "ctg-max", default_value_t = 3)]
@@ -70,11 +70,11 @@ pub struct IC3Config {
     /// abstract trans
     #[arg(long = "abs-trans", default_value_t = false)]
     pub abs_trans: bool,
-    /// dropping proof-obligation
-    #[arg(long = "drop-po", action = ArgAction::Set, default_value_t = true)]
+    /// Disable dropping over-active proof obligations
+    #[arg(long = "no-drop-po", action = ArgAction::SetFalse)]
     pub drop_po: bool,
-    /// finding parent lemma in mic (CAV'23 https://doi.org/10.1007/978-3-031-37703-7_14)
-    #[arg(long = "parent-lemma", action = ArgAction::Set, default_value_t = true)]
+    /// Disable parent lemma guidance in MIC (CAV'23 https://doi.org/10.1007/978-3-031-37703-7_14)
+    #[arg(long = "no-parent-lemma", action = ArgAction::SetFalse)]
     pub parent_lemma: bool,
     /// predicate property
     #[arg(long = "pred-prop", default_value_t = false)]
@@ -138,7 +138,10 @@ impl IC3 {
     pub fn new(mut cfg: IC3Config, mut ts: Transys, ots: Transys, mut rst: Restore) -> Self {
         // validate config
         assert!(!cfg.dynamic || !cfg.mab, "dynamic & mab incompatible");
-        assert!(!cfg.dynamic || !cfg.mab, "dynamic & drop_po incompatible");
+        assert!(
+            !cfg.dynamic || !cfg.drop_po,
+            "dynamic & drop_po incompatible"
+        );
         assert!(!cfg.mab || !cfg.drop_po, "mab & drop_po incompatible");
         assert!(!cfg.inn || !cfg.abs_trans, "inn & localAbs incompatible");
         assert!(!cfg.inn || !cfg.abs_cst, "inn & localAbs incompatible");

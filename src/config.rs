@@ -19,7 +19,7 @@ pub enum EngineConfig {
     WlBMC(WlBMCConfig),
     /// word level k-induction
     WlKind(WlKindConfig),
-    /// rlive (CAV'24 https://doi.org/10.1007/978-3-031-65627-9_12)
+    /// rlive (immature)
     Rlive,
 }
 
@@ -28,27 +28,21 @@ pub struct PreprocConfig {
     /// Property ID. If not specified, all properties are preserved
     #[arg(long = "prop", default_value_t = usize::MAX)]
     pub prop: usize,
-    /// disable preprocess
-    #[arg(long = "preproc", action = ArgAction::Set, default_value_t = true)]
-    pub preproc: bool,
-    /// function reduced transys
-    #[arg(long = "frts", action = ArgAction::Set, default_value_t = true)]
+    /// Disable functional reduction of the transition system
+    #[arg(long = "no-frts", action = ArgAction::SetFalse)]
     pub frts: bool,
     /// frts time limit in seconds
     #[arg(long = "frts-tl", default_value_t = 1000)]
     pub frts_tl: u64,
-    /// scorr
-    #[arg(long = "scorr", action = ArgAction::Set, default_value_t = true)]
+    /// Disable sequential correlation reduction
+    #[arg(long = "no-scorr", action = ArgAction::SetFalse)]
     pub scorr: bool,
     /// scorr time limit in seconds
     #[arg(long = "scorr-tl", default_value_t = 200)]
     pub scorr_tl: u64,
-    /// load preprocessed model from file (skips preprocessing)
-    #[arg(long = "load-preproc")]
-    pub load: Option<PathBuf>,
-    /// output path for the preprocessed bit-level model
-    #[arg(long = "export-preproc")]
-    pub export: Option<PathBuf>,
+    /// Preprocessed model file (loads on `check`; exports on `preprocess`)
+    #[arg(long = "preproc-file")]
+    pub preproc_file: Option<PathBuf>,
     /// when loading a preprocessed model, wait for the recorded preprocess time
     #[arg(long = "fake-preproc-wait", default_value_t = false)]
     pub fake_preproc_wait: bool,

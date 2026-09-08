@@ -1,6 +1,6 @@
 # ric3 fork
 
-README is linked to AGENT.md 'cause ric3 is so nuanced it's best to understand
+README is linked to AGENTS.md 'cause ric3 is so nuanced it's best to understand
 before **using** it. The goal is to make the solver architecture, the useful
 command-line knobs, and the local naming conventions explicit enough that one
 at least vaguely knows what it is doing.
@@ -32,46 +32,46 @@ Primary command:
 
 ```sh
 ric3 check <model.aig|model.aag|model.btor|model.btor2> [preproc flags] <engine> [engine flags]
-```
-
-Examples:
-
-```sh
+# Examples:
 ric3 check model.aig ic3
-ric3 check model.aig --scorr=false --frts=false ic3 --ctg=false --drop-po=false
-ric3 check model.aig ic3 --ctg-max 5 --ctg-limit 15 --drop-po=false
+ric3 check model.aig --no-scorr --no-frts ic3 --no-ctg --no-drop-po
+ric3 check model.aig ic3 --ctg-max 5 --ctg-limit 15 --no-drop-po
 ric3 check model.aig ic3 --inn --ctp
-ric3 check model.aig bmc --kissat --depth 65
+ric3 check model.aig bmc --kissat --step 65
 ric3 check model.aig kind --simple-path
 ```
 
-Boolean Clap switches that use `ArgAction::Set` can be disabled as `--flag=false`, for example `--ctg=false`, `--drop-po=false`, `--frts=false`, `--scorr=false`, and `--preproc=false`.
-
+Default-on features use `--no-*` to disable them. Default-off features
+such as `--inn` and `--guard-domain` use ordinary presence switches.
 Useful top-level `check` flags:
-
 - `--cert <path>`: write a safety or counterexample certificate.
 - `--certify`: ask the frontend to certify the certificate with the external certifier path flow.
 - `--witness`: print the unsafe witness.
 - `--prop <id>`: preserve/check one property by index during preprocessing. If omitted and there are multiple bad properties, bit-level engines compress them with an OR at different points.
 
 Useful `preprocess` command:
-
 ```sh
-ric3 preprocess <model> --export-preproc <file>
-ric3 check <model> --load-preproc <file> ic3
+ric3 preprocess <model> --preproc-file <file>
+ric3 check <model> --preproc-file <file> ic3
 ```
 
-`--load-preproc` skips preprocessing and deserializes the saved bit-level `Transys` and restore information. `--fake-preproc-wait` sleeps for the recorded preprocessing time after loading, useful for fair benchmark accounting.
+`--preproc-file` exports the preprocessed bit-level `Transys`, its restore
+metadata, and the elapsed preprocessing time; without it, `preprocess` discards
+the result. On `check`, a readable, valid file skips preprocessing; a missing or
+invalid file falls back to normal preprocessing. `--fake-preproc-wait` sleeps for
+the recorded preprocessing time after loading, useful for fair benchmark accounting.
+The loaded model is used as saved: preprocessing switches and `--prop` are not
+reapplied. The caller must ensure the cache matches the selected property and
+engine mode (including `--local-proof`); loading an incompatible cache has
+undefined behavior.
 
 ## Preprocessing
 
-`Transys::preproc` has three phases when `--preproc=true`, which is the default:
-
-1. Quick greedy/trivial simplification.
-2. Sequential correlation reduction, `scorr`.
-3. Functional reduction of the transition system, `frts`.
-
-Disable all preprocessing with `--preproc=false`. Disable individual expensive phases with `--scorr=false` or `--frts=false`.
+`Transys::preproc` has three phases: quick greedy/trivial simplification,
+sequential latch sweep (`scorr`), and combinational sweep (`frts`). Trivial
+simplification always runs; there is no `--preproc` switch. Disable the expensive phases with
+`--no-scorr` and/or `--no-frts`. A successfully loaded `--preproc-file` skips
+all three phases.
 
 ### Phase 1: quick greedy/trivial rewrites
 
@@ -81,46 +81,31 @@ Implemented in `src/transys/simp.rs` through `Transys::simplify`. This phase per
 - Constant simplification, bounded variable elimination, subsumption/self-subsumption, and clause cleanup through `DagCnfSimplify`.
 - Constraint cleanup and deduplication.
 - Variable rearrangement so active variables are dense and restore mappings remain correct.
-
-This pass should almost always stay enabled. It is cheap relative to scorr/frts/IC3 and removes irrelevant cones before any engine starts.
+This pass is always enabled. It is cheap relative to scorr/frts/IC3 and removes
+irrelevant cones before the bit-level engine starts.
 
 ### Phase 2: `scorr` `src/transys/scorr.rs`
 
-- `--scorr=true|false`, default true.
-- `--scorr-tl <seconds>`, default 200.
-
-`scorr` is sequential correlation. It tries to prove that latches are equivalent or inverted-equivalent over reachable behavior, then replaces one with the other. The implementation:
-
+Enabled by default; `--no-scorr` disables it. `--scorr-tl <seconds>`, default
+200. `scorr` is sequential correlation. It tries to prove that latches are
+equivalent or inverted-equivalent over reachable behavior, then replaces one
+with the other. The implementation:
 - Generates initial-state simulation signatures.
 - Generates reachable-transition simulation signatures.
 - Buckets latch literals by equal or inverted signatures.
 - Uses GipSAT to check both initial consistency and inductive preservation.
 - Replaces proven correlated latches and reruns simplification.
 
-Good cases:
-- Control-heavy FSMs with duplicated state bits.
-- Designs with many flops whose values are tied by reset and transition logic.
-- Instances where IC3 spends time learning the same fact under many names.
-
-Bad cases:
-- Tiny runs where preprocessing time dominates.
-- Designs where random/reachable simulation produces many false candidates.
-
 ### Phase 3: `frts` `src/transys/frts.rs`
 
-- `--frts=true|false`, default true.
-- `--frts-tl <seconds>`, default 1000.
+Enabled by default; `--no-frts` disables it. `--frts-tl <seconds>`, default 1000.
+`frts` is functional reduction for the transition-system DAG. It starts with
+random simulation over the DAG, proposes equivalent or inverted-equivalent
+internal variables, and then validates those candidates with GipSAT. Proven
+equalities are added to the SAT solver, accumulated in a replacement map, and
+periodically applied to the transition system.
 
-`frts` is functional reduction for the transition-system DAG. It starts with random simulation over the DAG, proposes equivalent or inverted-equivalent internal variables, and then validates those candidates with GipSAT. Proven equalities are added to the SAT solver, accumulated in a replacement map, and periodically applied to the transition system.
-
-Good cases:
-- Large combinational cones with repeated logic.
-- Bit-blasted datapaths with many internal equivalent nodes.
-- Proof workloads where a smaller transition relation matters more than preprocessing time.
-
-Bad cases:
-- Very shallow instances, where BMC or default IC3 terminate before preprocessing pays back.
-- Instances where the candidate space is huge and few equivalences are real.
+Note that  there are tiny runs where `scorr/frts` time dominates.
 
 ## Bit-Level IC3 `src/ic3`
 
@@ -132,20 +117,18 @@ IC3 is the main engine. It maintains frames of lemmas over the transition system
 
 ### Main loop, as implemented
 
-The high-level flow in `IC3::check` is:
+Initialization is in `IC3::new` (`src/ic3/mod.rs`); the main loop is in
+`IC3::check` (`src/ic3/mainloop.rs`):
 
-1. `prep_prop_base()` optionally performs predicate-property base handling.
-2. `extend()` creates frame 0 and loads initial-state lemmas.
-3. At each frontier level, repeatedly call `block()` until no bad state remains in the frontier.
-4. If `get_bad()` finds a bad state, lift it into a predecessor/state cube and enqueue a proof obligation `Po`.
-5. `block()` pops obligations ordered by frame, trace depth, and cube size.
-6. If an obligation intersects the initial condition at frame 0, IC3 returns unsafe. With local abstraction enabled, it first validates/refines the abstract witness with BMC.
-7. Otherwise, check whether the obligation cube is relatively inductive using `blocked_with_ordered`.
-8. If not blocked, obtain a predecessor with `get_pred`, enqueue that predecessor one frame earlier, and requeue the current obligation.
-9. If blocked, extract an inductive core, minimize it with MIC/CTG, push it as far as possible with `push_lemma`, then add it to the frames.
-10. When blocking at the current level is done, extend the frontier and call `propagate`.
-11. `propagate` moves lemmas forward. If a frame becomes empty, the property is proved.
-12. `propagate_to_inf` tries to move frontier lemmas into the infinity frame.
+1. `IC3::new` removes gate initializations, configures INN/predicate-property mode, checks the predicate-property base case, and constructs frame 0 with initial-state lemmas.
+2. `check` pops queued obligations at the frontier, ordered by frame, trace depth, and cube size.
+3. If an obligation intersects the initial condition at frame 0, IC3 returns unsafe. With local abstraction enabled, it first validates/refines the abstract witness with BMC.
+4. Otherwise, query the previous frame solver using next-state cube assumptions (`dcs_solve_nocst`).
+5. If SAT, obtain a predecessor with `get_pred`, enqueue it one frame earlier, and requeue the current obligation.
+6. If UNSAT, extract an `inductive_core`, minimize it with MIC/CTG, push it with `push_lemma`, then add the lemma to the frames.
+7. Once queued obligations are handled, `get_bad` searches the frontier and enqueues a lifted predecessor/state cube if one exists.
+8. If no bad state remains, clone the infinity solver to extend the frontier and call `propagate`. An empty frame proves safety.
+9. `propagate_to_inf` tries to move frontier lemmas into the infinity frame.
 
 The implementation is not a toy PDR. Most of the performance is in the choices made inside MIC, propagation, predecessor lifting, and SAT-local domains.
 
@@ -153,7 +136,7 @@ The implementation is not a toy PDR. Most of the performance is in the choices m
 
 - `--rseed <u64>`: random seed for cube shuffling and related randomized decisions. Default 0.
 - `--time-limit <seconds>`: IC3 time limit. Default `u64::MAX`.
-- `--ctg=true|false`: enable counterexample-to-generalization. Default true.
+- `--no-ctg`: disable counterexample-to-generalization, which is enabled by default.
 - `--ctg-max <usize>`: maximum CTG retries before shrinking by the current SAT model. Default 3.
 - `--ctg-limit <usize>`: recursive blocking budget for CTG. Default 1.
 - `--dynamic`: simple activity-based dynamic EXCTG/CTG parameter selection. Default false.
@@ -162,31 +145,30 @@ The implementation is not a toy PDR. Most of the performance is in the choices m
 - `--mab-lambda <f64>`: LinUCB regularization parameter. Default 0.1.
 - `--ctp`: counterexample-to-propagation. Default false.
 - `--inn`: internal-signal IC3. Default false.
+- `--guard-domain`: singleton least-seen guarded latch domains.
 - `--abs-cst`: local abstraction of constraints. Default false.
 - `--abs-trans`: local abstraction of transition connections. Default false.
-- `--drop-po=true|false`: drop over-active proof obligations. Default true.
-- `--parent-lemma=true|false`: use parent lemma guidance during MIC. Default true.
+- `--no-drop-po`: disable dropping over-active proof obligations, enabled by default.
+- `--no-parent-lemma`: disable parent lemma guidance during MIC, enabled by default.
 - `--pred-prop`: predicate-property mode. Default false.
 - `--local-proof <usize>`: local proof/property selection path. Commented as buggy; avoid unless explicitly working on it.
 
 Important incompatibilities enforced by `IC3::new`:
 - `--dynamic` and `--mab` cannot both be enabled.
-- `--dynamic` cannot be combined with `--drop-po=true`.
-- `--mab` cannot be combined with `--drop-po=true`.
-- Since `--drop-po` defaults to true, using `--dynamic` or `--mab` requires `--drop-po=false`.
-- `--inn` cannot be combined with `--abs-cst` or `--abs-trans`.
+- `--dynamic` and `--mab` require `--no-drop-po` because dropping is enabled by default.
+- `--inn` cannot be combined with `--abs-cst`, `--abs-trans`, or `--guard-domain`.
 
 ### Counterexample to Generalization, CTG `src/ic3/mic.rs`
 
 ```sh
---ctg=true|false
+--no-ctg # disable CTG
 --ctg-max <n>
 --ctg-limit <n>
-# default:
---ctg=true --ctg-max=3 --ctg-limit=1
+# default: CTG enabled
+--ctg-max=3 --ctg-limit=1
 # useful recipes:
-ric3 check model.btor ic3 --ctg=false --drop-po=false # disable
-ric3 check model.btor ic3 --ctg-max 5 --ctg-limit 15 --drop-po=false # aggressive
+ric3 check model.btor ic3 --no-ctg --no-drop-po # disable
+ric3 check model.btor ic3 --ctg-max 5 --ctg-limit 15 --no-drop-po # aggressive
 ```
 
 CTG is used inside MIC, not as a separate outer loop. When MIC tries to drop a literal from a blocked cube, the resulting smaller cube may fail the relative-induction query. The SAT model for that failure is a counterexample to the proposed generalization. If that counterexample is itself blockable at a lower frame, the literal drop can still be accepted after recursively blocking the CTG.  
@@ -202,7 +184,7 @@ Implementation details:
 Good cases:
 - Safe instances where many failed literal drops are caused by states that are reachable in the SAT abstraction but blockable in earlier frames.
 - Proofs needing short lemmas; CTG spends SAT work to avoid bloated clauses.
-- Runs with `--drop-po=false`, where the solver is allowed to keep working through hard obligations rather than dropping them.
+- Runs with `--no-drop-po`, where the solver is allowed to keep working through hard obligations rather than dropping them.
 
 Bad cases:
 - Shallow unsafe instances. CTG may spend time polishing lemmas when BMC-like search would already find the bug.
@@ -211,28 +193,19 @@ Bad cases:
 
 ### Extended CTG and dynamic EXCTG generation `src/ic3/mab.rs`
 
-There is no separate `--exctg` flag. Extended CTG behavior is expressed by choosing stronger `DropVarParameter` settings, either statically with `--ctg-max/--ctg-limit` or dynamically with `--dynamic` or `--mab`.
-
-Simple dynamic mode:
-
+There is no separate `--exctg` flag. Extended CTG behavior is expressed by
+choosing stronger `DropVarParameter` settings, either statically with
+`--ctg-max/--ctg-limit` or dynamically with `--dynamic` or `--mab`. Ex:
 ```sh
-ric3 check model.aig ic3 --dynamic --drop-po=false # simple dynamic mode
-ric3 check model.aig ic3 --mab --drop-po=false # MAB mode
-ric3 check model.aig ic3 --mab --mab-alpha 0.7 --mab-lambda 0.1 --drop-po=false
+ric3 check model.aig ic3 --dynamic --no-drop-po # simple dynamic mode
+ric3 check model.aig ic3 --mab --no-drop-po # MAB mode
+ric3 check model.aig ic3 --mab --mab-alpha 0.7 --mab-lambda 0.1 --no-drop-po
 ```
 
 the simple dynamic mode does not learn. It computes a CTG parameter from proof-obligation activity along the successor chain:
 - Low branch activity: use no CTG or almost no CTG.
 - Medium activity: use small CTG.
 - High activity: grow the CTG recursive budget and allow up to 5 CTGs.
-
-Good cases:
-- Mixed portfolios where static CTG is too expensive on easy obligations but too weak on hard ones.
-- Long safe proofs where the hard obligations reveal themselves by repeated activity.
-- Runs where you would otherwise hand-tune `--ctg-max` and `--ctg-limit`.
-
-Bad cases:
-- Tiny cases where the activity signal has no time to become meaningful.
 
 The MAB mode uses LinUCB to choose among several CTG/generalization arms. The
 context vector is: `[relative level, relative cube size, push potential,
@@ -250,7 +223,6 @@ The reward favors smaller generalized cubes, successful pushes to later frames, 
 Good cases:
 - Long-running safe instances with enough obligations for learning to pay off.
 - Heterogeneous benchmark sets where a single CTG setting is not robust.
-- Research/ablation around adaptive generalization.
 
 Bad cases:
 - Short runs, shallow bugs, and tiny models.
@@ -283,8 +255,8 @@ CLI: `--inn` Default false.
 
 Internal-signal IC3 treats selected combinational variables as latch-like state
 variables. `IC3::new` performs one unroll and calls `internal_signals()` when
-`--inn` is enabled. Predicate-property mode has a related
-`internal_signals_with_full_prime()` path. Why it helps:
+`--inn` is enabled. Predicate-property mode reuses `internal_signals()` and
+retains the next-state predicate mapping. Why it helps:
 - Standard IC3 lemmas are over latches. On bit-blasted circuits, the latch state can be too coarse.
 - Internal combinational signals can expose useful cut points in the transition relation.
 - Lemmas over these cut points can be shorter or easier to propagate.
@@ -296,16 +268,6 @@ Good cases:
 
 Bad cases:
 - Models where adding internal signals explodes the state space more than it helps.
-- Very small models, where the overhead is unnecessary.
-
-Useful recipes:
-```sh
-ric3 check model.aig ic3 --inn
-ric3 check model.aig ic3 --inn --ctp
-ric3 check model.aig ic3 --inn --ctg=false
-ric3 check model.aig ic3 --inn --dynamic --drop-po=false
-ric3 check model.aig ic3 --inn --mab --drop-po=false
-```
 
 ### Local Abstraction `src/ic3/localabs.rs`
 
@@ -334,11 +296,11 @@ Bad cases:
 - Proofs needing most of the design from the start.
 - Where paths to proof trace are narrow. **`--abs*` are the most RNG sensitive switches across `ric3`**.
 
-### Drop Proof Obligation `src/ic3/block.rs`
+### Drop Proof Obligation `src/ic3/mainloop.rs`
 
-CLI: `--drop-po=true|false` Default true.
+Enabled by default; `--no-drop-po` disables it.
 
-Each proof obligation has an activity score. It increments when the obligation is revisited and decays when the obligation is pushed to later frames. If `--drop-po=true` and an obligation activity exceeds 20, `block()` drops it instead of continuing to chase that branch.
+Each proof obligation has an activity score. It increments when the obligation is revisited and decays when the obligation is pushed to later frames. With dropping enabled and activity above 20, the main loop drops the obligation instead of continuing to chase that branch.
 
 Good cases:
 - Portfolio-style runs where escaping a pathological obligation chain is worth it.
@@ -356,7 +318,7 @@ Predicate-property mode changes how IC3 asks for frontier bad states. It builds 
 Implementation notes:
 - `PredProp::new` compiles one-step behavior, or the internal-signal variant when `--inn` is enabled.
 - It adds the original bad condition as a constraint in the predicate-property system.
-- `prep_prop_base` first checks for a depth-0 counterexample.
+- `IC3::new` first checks for a depth-0 counterexample.
 - If base is safe, the main transition system gets `!bad` as a constraint and IC3 searches predecessors instead of direct bad states.
 - When frames extend, the predicate-property solver is rebuilt with infinity-frame lemmas.
 
@@ -370,7 +332,7 @@ Bad cases:
 
 ### Finding Parent Lemma `src/ic3/mic.rs`, `src/ic3/frame.rs`
 
-CLI:`--parent-lemma=true|false` Default true.
+Enabled by default; `--no-parent-lemma` disables it.
 
 This is the "generalize toward look-alike lemmas in parent frames" trick.
 During MIC, if the previous frame contains a lemma that subsumes the current
@@ -415,7 +377,7 @@ Practical guidance:
 - `--step` and `--dyn-step` are benchmark throughput knobs. They can skip the first failing depth if set too coarsely, although the engine reports the depth it actually checked.
 - Usually keep `--end` unset, i.e., loop till counterexample found.
 - BMC outperforms IC3 in *most* unsafe cases.
-- IC3 can skip steps. Likely underperforms IC3 on deep unsafe cases.
+- IC3 can generalize across states and may outperform BMC on deep unsafe cases.
 
 ## K-Induction `src/kind.rs`
 
@@ -440,9 +402,11 @@ Practical guidance:
 GipSAT is the custom SAT solver powering IC3, `scorr`, and `frts`. It is
 designed for many small, related transition-system queries rather than
 standalone SAT competition use.  `DagCnfSolver`, CaDiCaL, and Kissat are
-independent solvers used at unrelated occations. `DagCnfSolver::dcs_solve` is
-its only solve entry and takes temporary constraints, an optional local domain,
-and a restart limit directly.
+independent solvers used at unrelated occasions. `DagCnfSolver::dcs_solve`
+takes mutable assumptions, temporary constraints, an extra local domain, and
+a restart limit. `dcs_solve_nocst` is the convenient no-constraint wrapper.
+For `dcs_solve` with constraints, callers sort each clause and reserve its last
+slot for an activation literal, and reserve assumption slot 0 for activation.
 
 For agent navigation, grep the full concrete names. These names are
 intentionally noise-free across the tree and lead directly to each concrete
@@ -478,8 +442,18 @@ cone of the cube, its next-state literals, and any temporary constraints:
 
 - `inductive` checks relative induction with assumptions on next-state cube literals and optionally adds the strengthening constraint.
 - `inductive_core` reads `unsat_has(next(lit))` to shrink a cube after an UNSAT result.
-- MIC level 0 uses `set_domain` over the current cube and next cube to constrain decisions during repeated literal-dropping tests.
-- `add_perma_clause` calls `add_domain` so permanent lemmas expand the fixed domain with their dependencies.
+- MIC level 0 carries the original next cube in a temporary state constraint alongside the changing cube constraint, so repeated literal-dropping queries include those dependencies.
+- Normally `add_perma_clause` expands the fixed domain with the simplified clause's dependencies. With `--guard-domain`, frame lemmas instead register directed latch edges in `Domain`; frame call sites use the same API.
+
+Guarded mode samples an initial model after `remove_gate_init`, respecting
+constraints, and completes omitted latch values with false. Each lemma selects
+one satisfying latch literal as its least-seen source. When that source enters
+the domain, all variables of the lemma enter it. This is the singleton rule,
+not the full rule requiring every initial-model-satisfying literal to enter.
+Guard edges are traversed inside ordinary DAG closure. Removed/subsumed clauses
+can leave conservative extra edges. Guard mode is opt-in, excludes INN, and
+does not affect preprocessing solvers. Its unsatisfiable-init early exit
+currently bypasses certificate generation.
 
 ### Solver behavior worth remembering
 
@@ -556,20 +530,36 @@ Portfolio-style benchmark are run by the scripts in `./tools`.
 `ic3Only-portfolio`, `ctgDuel-portfolio`, and `kind-portfolio` into groups of
 `ric3 check ...` commands that can run concurrently under `tools/batchrunner`.
 
+`--preproc-file-fmt 'TESTCASE.preproc'` adds `--preproc-file <model-path>.preproc`
+to each ric3 command before its engine subcommand. The suffix is appended to
+the full filename (e.g. `design.aig.preproc`), and paths containing spaces remain
+one argv item. Use preset `preproc` to export once per testcase, then the same
+template with a solver preset to load.
+In distributed mode (`-a ADDR -p PORT`), solver, testcase, and cache paths must
+be accessible on every worker.
+
+```sh
+tools/run-ric3.py -i /cases -m preproc -s /bin/ric3 --preproc-file-fmt TESTCASE.preproc
+tools/run-ric3.py -i /cases -m all-portfolio -s /bin/ric3 --preproc-file-fmt TESTCASE.preproc
+```
+
+Custom preset files contain solver arguments after `check TESTCASE`; update any
+old `--flag=false` spellings to the new `--no-*` options before a cluster run.
+
 ```sh
 # Compile the portfolio runner first
 cc -O2 -pthread tools/batchrunner.c tools/batchrunner-main.c \
   -o tools/batchrunner -lnuma
 # Default IC3:
 ric3 check model.aig ic3
-# No preprocessing and no CTG, for e.g. models taking too long to preprocess:
-ric3 check model.aig --preproc=false ic3 --ctg=false --drop-po=false
+# Trivial preprocessing only and no CTG:
+ric3 check model.aig --no-scorr --no-frts ic3 --no-ctg --no-drop-po
 # Aggressive static CTG:
-ric3 check model.aig ic3 --ctg-max 5 --ctg-limit 15 --drop-po=false
+ric3 check model.aig ic3 --ctg-max 5 --ctg-limit 15 --no-drop-po
 # Dynamic EXCTG:
-ric3 check model.aig ic3 --dynamic --drop-po=false
+ric3 check model.aig ic3 --dynamic --no-drop-po
 # MAB EXCTG:
-ric3 check model.aig ic3 --mab --drop-po=false
+ric3 check model.aig ic3 --mab --no-drop-po
 # Internal signals plus propagation repair:
 ric3 check model.aig ic3 --inn --ctp
 # Local abstraction:

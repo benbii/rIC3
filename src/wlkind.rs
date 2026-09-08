@@ -86,7 +86,9 @@ impl Engine for WlKind {
                 info!("wl-kind found a counterexample at depth {k}");
                 return McResult::Unsafe(k);
             }
-            info!("wl-kind found no counterexample at exact depth {k}");
+            if k ^ k.wrapping_add(1) > k >> 4 {
+                info!("wl-kind found no counterexample at exact depth {k}");
+            }
         }
         info!("kind reached bound {}, stopping search", self.end);
         McResult::Unknown(self.end)

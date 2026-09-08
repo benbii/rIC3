@@ -138,7 +138,10 @@ impl Engine for Kind {
                 return McResult::Safe;
             }
 
-            info!("not {k}-inductive");
+            // Same progress cadence as IC3.
+            if k ^ k.wrapping_add(1) > k >> 4 {
+                info!("not {k}-inductive");
+            }
             k += 1;
         }
         info!("kind reached bound {}, stopping search", self.end);

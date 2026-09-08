@@ -23,10 +23,11 @@ use rIC3::{
     wlkind::WlKind,
 };
 use std::{
-    env, fs,
+    fs,
     fs::File,
     io::BufReader,
     io::BufWriter,
+    io::Write,
     path::PathBuf,
     process::ExitCode,
     time::{Duration, Instant},
@@ -76,10 +77,23 @@ struct PreprocessCmd {
 }
 
 fn main() -> ExitCode {
-    if env::var("RUST_LOG").is_err() {
-        unsafe { env::set_var("RUST_LOG", "info") };
-    }
-    env_logger::init();
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"))
+        .format(|buf, record| {
+            let now = time::OffsetDateTime::now_utc();
+            writeln!(
+                buf,
+                "{:02}{:02}{:02}{:02}{:02}{} {} {}",
+                now.month() as u8,
+                now.day(),
+                now.hour(),
+                now.minute(),
+                now.second(),
+                &record.level().as_str()[..1],
+                record.target().rsplit("::").next().unwrap_or(""),
+                record.args(),
+            )
+        })
+        .init();
     match Commands::parse() {
         Commands::Check { chk, cfg, pp } => cmd_check(chk, cfg, pp),
         Commands::Preprocess { pp } => cmd_preproc(pp),
@@ -118,17 +132,17 @@ fn cmd_check(mut chk: CheckCmd, cfg: EngineConfig, pp: PreprocConfig) -> ExitCod
         EngineConfig::WlKind(cfg) => Box::new(WlKind::new(cfg, fend.wts())),
         cfg => {
             let ots = fend.ts();
-            let (ts, rst) = if let Some(ref p) = pp.load
+            let (ts, rst) = if let Some(ref p) = pp.preproc_file
                 && let Ok(file) = File::open(p)
                 && let mut file = BufReader::new(file)
-                && let Ok(ts_ld) = bincode::deserialize_from(&mut file)
+                && let Ok(ts_ld) = bincode::deserialize_from::<_, Transys>(&mut file)
                 && let Ok(rst_ld) = bincode::deserialize_from(&mut file)
                 && let Ok(sec_ld) = bincode::deserialize_from(&mut file)
             {
                 if pp.fake_preproc_wait {
                     std::thread::sleep(Duration::from_secs(sec_ld));
                 }
-                info!("loaded transys has {}", ots.statistic());
+                info!("loaded transys has {}", ts_ld.statistic());
                 (ts_ld, rst_ld)
             } else {
                 info!("transys to be checked has {}", ots.statistic());
@@ -208,13 +222,13 @@ fn cmd_preproc(pp: PreprocessCmd) -> ExitCode {
     let t = Instant::now();
     let rst = Restore::new(&ts);
     let (ts, rst) = Transys::preproc(ts, &pp.cfg, rst);
-    if let Some(o) = pp.cfg.export {
+    if let Some(o) = pp.cfg.preproc_file {
         let sec = t.elapsed().as_secs();
         let mut file = BufWriter::new(File::create(&o).unwrap());
         bincode::serialize_into(&mut file, &ts).unwrap();
         bincode::serialize_into(&mut file, &rst).unwrap();
         bincode::serialize_into(&mut file, &sec).unwrap();
-        info!("Preprocessed to {:?} in {sec}s)", o);
+        info!("Preprocessed to {:?} in {sec}s", o);
     }
     info!("Preprocessing took {} secs", t.elapsed().as_secs());
     ExitCode::from(0)
