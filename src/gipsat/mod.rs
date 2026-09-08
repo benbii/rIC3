@@ -134,16 +134,20 @@ impl DagCnfSolver {
         }
     }
 
+    /// Once latch guards are enabled, added clauses must be frame lemmas over
+    /// those primary inputs, satisfied by the sampled initial model.
     pub fn add_perma_clause(&mut self, clause: &[Lit]) {
         self.reset();
-        for l in clause.iter() {
-            self.add_domain(l.var(), true);
-        }
         let mut clause = LitVec::from(clause);
         clause.sort();
         if let clause = self.simplify_clause(&mut clause)
             && !clause.is_empty()
         {
+            if !self.domain.add_guard(clause, &self.dc, &mut self.state) {
+                for lit in clause.iter() {
+                    self.add_domain(lit.var(), true);
+                }
+            }
             self.add_clause_inner(&clause, ClauseKind::Lemma);
         }
     }

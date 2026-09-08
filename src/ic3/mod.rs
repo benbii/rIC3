@@ -1,28 +1,24 @@
 use crate::{
     config::EngineConfig,
     gipsat::DagCnfSolver,
-    ic3::{
-        localabs::LocalAbs,
-        mab::CtgMab,
-        predprop::PredProp,
-    },
+    ic3::{localabs::LocalAbs, mab::CtgMab, predprop::PredProp},
     transys::{Transys, certify::Restore, lift::TsLift, unroll::TransysUnroll},
 };
 use activity::Activity;
 use clap::{ArgAction, Args, Parser};
 use frame::{Frame, Frames};
 use log::error;
-use logicrs::{Lit, LitOrdVec, LitVec};
+use logicrs::{Lit, LitOrdVec, LitVec, Var};
 use proofoblig::{Po, Poq};
 use rand::{SeedableRng, rngs::SmallRng};
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
+use std::{process::exit, sync::Arc};
 
 mod activity;
-mod mainloop;
 mod frame;
 mod localabs;
 mod mab;
+mod mainloop;
 mod mic;
 mod predprop;
 mod proofoblig;
@@ -64,6 +60,10 @@ pub struct IC3Config {
     /// internal signals (FMCAD'21 https://doi.org/10.34727/2021/isbn.978-3-85448-046-4_14)
     #[arg(long = "inn", default_value_t = false)]
     pub inn: bool,
+    /// Prune latch domains with a single least-seen initial-model guard per lemma
+    #[arg(long = "guard-domain", default_value_t = false, conflicts_with = "inn")]
+    #[serde(default)]
+    pub guard_domain: bool,
     /// abstract constrains
     #[arg(long = "abs-cst", default_value_t = false)]
     pub abs_cst: bool,
@@ -118,6 +118,22 @@ pub struct IC3 {
     parent_lemma: bool,
 }
 
+fn initial_model(solver: &DagCnfSolver, latch: &[Var]) -> Vec<bool> {
+    let mut solver = solver.clone();
+    solver.use_phase_saving = false;
+    // Certificate generation is missing; don't care for now.
+    // True forces prepare_vsids and a complete local model. Empty assumptions still
+    // build the domain, but skip preparing decisions; those extra Nones are not free.
+    if !solver.dcs_solve_nocst(&[Lit::constant(true)]) {
+        println!("UNSAT");
+        exit(20);
+    }
+    latch
+        .iter()
+        .map(|&v| solver.dcs_varsatval(v).unwrap_or(false))
+        .collect()
+}
+
 impl IC3 {
     pub fn new(mut cfg: IC3Config, mut ts: Transys, ots: Transys, mut rst: Restore) -> Self {
         // validate config
@@ -126,6 +142,10 @@ impl IC3 {
         assert!(!cfg.mab || !cfg.drop_po, "mab & drop_po incompatible");
         assert!(!cfg.inn || !cfg.abs_trans, "inn & localAbs incompatible");
         assert!(!cfg.inn || !cfg.abs_cst, "inn & localAbs incompatible");
+        assert!(
+            !cfg.inn || !cfg.guard_domain,
+            "guarded latch domains do not support --inn"
+        );
 
         ts.remove_gate_init(&mut rst);
         let real_bad = ts.bad.clone(); // only differs from ts.bad if local proof is on
@@ -187,6 +207,7 @@ impl IC3 {
         }
 
         let mut solvers = Vec::new();
+        let mut inf_solver = ts.new_solver();
         let mut obligations = Poq::new();
         let frames = if let Some(po) = base_cex {
             obligations.add(po);
@@ -214,6 +235,11 @@ impl IC3 {
                 unsafe { &mut *(Arc::as_ptr(&mut ts) as *mut Transys) }
                     .add_init(i.var(), Lit::constant(i.polarity()));
             }
+            if cfg.guard_domain {
+                let init = initial_model(&solver, &ts.latch);
+                solver.enable_guard_domain(&ts.latch, &init);
+                inf_solver.enable_guard_domain(&ts.latch, &init);
+            }
             solvers.push(solver);
             let mut f = Frames::new(&ts);
             f.push(frame);
@@ -223,7 +249,7 @@ impl IC3 {
         Self {
             activity: Activity::new(&ts),
             solvers,
-            inf_solver: ts.new_solver(),
+            inf_solver,
             lift: TsLift::new(TransysUnroll::new(Arc::clone(&ts))),
             obligations,
             frame: frames,
@@ -252,5 +278,47 @@ impl IC3 {
             ctp: cfg.ctp,
             parent_lemma: cfg.parent_lemma,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::DagCnf;
+
+    #[test]
+    fn initial_model_satisfies_constraints_and_completes_only_free_latches() {
+        let mut dc = DagCnf::new();
+        let a = dc.new_var();
+        let b = dc.new_var();
+        let free = dc.new_var();
+        let either = dc.new_or([a.lit(), b.lit()]);
+        let mut solver = DagCnfSolver::new(Arc::new(dc));
+        solver.add_perma_clause(&[either]);
+
+        let init = initial_model(&solver, &[a, b, free]);
+        assert!(init[0] || init[1]);
+        assert!(!init[2]);
+    }
+
+    #[test]
+    fn guard_flag_is_opt_in_and_conflicts_only_with_inn() {
+        let ordinary = EngineConfig::try_parse_from(["", "ic3"])
+            .unwrap()
+            .into_ic3()
+            .unwrap();
+        assert!(!ordinary.guard_domain);
+        let inn = EngineConfig::try_parse_from(["", "ic3", "--inn"])
+            .unwrap()
+            .into_ic3()
+            .unwrap();
+        assert!(inn.inn);
+        assert!(!inn.guard_domain);
+        let guarded = EngineConfig::try_parse_from(["", "ic3", "--guard-domain", "--abs-cst"])
+            .unwrap()
+            .into_ic3()
+            .unwrap();
+        assert!(guarded.guard_domain);
+        assert!(EngineConfig::try_parse_from(["", "ic3", "--inn", "--guard-domain"]).is_err());
     }
 }
