@@ -140,9 +140,8 @@ The implementation is not a toy PDR. Most of the performance is in the choices m
 - `--ctg-max <usize>`: maximum CTG retries before shrinking by the current SAT model. Default 3.
 - `--ctg-limit <usize>`: recursive blocking budget for CTG. Default 1.
 - `--dynamic`: simple activity-based dynamic EXCTG/CTG parameter selection. Default false.
-- `--mab`: LinUCB multi-armed-bandit parameter selection. Default false.
-- `--mab-alpha <f64>`: LinUCB exploration parameter. Default 1.0.
-- `--mab-lambda <f64>`: LinUCB regularization parameter. Default 0.1.
+- `--mab`: fixed 7-feature/7-arm LinUCB multi-armed-bandit parameter selection. Its exploration and regularization parameters are frozen at 1.0 and 0.1. Default false.
+- `--online-nn`: fixed 7-input, 16-hidden, 4-output online CTG selector with learning rate 0.05, epsilon 0.1, and L2 regularization 0.001. Default false.
 - `--ctp`: counterexample-to-propagation. Default false.
 - `--inn`: internal-signal IC3. Default false.
 - `--guard-domain`: singleton least-seen guarded latch domains.
@@ -154,8 +153,8 @@ The implementation is not a toy PDR. Most of the performance is in the choices m
 - `--local-proof <usize>`: local proof/property selection path. Commented as buggy; avoid unless explicitly working on it.
 
 Important incompatibilities enforced by `IC3::new`:
-- `--dynamic` and `--mab` cannot both be enabled.
-- `--dynamic` and `--mab` require `--no-drop-po` because dropping is enabled by default.
+- `--dynamic`, `--mab`, and `--online-nn` are mutually exclusive.
+- All three adaptive modes require `--no-drop-po` because dropping is enabled by default.
 - `--inn` cannot be combined with `--guard-domain`.
 
 ### Counterexample to Generalization, CTG `src/ic3/mic.rs`
@@ -199,7 +198,7 @@ choosing stronger `DropVarParameter` settings, either statically with
 ```sh
 ric3 check model.aig ic3 --dynamic --no-drop-po # simple dynamic mode
 ric3 check model.aig ic3 --mab --no-drop-po # MAB mode
-ric3 check model.aig ic3 --mab --mab-alpha 0.7 --mab-lambda 0.1 --no-drop-po
+ric3 check model.aig ic3 --online-nn --no-drop-po # fixed online NN mode
 ```
 
 the simple dynamic mode does not learn. It computes a CTG parameter from proof-obligation activity along the successor chain:
@@ -560,6 +559,8 @@ ric3 check model.aig ic3 --ctg-max 5 --ctg-limit 15 --no-drop-po
 ric3 check model.aig ic3 --dynamic --no-drop-po
 # MAB EXCTG:
 ric3 check model.aig ic3 --mab --no-drop-po
+# Fixed online NN CTG selection:
+ric3 check model.aig ic3 --online-nn --no-drop-po
 # Internal signals plus propagation repair:
 ric3 check model.aig ic3 --inn --ctp
 # Local abstraction:

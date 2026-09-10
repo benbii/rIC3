@@ -1,7 +1,7 @@
 use crate::{
     config::EngineConfig,
     gipsat::DagCnfSolver,
-    ic3::{localabs::LocalAbs, mab::CtgMab, predprop::PredProp},
+    ic3::{localabs::LocalAbs, mab::CtgMab, online::OnlineCtg, predprop::PredProp},
     transys::{Transys, certify::Restore, lift::TsLift, unroll::TransysUnroll},
 };
 use activity::Activity;
@@ -20,6 +20,7 @@ mod localabs;
 mod mab;
 mod mainloop;
 mod mic;
+mod online;
 mod predprop;
 mod proofoblig;
 mod propagate;
@@ -36,15 +37,13 @@ pub struct IC3Config {
     /// dynamic generalization
     #[arg(long = "dynamic", default_value_t = false)]
     pub dynamic: bool,
-    /// contextual-MAB (LinUCB) adaptive generalization (A-IC3)
+    /// fixed 7-feature/7-arm LinUCB adaptive generalization (A-IC3)
     #[arg(long = "mab", default_value_t = false)]
     pub mab: bool,
-    /// LinUCB exploration parameter alpha
-    #[arg(long = "mab-alpha", default_value_t = 1.0)]
-    pub mab_alpha: f64,
-    /// LinUCB regularization parameter lambda
-    #[arg(long = "mab-lambda", default_value_t = 0.1)]
-    pub mab_lambda: f64,
+    /// fixed online NN CTG selection (16 hidden units, lr 0.05, epsilon 0.1)
+    #[arg(long = "online-nn", default_value_t = false)]
+    #[serde(default)]
+    pub online_nn: bool,
     /// Disable counterexample to generalization
     #[arg(long = "no-ctg", action = ArgAction::SetFalse)]
     pub ctg: bool,
@@ -106,6 +105,7 @@ pub struct IC3 {
     rst: Restore,
     predprop: Option<PredProp>,
     mab: Option<CtgMab>,
+    online_nn: Option<OnlineCtg>,
     rng: SmallRng,
     time_limit: u64,
     default_mic: mic::DropVarParameter,
@@ -142,8 +142,7 @@ impl IC3 {
             "inn & guard-domain incompatible"
         );
         assert!(
-            (cfg.dynamic as u8 + cfg.mab as u8 + cfg.drop_po as u8) < 2,
-            // (cfg.dynamic as u8 + cfg.mab as u8 + cfg.drop_po as u8 + cfg.online_nn) < 2,
+            (cfg.dynamic as u8 + cfg.mab as u8 + cfg.online_nn as u8 + cfg.drop_po as u8) < 2,
             "dynamic, mab, online-nn and drop-po are mutually exclusive"
         );
 
@@ -246,6 +245,9 @@ impl IC3 {
             f
         };
 
+        let mut rng = SmallRng::seed_from_u64(cfg.rseed);
+        let online_nn = cfg.online_nn.then(|| OnlineCtg::new(&mut rng));
+
         Self {
             activity: Activity::new(&ts),
             solvers,
@@ -262,8 +264,9 @@ impl IC3 {
             ots,
             rst,
             predprop,
-            mab: cfg.mab.then(|| CtgMab::new(cfg.mab_alpha, cfg.mab_lambda)),
-            rng: SmallRng::seed_from_u64(cfg.rseed),
+            mab: cfg.mab.then(CtgMab::new),
+            online_nn,
+            rng,
             time_limit: cfg.time_limit,
             default_mic: if cfg.ctg {
                 mic::DropVarParameter::new(cfg.ctg_limit, cfg.ctg_max, 1)

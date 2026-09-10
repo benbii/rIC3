@@ -4,6 +4,8 @@ use nalgebra::{SMatrix, SVector};
 
 /// 6 features + bias.
 const CONTEXT_DIM: usize = 7;
+const ALPHA: f64 = 1.0;
+const LAMBDA: f64 = 0.1;
 /// Dynamic (activity-aware) arms.
 const BALANCED_ARM: usize = 0;
 const AGGRESSIVE_ARM: usize = 1;
@@ -81,8 +83,6 @@ fn conservative_params(po: &Po) -> DropVarParameter {
 }
 
 pub(crate) struct CtgMab {
-    alpha: f64,
-    lambda: f64,
     a: [Ic3MabMatrix; NUM_ARMS],
     a_inv: [Ic3MabMatrix; NUM_ARMS],
     b: [Ic3MabVector; NUM_ARMS],
@@ -92,14 +92,10 @@ pub(crate) struct CtgMab {
 }
 
 impl CtgMab {
-    pub fn new(alpha: f64, lambda: f64) -> Self {
-        assert!(alpha.is_finite() && alpha >= 0.0);
-        assert!(lambda.is_finite() && lambda > 0.0);
-        let a = Ic3MabMatrix::identity() * lambda;
-        let a_inv = Ic3MabMatrix::identity() / lambda;
+    pub fn new() -> Self {
+        let a = Ic3MabMatrix::identity() * LAMBDA;
+        let a_inv = Ic3MabMatrix::identity() / LAMBDA;
         Self {
-            alpha,
-            lambda,
             a: [a; NUM_ARMS],
             a_inv: [a_inv; NUM_ARMS],
             b: [Ic3MabVector::zeros(); NUM_ARMS],
@@ -149,7 +145,7 @@ impl CtgMab {
         for arm in 0..NUM_ARMS {
             let predicted = self.theta[arm].dot(inp);
             let uncertainty = (inp.transpose() * &self.a_inv[arm] * inp)[(0, 0)];
-            let score = predicted + self.alpha * uncertainty.max(0.0).sqrt();
+            let score = predicted + ALPHA * uncertainty.max(0.0).sqrt();
             if score > best_score {
                 best_score = score;
                 best_arm = arm;
@@ -222,8 +218,8 @@ impl CtgMab {
             self.a_inv[arm] = inv;
         } else {
             warn!("MAB: matrix A for arm {arm} became non-invertible, resetting arm");
-            self.a[arm] = Ic3MabMatrix::identity() * self.lambda;
-            self.a_inv[arm] = Ic3MabMatrix::identity() / self.lambda;
+            self.a[arm] = Ic3MabMatrix::identity() * LAMBDA;
+            self.a_inv[arm] = Ic3MabMatrix::identity() / LAMBDA;
             self.b[arm] = Ic3MabVector::zeros();
             self.theta[arm] = Ic3MabVector::zeros();
         }

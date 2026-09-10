@@ -1,7 +1,7 @@
 use super::{IC3, frame::Frame, proofoblig::Po};
 use crate::{
     BlWitness, Engine, McProof, McResult, McWitness,
-    ic3::{mab::balanced_params, solver::inductive_core},
+    ic3::{mab::balanced_params, online::OnlineCtg, solver::inductive_core},
 };
 use log::{debug, info, trace};
 use logicrs::{LitOrdVec, LitVec};
@@ -28,6 +28,8 @@ impl Engine for IC3 {
 
             // block existing proof obligations
             let mut assump = LitVec::new();
+            let mut mab_input = Default::default();
+            let mut online_context = [0.0; _];
             while let Some(mut po) = self.obligations.pop(self.level()) {
                 // intersects with init; failed if on frame 0
                 // cube_subsume_init only sees constant latch initializers. INN
@@ -89,12 +91,25 @@ impl Engine for IC3 {
                 }
 
                 let lvl = self.level();
-                let mut mab_input = None;
                 let (parameter, arm) = if self.dynamic {
                     (balanced_params(&po, 0.45), 0)
                 } else if let Some(mab) = &mut self.mab {
-                    mab_input = Some(mab.encode(lvl, &self.frame, &po));
-                    mab.infer(mab_input.as_ref().unwrap(), &po)
+                    mab_input = mab.encode(lvl, &self.frame, &po);
+                    mab.infer(&mab_input, &po)
+                } else if let Some(online_nn) = &self.online_nn {
+                    let pof = &self.frame[po.frame];
+                    let saturation = if !pof.is_empty() { pof[0].0.len() } else { 0 };
+                    online_context = [ // a wrapper `OnlineCtg::encode` feels good here
+                        po.frame as f64 / lvl as f64,
+                        if po.state.is_empty() { 0.0 } else { 1.0 },
+                        1.0 - po.frame as f64 / lvl as f64,
+                        po.frame as f64 / (po.frame + po.depth) as f64,
+                        (saturation as f64 / 100.0).min(1.0),
+                        (po.act / 100.0).clamp(0.0, 1.0),
+                        1.0,
+                    ];
+                    let (parameter, action) = online_nn.select(&online_context, &mut self.rng);
+                    (parameter, action)
                 } else {
                     (self.default_mic, 0)
                 };
@@ -105,10 +120,12 @@ impl Engine for IC3 {
                     let old_sz = mic.len();
                     mic = self.mic(po.frame, mic, &mut LitVec::new(), parameter);
                     let (frame, mic) = self.push_lemma(po.frame, mic);
-                    if let Some(input) = &mab_input {
-                        let mab = self.mab.as_mut().unwrap();
+                    if let Some(mab) = &mut self.mab {
                         let rew = mab.reward(&po, old_sz, mic.len(), frame, arm, lvl);
-                        mab.train(arm, input, rew);
+                        mab.train(arm, &mab_input, rew);
+                    } else if let Some(online_nn) = &mut self.online_nn {
+                        let reward = OnlineCtg::reward(&po, old_sz, mic.len(), frame, lvl);
+                        online_nn.feedback(&online_context, arm, reward);
                     }
                     po.push_to(frame);
                     debug_assert_eq!(frame, po.frame);
