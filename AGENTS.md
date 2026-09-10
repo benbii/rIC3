@@ -156,7 +156,7 @@ The implementation is not a toy PDR. Most of the performance is in the choices m
 Important incompatibilities enforced by `IC3::new`:
 - `--dynamic` and `--mab` cannot both be enabled.
 - `--dynamic` and `--mab` require `--no-drop-po` because dropping is enabled by default.
-- `--inn` cannot be combined with `--abs-cst`, `--abs-trans`, or `--guard-domain`.
+- `--inn` cannot be combined with `--guard-domain`.
 
 ### Counterexample to Generalization, CTG `src/ic3/mic.rs`
 

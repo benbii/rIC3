@@ -30,7 +30,14 @@ impl Engine for IC3 {
             let mut assump = LitVec::new();
             while let Some(mut po) = self.obligations.pop(self.level()) {
                 // intersects with init; failed if on frame 0
-                if self.ts.cube_subsume_init(&po.state) {
+                // cube_subsume_init only sees constant latch initializers. INN
+                // adds latches whose initial values are constrained by rel, so
+                // confirm those candidates with frame 0 before invoking CEGAR.
+                if self.ts.cube_subsume_init(&po.state)
+                    && (!self.inn
+                        || (!self.abs_cst && !self.abs_trans)
+                        || self.solvers[0].dcs_solve_nocst(po.state.as_litvec()))
+                {
                     if self.abs_cst || self.abs_trans {
                         self.obligations.add(po.clone());
                         if self.check_witness_by_bmc(po.depth) {

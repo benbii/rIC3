@@ -137,17 +137,14 @@ fn initial_model(solver: &DagCnfSolver, latch: &[Var]) -> Vec<bool> {
 impl IC3 {
     pub fn new(mut cfg: IC3Config, mut ts: Transys, ots: Transys, mut rst: Restore) -> Self {
         // validate config
-        assert!(!cfg.dynamic || !cfg.mab, "dynamic & mab incompatible");
-        assert!(
-            !cfg.dynamic || !cfg.drop_po,
-            "dynamic & drop_po incompatible"
-        );
-        assert!(!cfg.mab || !cfg.drop_po, "mab & drop_po incompatible");
-        assert!(!cfg.inn || !cfg.abs_trans, "inn & localAbs incompatible");
-        assert!(!cfg.inn || !cfg.abs_cst, "inn & localAbs incompatible");
         assert!(
             !cfg.inn || !cfg.guard_domain,
-            "guarded latch domains do not support --inn"
+            "inn & guard-domain incompatible"
+        );
+        assert!(
+            (cfg.dynamic as u8 + cfg.mab as u8 + cfg.drop_po as u8) < 2,
+            // (cfg.dynamic as u8 + cfg.mab as u8 + cfg.drop_po as u8 + cfg.online_nn) < 2,
+            "dynamic, mab, online-nn and drop-po are mutually exclusive"
         );
 
         ts.remove_gate_init(&mut rst);
@@ -287,7 +284,45 @@ impl IC3 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::DagCnf;
+    use crate::{DagCnf, Engine, McResult};
+
+    #[test]
+    fn inn_abstraction_checks_initial_gate_correlations_before_refinement() {
+        for (abs_cst, abs_trans) in [(true, false), (false, true), (true, true)] {
+            let mut ts = Transys::new();
+            let a = ts.new_var();
+            let b = ts.new_var();
+            let eq = ts.rel_mut().new_xnor(a.lit(), b.lit());
+            let bad = ts.rel_mut().new_and([b.lit(), eq]);
+            ts.add_latch(a, Some(Lit::constant(false)), Lit::constant(true));
+            ts.add_latch(b, None, b.lit());
+            ts.bad = LitVec::from(bad);
+
+            // At depth 0 bad = b & !b, but propagation alone does not
+            // assign bad. INN can therefore lift a frame-1 model to {bad},
+            // which passes the constant-init check and used to stall CEGAR.
+            let cfg = IC3Config {
+                inn: true,
+                abs_cst,
+                abs_trans,
+                time_limit: 1,
+                ..IC3Config::default()
+            };
+            let rst = Restore::new(&ts);
+            let mut ic3 = IC3::new(cfg, ts.clone_deep(), ts, rst);
+            assert!(ic3.ts.is_latch(bad.var()));
+            assert!(ic3.ts.cube_subsume_init(&[bad]));
+            assert!(ic3.ts.init(bad.var()).is_none());
+
+            assert!(matches!(ic3.check(), McResult::Unsafe(1)));
+            let witness = ic3.witness().into_bl().unwrap();
+            assert_eq!(witness.state.len(), 2);
+            assert!(witness.state[0].contains(&!a.lit()));
+            assert!(witness.state[0].contains(&b.lit()));
+            assert!(witness.state[1].contains(&a.lit()));
+            assert!(witness.state[1].contains(&b.lit()));
+        }
+    }
 
     #[test]
     fn initial_model_satisfies_constraints_and_completes_only_free_latches() {
