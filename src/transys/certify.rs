@@ -94,7 +94,9 @@ impl BlWitness {
         (self.input[0], self.state[0]) = (input, state);
     }
 
-    pub fn exact_state(&mut self, ts: &Transys, init: bool) {
+    /// Complete a trace against the original model. None selects any original
+    /// bad (the preprocessed target was their OR); Some selects that exact ID.
+    pub fn exact_state(&mut self, ts: &Transys, init: bool, prop: Option<usize>) {
         let mut uts = TransysUnroll::new(Arc::new(ts.clone()));
         uts.unroll_to(self.len() - 1);
         let mut solver = crate::cadical::CaDiCaL::new();
@@ -111,17 +113,24 @@ impl BlWitness {
                 solver.add_clause(&[l]);
             }
         }
+        let bad: LitVec = if let Some(prop) = prop {
+            LitVec::from(uts.lit_next(ts.bad[prop], uts.num_unroll))
+        } else {
+            uts.lits_next(&ts.bad, uts.num_unroll).collect()
+        };
+        solver.add_clause(&bad);
         assert!(solver.cad_solve(&[]));
         *self = uts.witness(&solver);
-        self.bad_id = ts
-            .bad
-            .iter()
-            .position(|&b| {
-                solver
-                    .cad_satval(uts.lit_next(b, uts.num_unroll))
-                    .is_some_and(|v| v)
-            })
-            .unwrap();
+        self.bad_id = prop.unwrap_or_else(|| {
+            ts.bad
+                .iter()
+                .position(|&b| {
+                    solver
+                        .cad_satval(uts.lit_next(b, uts.num_unroll))
+                        .is_some_and(|v| v)
+                })
+                .unwrap()
+        });
     }
 }
 
@@ -129,6 +138,10 @@ pub type BlProof = Transys;
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Restore {
+    /// Original target property ID; None means the target is the OR of all bads.
+    pub(crate) prop: Option<usize>,
+    /// Original IDs of retained prefix-only helper properties, in engine order.
+    pub(crate) helper_props: Vec<usize>,
     pub(crate) bvmap: VarVMap,
     pub(crate) fvmap: VarVMap,
     eqmap: HashMap<Var, LitVec>,
@@ -138,6 +151,8 @@ pub struct Restore {
 impl Restore {
     pub fn new(ts: &Transys) -> Self {
         Self {
+            prop: (ts.bad.len() == 1).then_some(0),
+            helper_props: Vec::new(),
             bvmap: VarVMap::new_self_map(ts.max_var()),
             fvmap: VarVMap::new_self_map(ts.max_var()),
             eqmap: HashMap::default(),

@@ -9,7 +9,7 @@ use nix::{
     unistd::getpid,
 };
 use rIC3::{
-    Engine, LitVec, McResult,
+    Engine, McResult,
     aig::Aig,
     bmc::BMC,
     btor::Btor,
@@ -101,8 +101,18 @@ fn main() -> ExitCode {
 }
 
 fn cmd_check(mut chk: CheckCmd, cfg: EngineConfig, pp: PreprocConfig) -> ExitCode {
+    assert!(
+        !pp.local_proof
+            || matches!(
+                &cfg,
+                EngineConfig::IC3(_) | EngineConfig::BMC(_) | EngineConfig::Kind(_)
+            ),
+        "--local-proof is supported by bit-level IC3, BMC and K-induction only",
+    );
     chk.model = chk.model.canonicalize().unwrap();
     info!("the model to be checked: {}", chk.model.display());
+    // --witness alone requests an unsafe trace, not a safety certificate.
+    let safe_cert = chk.cert.is_some() || chk.certify;
     if chk.cert.is_none() && (chk.certify || chk.witness) {
         let tmp_cert_file = tempfile::NamedTempFile::new().unwrap();
         chk.cert = Some(PathBuf::from(tmp_cert_file.path()));
@@ -146,20 +156,8 @@ fn cmd_check(mut chk: CheckCmd, cfg: EngineConfig, pp: PreprocConfig) -> ExitCod
                 (ts_ld, rst_ld)
             } else {
                 info!("transys to be checked has {}", ots.statistic());
-                let mut ts = ots.clone_deep();
+                let ts = ots.clone_deep();
                 let rst = Restore::new(&ts);
-                let ic3_local_proof = matches!(
-                    &cfg,
-                    EngineConfig::IC3(icfg) if icfg.local_proof < ts.bad.len()
-                );
-                if !ic3_local_proof {
-                    if pp.prop < ts.bad.len() {
-                        ts.bad = LitVec::from(ts.bad[pp.prop]);
-                    } else if ts.bad.len() > 1 {
-                        let bad = std::mem::take(&mut ts.bad);
-                        ts.bad = LitVec::from(ts.rel_mut().new_or(bad));
-                    }
-                }
                 Transys::preproc(ts, &pp, rst)
             };
 
@@ -177,15 +175,19 @@ fn cmd_check(mut chk: CheckCmd, cfg: EngineConfig, pp: PreprocConfig) -> ExitCod
     engine.statistic();
     ExitCode::from(match res {
         McResult::Safe => {
-            assert!(!chk.certify || fend.certify(&chk.model, chk.cert.as_ref().unwrap()));
-            println!("UNSAT{}", if chk.witness { "\n0" } else { "" });
-            if let Some(ref p) = chk.cert {
+            if safe_cert && let Some(ref p) = chk.cert {
                 let c = fend.safe_certificate(&chk.model, engine.proof());
                 fs::write(p, format!("{c}")).unwrap();
             }
+            assert!(!chk.certify || fend.certify(&chk.model, chk.cert.as_ref().unwrap()));
+            println!("UNSAT{}", if chk.witness { "\n0" } else { "" });
             20
         }
         McResult::Unsafe(_) => {
+            if let Some(ref p) = chk.cert {
+                let c = fend.unsafe_certificate(&chk.model, engine.witness());
+                fs::write(p, format!("{c}")).unwrap();
+            }
             assert!(!chk.certify || fend.certify(&chk.model, chk.cert.as_ref().unwrap()));
             println!("SAT");
             if chk.witness {
@@ -193,10 +195,6 @@ fn cmd_check(mut chk: CheckCmd, cfg: EngineConfig, pp: PreprocConfig) -> ExitCod
                     "{}",
                     fs::read_to_string(chk.cert.as_ref().unwrap()).unwrap()
                 );
-            }
-            if let Some(ref p) = chk.cert {
-                let c = fend.unsafe_certificate(&chk.model, engine.witness());
-                fs::write(p, format!("{c}")).unwrap();
             }
             10
         }

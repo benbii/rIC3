@@ -7,7 +7,6 @@ use crate::{
 use activity::Activity;
 use clap::{ArgAction, Args, Parser};
 use frame::{Frame, Frames};
-use log::error;
 use logicrs::{Lit, LitOrdVec, LitVec, Var};
 use proofoblig::{Po, Poq};
 use rand::{SeedableRng, rngs::SmallRng};
@@ -78,9 +77,6 @@ pub struct IC3Config {
     /// predicate property
     #[arg(long = "pred-prop", default_value_t = false)]
     pub pred_prop: bool,
-    /// Local proof (buggy)
-    #[arg(long = "local-proof", default_value_t = usize::MAX)]
-    pub local_proof: usize,
     // stream infinity-frame lemmas as DIMACS-like clauses (append mode)
     // #[arg(long = "inv-dump")]
     // pub inv_dump: Option<PathBuf>,
@@ -145,18 +141,14 @@ impl IC3 {
             (cfg.dynamic as u8 + cfg.mab as u8 + cfg.online_nn as u8 + cfg.drop_po as u8) < 2,
             "dynamic, mab, online-nn and drop-po are mutually exclusive"
         );
+        assert!(!ts.bad.is_empty());
 
         ts.remove_gate_init(&mut rst);
-        let real_bad = ts.bad.clone(); // only differs from ts.bad if local proof is on
-        if cfg.local_proof < ts.bad.len() {
+        let real_bad = ts.bad.clone(); // target followed by prefix-only helpers
+        let local_proof = ts.bad.len() > 1;
+        if local_proof {
             cfg.pred_prop = true;
-            ts.bad = LitVec::from(ts.bad[cfg.local_proof]);
-        }
-        if ts.bad.len() != 1 {
-            error!(
-                "{} bads in IC3! Wrong preprocessed model load?",
-                ts.bad.len()
-            );
+            ts.bad = LitVec::from(ts.bad[0]);
         }
         let mut ts = Arc::new(ts);
         let mut predprop = None;
@@ -165,12 +157,12 @@ impl IC3 {
             uts.unroll(true);
             ts = Arc::new(uts.internal_signals());
             if cfg.pred_prop {
-                predprop = Some(PredProp::new(uts, cfg.local_proof, cfg.inn, &real_bad));
+                predprop = Some(PredProp::new(uts, cfg.inn, &real_bad));
             }
         } else if cfg.pred_prop {
             let mut uts = TransysUnroll::new(Arc::clone(&ts));
             uts.unroll(true);
-            predprop = Some(PredProp::new(uts, cfg.local_proof, cfg.inn, &real_bad));
+            predprop = Some(PredProp::new(uts, cfg.inn, &real_bad));
         }
 
         // PredProp strengthens IC3 with !bad below. LocalAbs must validate

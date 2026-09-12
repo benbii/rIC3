@@ -20,9 +20,6 @@ pub struct KindConfig {
     /// Skip BMC
     #[arg(long = "skip-bmc", default_value_t = false)]
     pub skip_bmc: bool,
-    /// Local proof
-    #[arg(long = "local-proof", default_value_t = usize::MAX)]
-    pub local_proof: usize,
 }
 
 impl Default for KindConfig {
@@ -38,7 +35,6 @@ pub struct Kind {
     simple_path: Vec<Vec<LitVec>>,
     ots: Transys,
     rst: Restore,
-    bad_prop_id: usize,
     pub skip_bmc: bool,
     pub use_simple_path: bool,
     pub end: usize,
@@ -46,27 +42,18 @@ pub struct Kind {
 
 impl Kind {
     pub fn new(cfg: KindConfig, mut ts: Transys, ots: Transys, mut rst: Restore) -> Self {
-        if cfg.local_proof < ts.bad.len() {
-            panic!("local proof KInd not supported");
-        }
-
+        assert!(!ts.bad.is_empty(), "K-induction requires a target property");
         ts.remove_gate_init(&mut rst);
         let mut ts = ts.remove_dep();
         // assume constraints
-        // TODO: support local_proof by assuming other bad props
         for c in std::mem::take(&mut ts.constraint) {
             ts.rel.add_clause(&[c]);
         }
         ts.simplify(&mut rst); // restored from master branch
-        // compress bads
-        if ts.bad.len() > 1 {
-            let bad = std::mem::take(&mut ts.bad);
-            ts.bad = LitVec::from(ts.rel.new_or(bad));
-        }
-        let uts = NoDepTransysUnroll::new(ts);
+        // Keep target and helper expressions separate. The check loop assumes
+        // all of them only after a frame stops being the failing endpoint.
         Self {
-            bad_prop_id: 0,
-            uts,
+            uts: NoDepTransysUnroll::new(ts),
             skip_bmc: cfg.skip_bmc,
             end: cfg.end,
             use_simple_path: cfg.simple_path,
@@ -80,7 +67,7 @@ impl Kind {
 
 impl Engine for Kind {
     fn check(&mut self) -> McResult {
-        let bad0 = self.uts.ts.bad[self.bad_prop_id];
+        let bad0 = self.uts.ts.bad[0];
         let mut k = self.uts.num_unroll + 1;
         // load the 0th TransysUnroll, if not already (i.e. first call to `check`)
         if k == 1 {
@@ -128,6 +115,7 @@ impl Engine for Kind {
                 }
             }
 
+            // Target and helpers hold in the prefix, never at the endpoint.
             for b in self.uts.lits_next(&self.uts.ts.bad, k - 1) {
                 self.solver.add_clause(&[!b]);
             }
@@ -149,12 +137,19 @@ impl Engine for Kind {
     }
 
     fn proof(&mut self) -> McProof {
+        assert!(
+            self.uts.ts.bad.len() == 1,
+            "standalone safety certificates for local proofs are not supported",
+        );
         if self.use_simple_path {
             //TODO: support certifaiger with simple path constraint
             error!("k-induction with simple path constraint not support certifaiger");
             panic!();
         }
         let mut ts = self.ots.clone_deep();
+        if let Some(prop) = self.rst.prop {
+            ts.bad = LitVec::from(ts.bad[prop]);
+        }
         let eqi = self.rst.eq_invariant();
         let mut certifaiger_dnf = vec![];
         for cube in eqi {
@@ -296,8 +291,7 @@ impl Engine for Kind {
     fn witness(&mut self) -> McWitness {
         let mut wit = self.uts.witness(&self.solver);
         wit = self.rst.restore_witness(&wit);
-        wit.exact_state(&self.ots, true);
-        wit.bad_id = self.bad_prop_id; // wit.bad_id defaults to 0
+        wit.exact_state(&self.ots, true, self.rst.prop);
         McWitness::Bl(wit)
     }
 }

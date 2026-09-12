@@ -25,9 +25,12 @@ pub enum EngineConfig {
 
 #[derive(Args, Clone, Debug, Serialize, Deserialize)]
 pub struct PreprocConfig {
-    /// Property ID. If not specified, all properties are preserved
+    /// Property ID. If omitted, check the disjunction of all bad properties
     #[arg(long = "prop", default_value_t = usize::MAX)]
     pub prop: usize,
+    /// Assume structurally connected helper properties before the target's failing frame
+    #[arg(long = "local-proof", default_value_t = false)]
+    pub local_proof: bool,
     /// Disable functional reduction of the transition system
     #[arg(long = "no-frts", action = ArgAction::SetFalse)]
     pub frts: bool,

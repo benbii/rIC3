@@ -16,7 +16,7 @@ pub struct PredProp {
 }
 
 impl PredProp {
-    pub fn new(uts: TransysUnroll, local_proof: usize, inn: bool, bad: &LitVec) -> Self {
+    pub fn new(uts: TransysUnroll, inn: bool, bad: &LitVec) -> Self {
         let mut bts = if inn {
             assert!(uts.num_unroll == 1);
             let keep = uts.ts.rel.fanouts(&uts.ts.input);
@@ -46,12 +46,7 @@ impl PredProp {
         } else {
             uts.compile()
         };
-        let next_bad: LitVec = uts.lits_next(bad, uts.num_unroll).collect();
-        bts.bad = if local_proof < next_bad.len() {
-            LitVec::from([next_bad[local_proof]])
-        } else {
-            next_bad
-        };
+        bts.bad = LitVec::from(uts.lit_next(bad[0], uts.num_unroll));
         bts.constraint.extend(!bad);
         let slv = bts.new_solver();
         let lift = TsLift::new(uts);

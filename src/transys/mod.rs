@@ -21,7 +21,7 @@ pub struct Transys {
     pub latch: Vec<Var>,
     pub next: VarMap<OptionU32>,
     pub init: VarMap<OptionU32>,
-    /// multiple bads, not single cube
+    /// Frontend: all bad properties. After preproc: target at 0, helper bads at 1..
     pub bad: LitVec,
     pub constraint: LitVec,
     pub justice: LitVec,

@@ -7,7 +7,6 @@ use crate::{
 };
 use clap::{Args, Parser};
 use log::info;
-use logicrs::LitVec;
 use rand::{RngExt, SeedableRng, rngs::SmallRng};
 use serde::{Deserialize, Serialize};
 
@@ -55,12 +54,9 @@ pub struct BMC {
 }
 
 impl BMC {
-    pub fn new(cfg: BMCConfig, mut ts: Transys, ots: Transys, mut rst: Restore) -> Self {
+    pub fn new(cfg: BMCConfig, ts: Transys, ots: Transys, mut rst: Restore) -> Self {
         let mut rng = SmallRng::seed_from_u64(cfg.rseed);
-        if ts.bad.len() > 1 {
-            let bad = std::mem::take(&mut ts.bad);
-            ts.bad = LitVec::from(ts.rel_mut().new_or(bad));
-        }
+        assert!(!ts.bad.is_empty(), "BMC requires a target property");
         let mut ts = ts.remove_dep();
         for c in std::mem::take(&mut ts.constraint) {
             ts.rel.add_clause(&[c]);
@@ -109,10 +105,17 @@ impl Engine for BMC {
                 self.uts.unroll_to(d);
                 while self.solver_k < d + 1 {
                     self.uts.load_trans(c, self.solver_k, true);
+                    // The previous frame is now part of the prefix, even when
+                    // --start/--step skipped checking a bad at that frame.
+                    if self.solver_k > 0 {
+                        for h in self.uts.lits_next(&self.uts.ts.bad[1..], self.solver_k - 1) {
+                            c.add_clause(&[!h]);
+                        }
+                    }
                     self.solver_k += 1;
                 }
-                let assump: LitVec = self.uts.lits_next(&self.uts.ts.bad, d).collect();
-                if c.cad_solve(&assump) {
+                let bad = self.uts.lit_next(self.uts.ts.bad[0], d);
+                if c.cad_solve(&[bad]) {
                     info!("bmc-cadical found a counterexample at depth {d}");
                     return McResult::Unsafe(d);
                 }
@@ -126,11 +129,15 @@ impl Engine for BMC {
                 self.uts.unroll_to(d);
                 while self.solver_k < d + 1 {
                     self.uts.load_trans_k(k, self.solver_k, true);
+                    if self.solver_k > 0 {
+                        for h in self.uts.lits_next(&self.uts.ts.bad[1..], self.solver_k - 1) {
+                            k.add_clause(&[!h]);
+                        }
+                    }
                     self.solver_k += 1;
                 }
-                for b in self.uts.lits_next(&self.uts.ts.bad, d) {
-                    k.add_clause(&[b]);
-                }
+                let bad = self.uts.lit_next(self.uts.ts.bad[0], d);
+                k.add_clause(&[bad]);
                 if k.ksat_solve(&[]) {
                     info!("bmc-kissat found a counterexample at depth {d}");
                     return McResult::Unsafe(d);
@@ -148,6 +155,11 @@ impl Engine for BMC {
                 }
                 for i in 0..self.solver_k {
                     self.uts.load_trans_k(k, i, true);
+                    if i > 0 {
+                        for h in self.uts.lits_next(&self.uts.ts.bad[1..], i - 1) {
+                            k.add_clause(&[!h]);
+                        }
+                    }
                 }
             }
         }
@@ -165,7 +177,7 @@ impl Engine for BMC {
         for s in wit.state.iter_mut() {
             *s = self.rst.restore_eq_state(s);
         }
-        wit.exact_state(&self.ots, true);
+        wit.exact_state(&self.ots, true, self.rst.prop);
         McWitness::Bl(wit)
     }
 }

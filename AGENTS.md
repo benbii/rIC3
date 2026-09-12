@@ -47,7 +47,8 @@ Useful top-level `check` flags:
 - `--cert <path>`: write a safety or counterexample certificate.
 - `--certify`: ask the frontend to certify the certificate with the external certifier path flow.
 - `--witness`: print the unsafe witness.
-- `--prop <id>`: preserve/check one property by index during preprocessing. If omitted and there are multiple bad properties, bit-level engines compress them with an OR at different points.
+- `--prop <id>`: select one original property during preprocessing and move it to `bad[0]`. If omitted, preprocessing OR-compresses all bad properties into that one target.
+- `--local-proof`: retain structurally connected helper assertions at `bad[1..]` when `--prop` selects an in-range property. An omitted or out-of-range property ID compresses all bads instead, so local proof has no helper set. Available for bit-level IC3, BMC, and K-induction; it is a preprocessing flag, placed before the engine subcommand.
 
 Useful `preprocess` command:
 ```sh
@@ -60,10 +61,7 @@ metadata, and the elapsed preprocessing time; without it, `preprocess` discards
 the result. On `check`, a readable, valid file skips preprocessing; a missing or
 invalid file falls back to normal preprocessing. `--fake-preproc-wait` sleeps for
 the recorded preprocessing time after loading, useful for fair benchmark accounting.
-The loaded model is used as saved: preprocessing switches and `--prop` are not
-reapplied. The caller must ensure the cache matches the selected property and
-engine mode (including `--local-proof`); loading an incompatible cache has
-undefined behavior.
+Loaded model is used as saved. It's user responsibility to supply the correct one.
 
 ## Preprocessing
 
@@ -150,7 +148,7 @@ The implementation is not a toy PDR. Most of the performance is in the choices m
 - `--no-drop-po`: disable dropping over-active proof obligations, enabled by default.
 - `--no-parent-lemma`: disable parent lemma guidance during MIC, enabled by default.
 - `--pred-prop`: predicate-property mode. Default false.
-- `--local-proof <usize>`: local proof/property selection path. Commented as buggy; avoid unless explicitly working on it.
+- Local proof is selected by the top-level `--prop <id> --local-proof` flags. IC3 automatically enables `--pred-prop` if any helper properties survive preprocessing.
 
 Important incompatibilities enforced by `IC3::new`:
 - `--dynamic`, `--mab`, and `--online-nn` are mutually exclusive.
@@ -357,7 +355,7 @@ Bad cases:
 - `Frame::trivial_contained` avoids adding or reblocking cubes already subsumed by known lemmas.
 - `add_lemma` removes subsumed lemmas in earlier frames and can detect an empty frame as proof.
 - `propagate_to_inf` tries to move frontier lemmas to an infinity frame and can recursively prove the CTP needed to do so.
-- `local-proof` is present but marked buggy in source.
+- Local-proof assumptions come from the preprocessed helper tail, not an IC3 configuration flag.
 
 ## BMC `src/bmc.rs`
 
@@ -384,17 +382,13 @@ K-induction uses the same no-dependency unrolling style as BMC, with a base
 check and an inductive step. For each `k`, unless `--skip-bmc` is set, it first
 checks whether a bad state exists at depth `k - 1`. Then it asserts bad states
 false for previous frames and asks whether `bad@k` is impossible. If
-impossible, the property is K-inductive and safe. Current flags:
+impossible, the property is K-inductive and safe. Solves some cases unsolvable
+by IC3, though generally underperforms it.
 - `--end <usize>`: maximum bound. Default `usize::MAX`.
-- `--simple-path`: add simple-path constraints. Default false.
-- `--skip-bmc`: skip the base BMC query. Default false.
-- `--local-proof <usize>`: present but immature
-
-Practical guidance:
-- `--simple-path` adds pairwise disequality constraints between the new state and all earlier states using XOR helper variables. This can make non-inductive properties inductive by ruling out loops.
+- `--simple-path` adds pairwise disequality constraints between the new state and all earlier states using XOR helper variables
 - Simple path is expensive: roughly O(k^2 * number_of_latches) extra structure over time.
-- `--skip-bmc` is only for special experiments. Normally keep the base check.
-- Solves some cases unsolvable by IC3, though generally underperforms it.
+- `--skip-bmc`: skip the base BMC query. Default false.
+- Local proof uses top-level `--prop <id> --local-proof`; the induction step assumes target and helpers in the prefix and tests only the target at the endpoint.
 
 ## GipSAT `src/gipsat/`
 
@@ -502,7 +496,7 @@ This is a compact simulation bitset, not a symbolic bit-vector term. It is used 
 - `latch`: latch/state variables.
 - `next`: map from latch to next-state literal.
 - `init`: map from latch to optional initial literal.
-- `bad`: bad property literals.
+- `bad`: all original bad properties at the frontend; after preprocessing, target at index 0 and prefix-only helper bads at indices 1 onward.
 - `constraint`: invariant constraints.
 - `justice`: liveness/justice properties.
 - `rel`: `DagCnf` transition relation.

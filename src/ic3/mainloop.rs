@@ -99,7 +99,8 @@ impl Engine for IC3 {
                 } else if let Some(online_nn) = &self.online_nn {
                     let pof = &self.frame[po.frame];
                     let saturation = if !pof.is_empty() { pof[0].0.len() } else { 0 };
-                    online_context = [ // a wrapper `OnlineCtg::encode` feels good here
+                    online_context = [
+                        // a wrapper `OnlineCtg::encode` feels good here
                         po.frame as f64 / lvl as f64,
                         if po.state.is_empty() { 0.0 } else { 1.0 },
                         1.0 - po.frame as f64 / lvl as f64,
@@ -174,7 +175,14 @@ impl Engine for IC3 {
     }
 
     fn proof(&mut self) -> McProof {
+        assert!(
+            self.rst.helper_props.is_empty(),
+            "standalone safety certificates for local proofs are not supported",
+        );
         let mut proof = self.ots.clone_deep();
+        if let Some(prop) = self.rst.prop {
+            proof.bad = LitVec::from(proof.bad[prop]);
+        }
         if let Some(iv) = self.rst.init_var() {
             let piv = proof.add_init_var();
             self.rst.add_restore(iv, piv);
@@ -230,7 +238,7 @@ impl Engine for IC3 {
         for s in res.state.iter_mut() {
             *s = self.rst.restore_eq_state(s);
         }
-        res.exact_state(&self.ots, true);
+        res.exact_state(&self.ots, true, self.rst.prop);
         McWitness::Bl(res)
     }
 
