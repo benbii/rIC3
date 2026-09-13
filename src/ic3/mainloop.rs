@@ -4,7 +4,7 @@ use crate::{
     ic3::{mab::balanced_params, online::OnlineCtg, solver::inductive_core},
 };
 use log::{debug, info, trace};
-use logicrs::{LitOrdVec, LitVec};
+use logicrs::{Lit, LitOrdVec, LitVec};
 use std::time::Instant;
 
 impl Engine for IC3 {
@@ -183,9 +183,14 @@ impl Engine for IC3 {
         if let Some(prop) = self.rst.prop {
             proof.bad = LitVec::from(proof.bad[prop]);
         }
-        if let Some(iv) = self.rst.init_var() {
-            let piv = proof.add_init_var();
-            self.rst.add_restore(iv, piv);
+        let iv = self.rst.init_var();
+        // INN can promote the still-free slot; only initialization lowering gives it this init.
+        if self.ts.init(iv) == Some(Lit::constant(true)) {
+            proof.add_latch(
+                self.rst.restore_var(iv),
+                Some(Lit::constant(true)),
+                Lit::constant(false),
+            );
         }
         let mut invariants = self.inner_invariant();
         for c in self.ts.constraint.clone() {
@@ -230,11 +235,7 @@ impl Engine for IC3 {
             res
         };
         let iv = self.rst.init_var();
-        res = res.filter_map(|l| {
-            (iv != Some(l.var()))
-                .then(|| self.rst.try_restore(l))
-                .flatten()
-        });
+        res = res.filter_map(|l| (iv != l.var()).then(|| self.rst.try_restore(l)).flatten());
         for s in res.state.iter_mut() {
             *s = self.rst.restore_eq_state(s);
         }

@@ -145,7 +145,8 @@ pub struct Restore {
     pub(crate) bvmap: VarVMap,
     pub(crate) fvmap: VarVMap,
     eqmap: HashMap<Var, LitVec>,
-    init_var: Option<Var>,
+    /// Free variable between state leaves and gates, activated as the initialization latch on demand.
+    init_var: Var,
 }
 
 impl Restore {
@@ -156,7 +157,9 @@ impl Restore {
             bvmap: VarVMap::new_self_map(ts.max_var()),
             fvmap: VarVMap::new_self_map(ts.max_var()),
             eqmap: HashMap::default(),
-            init_var: None,
+            // Frontends record the free slot as the trailing empty next entry.
+            // FIXME: this assumes a normalized frontend Transys; RLive violates it after adding latches.
+            init_var: ts.next.max_var(),
         }
     }
 
@@ -185,30 +188,18 @@ impl Restore {
         if let Some(rv) = self.bvmap.remove(&v) {
             self.fvmap.remove(&rv);
         }
-        if let Some(iv) = self.init_var
-            && iv == v
-        {
-            self.init_var = None;
-        }
-    }
-
-    #[inline]
-    pub fn add_restore(&mut self, v: Var, l: Var) {
-        assert!(!self.bvmap.contains_key(&v));
-        self.bvmap.insert(v, l);
-        self.fvmap.insert(l, v);
     }
 
     #[inline]
     pub fn map_var(&mut self, map: &impl Fn(Var) -> Var) {
-        self.init_var = self.init_var.map(&map);
+        self.init_var = map(self.init_var);
         self.bvmap.map_key(map);
         self.fvmap.map_value(map);
     }
 
     #[inline]
     pub fn filter_map_var(&mut self, map: &impl Fn(Var) -> Option<Var>) {
-        self.init_var = self.init_var.map(|l| map(l).unwrap());
+        self.init_var = map(self.init_var).unwrap();
         self.bvmap.filter_map_key(map);
         self.fvmap.filter_map_value(map);
     }
@@ -220,12 +211,6 @@ impl Restore {
         self.eqmap.entry(ym).or_default().push(xm);
         if let Some(fv) = self.bvmap.remove(&x) {
             self.fvmap.remove(&fv);
-        }
-        if let Some(iv) = self.init_var
-            && iv == x
-        {
-            assert!(y.polarity());
-            self.init_var = Some(y.var());
         }
     }
 
@@ -240,16 +225,15 @@ impl Restore {
         res
     }
 
-    pub fn init_var(&self) -> Option<Var> {
+    pub fn init_var(&self) -> Var {
         self.init_var
     }
 
     pub fn get_init_var(&mut self, ts: &mut Transys) -> Var {
-        if let Some(iv) = self.init_var {
-            return iv;
+        let iv = self.init_var;
+        if !ts.is_latch(iv) {
+            ts.add_latch(iv, Some(Lit::constant(true)), Lit::constant(false));
         }
-        let iv = ts.add_init_var();
-        self.init_var = Some(iv);
         iv
     }
 
@@ -269,7 +253,7 @@ impl Restore {
 
     pub fn restore_witness(&self, wit: &BlWitness) -> BlWitness {
         let iv = self.init_var();
-        let mut wit = wit.filter_map(|l| (iv != Some(l.var())).then(|| self.restore(l)));
+        let mut wit = wit.filter_map(|l| (iv != l.var()).then(|| self.restore(l)));
         for s in wit.state.iter_mut() {
             *s = self.restore_eq_state(s);
         }

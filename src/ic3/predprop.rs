@@ -26,6 +26,9 @@ impl PredProp {
             let mut constraint = uts.ts.constraint.clone();
             constraint.extend(uts.lits_next(uts.ts.constraint(), 1));
             for old_v in VarRange::new_inclusive(Var(1), uts.ts.rel.max_var()) {
+                if uts.ts.rel.clauses_of_var(old_v).is_empty() {
+                    continue;
+                }
                 uts.add_unrolled_rel(&mut rel, old_v, 1);
             }
             assert!(uts.ts.justice.is_empty());
@@ -38,7 +41,9 @@ impl PredProp {
                 ..Default::default()
             };
             for v in VarRange::new_inclusive(Var::new(1), uts.ts.max_var()) {
-                if !keep.contains(&v) {
+                if !keep.contains(&v)
+                    && (uts.ts.is_latch(v) || !uts.ts.rel.clauses_of_var(v).is_empty())
+                {
                     ts.add_latch(v, uts.ts.init(v), uts.lit_next(v.lit(), 1));
                 }
             }

@@ -89,6 +89,7 @@ impl NoDepTransys {
             simp_solver.add_clause(c);
         }
         let mut frozens = vec![Var::CONST];
+        frozens.push(rst.init_var());
         frozens.extend(self.bad.iter().map(|l| l.var()));
         frozens.extend(self.input.iter().chain(self.latch.iter()).copied());
         for &l in self.latch.iter() {

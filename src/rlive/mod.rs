@@ -74,6 +74,7 @@ impl Rlive {
             assert!(l.var() != self.base_var);
             rts.add_init(l.var(), Lit::constant(l.polarity()));
         }
+        // FIXME: rts has added latches after the frontend's reserved initialization slot.
         let rst = Restore::new(&rts);
         let mut ic3 = IC3::new(self.rcfg.clone(), rts.clone_deep(), rts, rst);
         let prev_level = log::max_level();
@@ -151,6 +152,7 @@ impl Engine for Rlive {
         loop {
             let mut ts = self.ts.clone();
             ts.bad = take(&mut ts.justice);
+            // FIXME: RLive must carry the reserved initialization slot through its added latches.
             let rst = Restore::new(&ts);
             let mut ic3 = IC3::new(self.rcfg.clone(), ts.clone_deep(), ts, rst);
             let prev_level = log::max_level();

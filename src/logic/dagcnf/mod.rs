@@ -315,8 +315,8 @@ impl DagCnf {
         n
     }
 
-    pub fn fanouts(&self, var: impl IntoIterator<Item = impl AsRef<Var>>) -> HashSet<Var> {
-        let mut marked = HashSet::from_iter(var.into_iter().map(|v| *v.as_ref()));
+    pub fn fanouts(&self, var: &[Var]) -> HashSet<Var> {
+        let mut marked = HashSet::from_iter(var.iter().copied());
         for v in VarRange::new_inclusive(Var::CONST, self.max_var) {
             if self.dep(v).iter().any(|d| marked.contains(d)) {
                 marked.insert(v);

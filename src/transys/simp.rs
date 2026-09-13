@@ -17,6 +17,7 @@ impl Transys {
             .chain(self.bad.iter())
             .chain(self.justice.iter())
             .map(|l| l.var())
+            .chain([rst.init_var()])
         {
             if !mark.contains(&v) {
                 mark.insert(v);
@@ -80,6 +81,7 @@ impl Transys {
 
     pub fn rearrange(&mut self, rst: &mut Restore) {
         let mut additional = vec![Var::CONST];
+        additional.push(rst.init_var());
         additional.extend(
             self.constraint
                 .iter()

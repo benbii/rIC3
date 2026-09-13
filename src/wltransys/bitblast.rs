@@ -104,6 +104,7 @@ impl WlTransys {
             v2t.insert(v, x.clone());
             latch.push(v);
         }
+        let iv = dc.new_var(); // Free initialization slot before combinational variables.
         let mut next = Vec::new();
         for (idx, l) in bitwl.latch.iter().enumerate() {
             let n = bitwl.next.get(l).unwrap().cnf_encode(&mut dc, &mut map);
@@ -129,6 +130,7 @@ impl WlTransys {
         for ((l, n), (_, i)) in next.into_iter().zip(init) {
             ts.add_latch(l, i, n);
         }
+        ts.next.reserve(iv);
 
         // Step 3: construct bit-to-word mappings
         /* let t2v: HashMap<Term, Var> = v2t.iter().map(|(&x, y)| (y.clone(), x)).collect();

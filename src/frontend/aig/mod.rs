@@ -6,7 +6,7 @@ use crate::{
     transys::Transys,
 };
 use log::{debug, error, warn};
-use logicrs::{Lit, LitVec, Var, VarRange, VarVMap};
+use logicrs::{DagCnf, Lit, LitVec, Var, VarRange, VarVMap};
 use std::{path::Path, process::Command, sync::Arc};
 
 impl From<&Transys> for Aig {
@@ -65,15 +65,41 @@ impl From<&Transys> for Aig {
 impl Transys {
     pub fn from_aig(aig: &Aig, compact: bool) -> Transys {
         let input: Vec<Var> = aig.inputs.iter().map(|x| Var::new(*x)).collect();
-        let bad = aig.bads.iter().map(|c| c.to_lit()).collect();
-        let constraint: LitVec = aig.constraints.iter().map(|c| c.to_lit()).collect();
+        // Leave a free initialization slot between the leaves and the gates.
+        // Input/latch IDs stay unchanged for the frontend's witness mapping.
+        let iv = Var::new(
+            aig.inputs
+                .iter()
+                .copied()
+                .chain(aig.latchs.iter().map(|l| l.input))
+                .max()
+                .unwrap_or(0)
+                + 1,
+        );
+        let map_var = |v: Var| Var(v.0 + u32::from(v >= iv));
+        let map_lit = |l: Lit| l.map_var(map_var);
+        let bad = aig.bads.iter().map(|c| map_lit(c.to_lit())).collect();
+        let constraint: LitVec = aig
+            .constraints
+            .iter()
+            .map(|c| map_lit(c.to_lit()))
+            .collect();
         let mut justice: LitVec = aig
             .justice
             .first()
-            .map(|j| j.iter().map(|e| e.to_lit()).collect())
+            .map(|j| j.iter().map(|e| map_lit(e.to_lit())).collect())
             .unwrap_or_default();
-        justice.extend(aig.fairness.iter().map(|f| f.to_lit()));
-        let rel = aig.cnf(compact);
+        justice.extend(aig.fairness.iter().map(|f| map_lit(f.to_lit())));
+        let original_rel = aig.cnf(compact);
+        let mut rel = DagCnf::new();
+        rel.new_var_to(Var(original_rel.max_var().0 + 1));
+        for v in VarRange::new_inclusive(Var(1), original_rel.max_var()) {
+            let clauses: Vec<LitVec> = original_rel
+                .clauses_of_var(v)
+                .map(|c| c.iter().copied().map(map_lit).collect())
+                .collect();
+            rel.add_rel(map_var(v), &clauses);
+        }
         let mut ts = Transys {
             input,
             bad,
@@ -84,8 +110,13 @@ impl Transys {
         };
         for l in aig.latchs.iter() {
             let lv = Var(l.input as u32);
-            ts.add_latch(lv, l.init.map(|i| i.to_lit()), l.next.to_lit());
+            ts.add_latch(
+                lv,
+                l.init.map(|i| map_lit(i.to_lit())),
+                map_lit(l.next.to_lit()),
+            );
         }
+        ts.next.reserve(iv);
         ts
     }
 }

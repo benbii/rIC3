@@ -287,6 +287,8 @@ mod tests {
             let mut ts = Transys::new();
             let a = ts.new_var();
             let b = ts.new_var();
+            let iv = ts.new_var();
+            ts.next.reserve(iv);
             let eq = ts.rel_mut().new_xnor(a.lit(), b.lit());
             let bad = ts.rel_mut().new_and([b.lit(), eq]);
             ts.add_latch(a, Some(Lit::constant(false)), Lit::constant(true));

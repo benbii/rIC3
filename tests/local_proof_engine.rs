@@ -83,6 +83,8 @@ fn helper_selection_closes_transitively_and_ignores_constants() {
     let b = ts.new_var();
     let c = ts.new_var();
     let unrelated = ts.new_var();
+    let iv = ts.new_var();
+    ts.next.reserve(iv);
     ts.input.extend([a, b, c, unrelated]);
     let bc = !ts.rel_mut().new_xnor(b.lit(), c.lit());
     let ab = !ts.rel_mut().new_xnor(a.lit(), b.lit());
@@ -117,6 +119,8 @@ fn helper_selection_follows_next_and_nonconstant_init() {
     let b = ts.new_var();
     let init = ts.new_var();
     let unrelated = ts.new_var();
+    let iv = ts.new_var();
+    ts.next.reserve(iv);
     ts.add_input(init);
     ts.add_latch(a, Some(init.lit()), b.lit());
     ts.add_latch(b, Some(Lit::constant(false)), b.lit());
@@ -143,6 +147,8 @@ fn constraints_bridge_cones_without_seeding_unrelated_components() {
     let b = ts.new_var();
     let c = ts.new_var();
     let d = ts.new_var();
+    let iv = ts.new_var();
+    ts.next.reserve(iv);
     ts.input.extend([a, b, c, d]);
     let ab = ts.rel_mut().new_xnor(a.lit(), b.lit());
     let cd = ts.rel_mut().new_xnor(c.lit(), d.lit());
@@ -172,6 +178,8 @@ fn overlapping_components_match_explicit_fanin_fixed_point() {
     for _ in 0..24 {
         let mut ts = Transys::new();
         let vars: Vec<_> = (0..12).map(|_| ts.new_var()).collect();
+        let iv = ts.new_var();
+        ts.next.reserve(iv);
         ts.input.extend_from_slice(&vars[8..]);
         for &v in &vars[..8] {
             let next = vars[rng.random_range(0..vars.len())].lit();
@@ -249,6 +257,8 @@ fn overlapping_components_match_explicit_fanin_fixed_point() {
 fn single_property_local_proof_is_an_exact_preprocessing_noop() {
     let mut ts = Transys::new();
     let a = ts.new_var();
+    let iv = ts.new_var();
+    ts.next.reserve(iv);
     ts.add_latch(a, Some(Lit::constant(false)), Lit::constant(true));
     ts.bad = LitVec::from(a.lit());
     for prop in [0, usize::MAX] {
@@ -277,6 +287,8 @@ fn single_property_local_proof_is_an_exact_preprocessing_noop() {
 fn endpoint_failures_do_not_assume_helpers_and_preserve_selected_id() {
     let mut ts = Transys::new();
     let a = ts.new_var();
+    let iv = ts.new_var();
+    ts.next.reserve(iv);
     ts.add_latch(a, Some(Lit::constant(false)), Lit::constant(true));
     ts.bad = LitVec::from([a.lit(), a.lit()]);
     for local_proof in [false, true] {
@@ -292,6 +304,8 @@ fn compressed_target_reports_the_original_failing_property() {
     let mut ts = Transys::new();
     let a = ts.new_var();
     let b = ts.new_var();
+    let iv = ts.new_var();
+    ts.next.reserve(iv);
     ts.add_latch(a, Some(Lit::constant(false)), a.lit());
     ts.add_latch(b, Some(Lit::constant(false)), Lit::constant(true));
     // A real OR node is introduced, not just OR(false, b) simplified to b.
@@ -316,6 +330,8 @@ fn local_proof_keeps_endpoint_failures_through_scorr_and_frts() {
     let mut ts = Transys::new();
     let a = ts.new_var();
     let duplicate = ts.new_var();
+    let iv = ts.new_var();
+    ts.next.reserve(iv);
     ts.add_latch(a, Some(Lit::constant(false)), Lit::constant(true));
     ts.add_latch(duplicate, Some(Lit::constant(false)), Lit::constant(true));
     let target = ts.rel_mut().new_or([a.lit(), duplicate.lit()]);
@@ -338,6 +354,8 @@ fn ic3_local_proof_composes_with_local_abstraction() {
         let mut ts = Transys::new();
         let a = ts.new_var();
         let b = ts.new_var();
+        let iv = ts.new_var();
+        ts.next.reserve(iv);
         ts.add_latch(a, Some(Lit::constant(false)), b.lit());
         ts.add_latch(b, Some(Lit::constant(false)), Lit::constant(unsafe_model));
         // Helper b is correct in the safe case. In the unsafe case both
@@ -385,6 +403,8 @@ fn helpers_strengthen_kind_but_are_not_additional_targets() {
     let mut ts = Transys::new();
     let a = ts.new_var();
     let b = ts.new_var();
+    let iv = ts.new_var();
+    ts.next.reserve(iv);
     ts.add_latch(a, Some(Lit::constant(false)), b.lit());
     ts.add_latch(b, Some(Lit::constant(false)), b.lit());
     ts.bad = LitVec::from([a.lit(), b.lit()]);
@@ -418,6 +438,8 @@ fn bmc_helpers_cover_skipped_bounds_and_kissat_rebuilds() {
     let a = ts.new_var();
     let b = ts.new_var();
     let c = ts.new_var();
+    let iv = ts.new_var();
+    ts.next.reserve(iv);
     ts.add_latch(a, Some(Lit::constant(false)), Lit::constant(true));
     ts.add_latch(b, Some(Lit::constant(false)), a.lit());
     ts.add_latch(c, Some(Lit::constant(false)), b.lit());
@@ -458,6 +480,8 @@ fn bmc_helpers_cover_skipped_bounds_and_kissat_rebuilds() {
 fn cache_roundtrip_keeps_target_and_helper_identities() {
     let mut ts = Transys::new();
     let a = ts.new_var();
+    let iv = ts.new_var();
+    ts.next.reserve(iv);
     ts.add_latch(a, Some(Lit::constant(false)), Lit::constant(true));
     ts.bad = LitVec::from([a.lit(), a.lit()]);
     let rst = Restore::new(&ts);
@@ -485,6 +509,8 @@ fn cache_roundtrip_keeps_target_and_helper_identities() {
 #[test]
 fn every_out_of_range_property_id_compresses_bads() {
     let mut ts = Transys::new();
+    let iv = ts.new_var();
+    ts.next.reserve(iv);
     ts.bad = LitVec::from([Lit::constant(false), Lit::constant(true)]);
     let mut baseline = None;
     for prop in [2, 3, usize::MAX] {
@@ -503,7 +529,9 @@ fn every_out_of_range_property_id_compresses_bads() {
         }
     }
 
-    let ts = Transys::new();
+    let mut ts = Transys::new();
+    let iv = ts.new_var();
+    ts.next.reserve(iv);
     let rst = Restore::new(&ts);
     let (prepared, _) = Transys::preproc(ts, &preproc_config(0, true), rst);
     assert_eq!(prepared.bad.len(), 1);

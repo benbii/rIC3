@@ -184,7 +184,7 @@ impl TransysUnroll {
         let keep = self.ts.rel.fanouts(&self.ts.input);
         let mut rel = Arc::new((*self.ts.rel).clone());
         for old_v in VarRange::new_inclusive(Var(1), self.ts.rel.max_var()) {
-            if keep.contains(&old_v) {
+            if keep.contains(&old_v) || self.ts.rel.clauses_of_var(old_v).is_empty() {
                 continue;
             }
             self.add_unrolled_rel(&mut rel, old_v, 1);
@@ -197,7 +197,9 @@ impl TransysUnroll {
             ..Default::default()
         };
         for v in VarRange::new_inclusive(Var::new(1), self.ts.max_var()) {
-            if !keep.contains(&v) {
+            if !keep.contains(&v)
+                && (self.ts.is_latch(v) || !self.ts.rel.clauses_of_var(v).is_empty())
+            {
                 ts.add_latch(v, self.ts.init(v), self.lit_next(v.lit(), 1));
             }
         }
